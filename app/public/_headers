@@ -1,0 +1,16 @@
+# Cloudflare Pages response headers. The page talks only to the pinned Fulcrum
+# servers, the two WizardConnect relays, the price sources and its own /api/*
+# (test/app/headers.test.js keeps this list equal to the code's).
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' wss://bch.imaginary.cash:50004 wss://electrum.imaginary.cash:50004 wss://fulcrum.greyh.at:50004 wss://blackie.c3-soft.com:50004 wss://bch.soul-dev.com:50004 wss://fulcrum.pat.mn:50004 wss://electroncash.dk:50004 wss://bch.loping.net:50004 wss://relay.riften.net wss://relay.cauldron.quest https://api.coingecko.com https://api.coinbase.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Cross-Origin-Opener-Policy: same-origin
+
+/shows.json
+  Cache-Control: no-cache
+
+/bcmr/*
+  Access-Control-Allow-Origin: *

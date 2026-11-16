@@ -16,7 +16,12 @@
     "probe:build": "vite build probe",
     "simnet": "node simnet/cli.js",
     "studio": "node studio/cli.js",
-    "fixtures:fulcrum": "node simnet/scripts/capture-fulcrum.js"
+    "fixtures:fulcrum": "node simnet/scripts/capture-fulcrum.js",
+    "app": "vite app",
+    "app:sim": "node scripts/app-sim.js",
+    "app:build": "vite build app && node scripts/check-app-dist.js",
+    "app:build:simnet": "vite build app --mode simnet",
+    "e2e": "node test/e2e/judge-path.js"
   },
   "dependencies": {
     "@bitauth/libauth": "3.1.0-next.8",
