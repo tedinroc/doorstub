@@ -6,6 +6,8 @@
 //   "shows": [ {
 //     "id": "<slug>", "kind": "sample-settle" | "sample-refund-seat" | "real" | "proof",
 //     "title", "subtitle", "card", "startsAtEstimate": "<ISO, informational>",
+//     "eventAt": "<ISO UTC, ends in Z>", "durationMin": <1..600>, "seatPrefix": "<one capital letter, not A or B>",
+//                                                   (kind "real" only, all three required; src/shows/event.js)
 //     "params": { "category": "<64 hex, display order>", "price": <sats>, "organiserPk": "<66 hex>",
 //                 "organiserPkh": "<40 hex>", "organiserDataPk": "<66 hex>", "startHeight", "graceBlocks",
 //                 "handBackFeeBps", "noShowFeeBps", "minerFeeCap" },
@@ -24,6 +26,7 @@
 import { binToHex, hexToBin } from '@bitauth/libauth';
 import { DoorstubError, showContracts, verifyRefundNotice } from '../tx/index.js';
 import { ADDRESS_PREFIX, cashAddressOf, scripthashOf } from '../chain/address.js';
+import { eventFieldsToJson, ownsSeatPrefix, readEventFields } from './event.js';
 
 export const SHOWS_VERSION = 1;
 export const SHOW_KINDS = Object.freeze(['sample-settle', 'sample-refund-seat', 'real', 'proof']);
@@ -83,13 +86,6 @@ export const deriveFields = (contracts, network) => {
   return out;
 };
 
-/** Letter used in seat labels: A for the settle sample, B for the refund sample, else the title's first letter. */
-export const seatPrefixOf = (kind, title) => {
-  if (kind === 'sample-settle') return 'A';
-  if (kind === 'sample-refund-seat') return 'B';
-  const letter = /[A-Za-z]/.exec(title ?? '')?.[0];
-  return letter === undefined ? 'S' : letter.toUpperCase();
-};
 
 /**
  * Parse refund notices for a show: hex signatures to bytes, each verified
@@ -144,7 +140,10 @@ export const noticeToJson = (notice) => ({
  * Parse one show entry into a show object for src/tx, plus:
  * { id, kind, title, subtitle, card, startsAtEstimate, shards, genesisTxid (hex),
  *   categoryHex, network, notices (valid only), invalidNotices, cancelled, door,
- *   contracts, derived, seatPrefix }.
+ *   contracts, derived, seatPrefix, eventAt, eventAtMs, durationMin }.
+ * seatPrefix is A and B for the samples and the show's own letter for a real
+ * show; eventAt (the ISO string), eventAtMs and durationMin are the real
+ * show's call, null for the samples (src/shows/event.js).
  */
 export const parseShow = (raw, { network }) => {
   if (raw === null || typeof raw !== 'object') throw new ShowsError('bad-show', 'show must be an object');
@@ -175,7 +174,13 @@ export const parseShow = (raw, { network }) => {
     network,
   };
   show.categoryHex = binToHex(show.category);
-  show.seatPrefix = seatPrefixOf(show.kind, show.title);
+  let call;
+  try {
+    call = readEventFields(raw, show.kind);
+  } catch (e) {
+    throw new ShowsError('bad-field', e.message, id);
+  }
+  Object.assign(show, call);
 
   let contracts;
   try {
@@ -230,13 +235,17 @@ export const parseShowsFile = (input, { network: expected } = {}) => {
   const rejected = [];
   const ids = new Set();
   const categories = new Set();
+  const letters = new Set();
   for (const raw of json.shows) {
     try {
       const show = parseShow(raw, { network: json.network });
       if (ids.has(show.id)) throw new ShowsError('duplicate-id', 'id appears twice', show.id);
       if (categories.has(show.categoryHex)) throw new ShowsError('duplicate-category', 'category appears twice', show.id);
+      const ownLetter = ownsSeatPrefix(show.kind, raw);
+      if (ownLetter && letters.has(show.seatPrefix)) throw new ShowsError('duplicate-seat-prefix', `seat letter ${show.seatPrefix} appears twice`, show.id);
       ids.add(show.id);
       categories.add(show.categoryHex);
+      if (ownLetter) letters.add(show.seatPrefix);
       shows.push(show);
     } catch (e) {
       rejected.push({ id: raw?.id ?? null, code: e.code ?? 'bad-show', message: e.message });
@@ -266,6 +275,7 @@ export const showToJson = (show, { network = show.network ?? 'mainnet' } = {}) =
     subtitle: show.subtitle ?? '',
     card: show.card,
     startsAtEstimate: show.startsAtEstimate ?? '',
+    ...eventFieldsToJson(show),
     params: {
       category: binToHex(show.category),
       price: Number(show.price),

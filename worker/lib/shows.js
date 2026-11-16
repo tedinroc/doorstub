@@ -15,6 +15,7 @@ import {
   SCOPE_CANCEL_SHOW,
   SCOPE_REFUND_SEAT,
 } from '../../src/tx/constants.js';
+import { ownsSeatPrefix, readEventFields } from '../../src/shows/event.js';
 import { bytesToHex, concat, hexToBytes, isHex, reverse, WorkerError } from './bytes.js';
 import { verifyDataSignature } from './crypto.js';
 import { boxOfficeScripts, escrowScripts } from './script.js';
@@ -83,7 +84,8 @@ const parseNotice = (show, raw) => {
  * { id, kind, title, category, categoryHex, price, organiserPk, organiserPkh, organiserDataPk,
  *   startHeight, graceBlocks, handBackFeeBps, noShowFeeBps, minerFeeCap (bigint), shards, genesisTxid,
  *   escrow: { redeemScript, lockingBytecode, scripthash }, boxOffice: {...}, notices, invalidNotices,
- *   cancelled, door, seatPrefix }
+ *   cancelled, door, seatPrefix, eventAt, eventAtMs, durationMin }
+ * The call fields and the seat letter follow src/shows/event.js, as the app's loader.
  */
 export const parseWorkerShow = (raw) => {
   if (raw === null || typeof raw !== 'object') throw new WorkerError('bad-show', 'show must be an object', { status: 500 });
@@ -110,6 +112,11 @@ export const parseWorkerShow = (raw) => {
     genesisTxid: bytesToHex(hexParam(raw.genesisTxid, 32, 'genesisTxid', id)),
   };
   show.categoryHex = bytesToHex(show.category);
+  try {
+    Object.assign(show, readEventFields(raw, show.kind));
+  } catch (e) {
+    throw showError(id, e.message);
+  }
   checkPolicy(show);
   show.escrow = escrowScripts(show);
   show.boxOffice = boxOfficeScripts(show, show.escrow.lockingBytecode);
@@ -132,7 +139,6 @@ export const parseWorkerShow = (raw) => {
   }
   show.cancelled = show.notices.some((n) => n.scope === 'C');
   show.door = raw.door !== null && typeof raw.door === 'object' && typeof raw.door.endpoint === 'string' ? { endpoint: raw.door.endpoint } : null;
-  show.seatPrefix = show.kind === 'sample-settle' ? 'A' : show.kind === 'sample-refund-seat' ? 'B' : (/[A-Za-z]/.exec(show.title)?.[0] ?? 'S').toUpperCase();
   return show;
 };
 
@@ -157,12 +163,16 @@ export const parseWorkerShows = (input, { network }) => {
   const shows = [];
   const rejected = [];
   const seen = new Set();
+  const letters = new Set();
   for (const raw of json.shows) {
     try {
       const show = parseWorkerShow(raw);
       if (seen.has(show.id) || seen.has(show.categoryHex)) throw showError(show.id, 'id or category appears twice');
+      const ownLetter = ownsSeatPrefix(show.kind, raw);
+      if (ownLetter && letters.has(show.seatPrefix)) throw showError(show.id, `seat letter ${show.seatPrefix} appears twice`);
       seen.add(show.id);
       seen.add(show.categoryHex);
+      if (ownLetter) letters.add(show.seatPrefix);
       shows.push(show);
     } catch (e) {
       rejected.push({ id: raw?.id ?? null, code: e.code ?? 'bad-show', message: e.message });

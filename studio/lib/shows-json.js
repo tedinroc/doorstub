@@ -4,6 +4,7 @@
 // {
 //   "version": 1, "network": "mainnet" | "simnet", "origin": "https://...", "generatedAt": "<ISO>",
 //   "shows": [ { "id", "kind", "title", "subtitle", "card", "startsAtEstimate",
+//                "eventAt", "durationMin", "seatPrefix" (kind "real" only, all three required; src/shows/event.js),
 //                "params": { category, price, organiserPk, organiserPkh, organiserDataPk, startHeight,
 //                            graceBlocks, handBackFeeBps, noShowFeeBps, minerFeeCap },
 //                "shards", "genesisTxid", "derived": { ... }, "notices": [ { scope: "C", signature } ],
@@ -14,6 +15,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { binToHex, hexToBin, isHex, lockingBytecodeToCashAddress } from '@bitauth/libauth';
 import { showContracts, validateShow, verifyRefundNotice } from '../../src/tx/index.js';
+import { ownsSeatPrefix, readEventFields } from '../../src/shows/event.js';
 import { scripthashOf } from '../../simnet/chain.js';
 
 export const SHOW_KINDS = ['sample-settle', 'sample-refund-seat', 'real', 'proof'];
@@ -103,6 +105,7 @@ export const validateShowsJson = (doc) => {
   if (!Array.isArray(doc.shows)) fail('shows must be an array');
   const ids = new Set();
   const categories = new Set();
+  const letters = new Set();
   for (const entry of doc.shows) {
     const where = `show ${entry?.id}`;
     if (typeof entry.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(entry.id)) fail(`${where}: id must be a lowercase slug`);
@@ -111,6 +114,16 @@ export const validateShowsJson = (doc) => {
     if (!SHOW_KINDS.includes(entry.kind)) fail(`${where}: kind must be one of ${SHOW_KINDS.join(', ')}`);
     for (const key of ['title', 'subtitle', 'card']) if (typeof entry[key] !== 'string') fail(`${where}: ${key} must be a string`);
     if (typeof entry.startsAtEstimate !== 'string' || Number.isNaN(Date.parse(entry.startsAtEstimate))) fail(`${where}: startsAtEstimate must be an ISO time`);
+    let call;
+    try {
+      call = readEventFields(entry, entry.kind);
+    } catch (error) {
+      fail(`${where}: ${error.message}`);
+    }
+    if (ownsSeatPrefix(entry.kind, entry)) {
+      if (letters.has(call.seatPrefix)) fail(`${where}: seat letter ${call.seatPrefix} used twice`);
+      letters.add(call.seatPrefix);
+    }
     if (!Number.isInteger(entry.shards) || entry.shards < 1 || entry.shards > 256) fail(`${where}: shards must be 1-256`);
     if (typeof entry.genesisTxid !== 'string' || entry.genesisTxid.length !== 64 || !isHex(entry.genesisTxid)) fail(`${where}: genesisTxid must be 64 hex characters`);
     if (entry.params?.category === undefined) fail(`${where}: params.category is missing`);

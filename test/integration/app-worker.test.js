@@ -46,7 +46,9 @@ test('page + real worker on simnet: B refund through the notice signer, walk in 
   t.after(() => simnet.close());
   const scratch = scratchDir('app-worker');
   t.after(scratch.cleanup);
-  const boot = await bootstrapSimnet({ server: simnet.url, dir: scratch.dir, count: 1, firstStart: '+8', refundSeatStart: '+6500', schedule: [REAL_SHOW] });
+  // The first screening as planned (its call and seat letter S; the stage's own values win when it names them).
+  const screening = { eventAt: '2026-11-24T13:00:00Z', durationMin: 25, seatPrefix: 'S', ...REAL_SHOW };
+  const boot = await bootstrapSimnet({ server: simnet.url, dir: scratch.dir, count: 1, firstStart: '+8', refundSeatStart: '+6500', schedule: [screening] });
   const secrets = JSON.parse(readFileSync(boot.secretsPath, 'utf8'));
   const showsText = readFileSync(boot.showsPath, 'utf8');
   const realId = JSON.parse(showsText).shows.find((s) => s.kind === 'real').id;
@@ -112,7 +114,7 @@ test('page + real worker on simnet: B refund through the notice signer, walk in 
   const sentIn = await controller.walkIn(r.key);
   assert.ok(sentIn?.txid, JSON.stringify(state().flows[r.key]?.error));
   const label = seatLabelOf(parseWorkerShows(showsText, { network: 'simnet' }).shows.find((s) => s.id === real.id), hexToBin(ticket(r.key).seatHex));
-  assert.match(label, /^D-\d-1$/);
+  assert.match(label, /^S-\d-1$/);
   assert.equal(state().flows[r.key].link, STAGE_DOOR_LINK.replace('{seat}', label));
   const firstDoor = calls.filter((c) => c.path === '/api/door');
   assert.equal(firstDoor.length, 1);
