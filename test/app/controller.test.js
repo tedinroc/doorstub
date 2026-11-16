@@ -18,7 +18,7 @@ import { say } from '../../app/src/lib/copy.js';
 import { ticketModel } from '../../app/src/lib/view.js';
 import { memoryStorage } from '../../src/wallet/index.js';
 import { settleOpensAt } from '../../src/shows/index.js';
-import { checkSignatureFree, fetchShowLedger, liveEscrowUtxos } from '../../src/chain/index.js';
+import { BroadcastError, checkSignatureFree, fetchShowLedger, liveEscrowUtxos } from '../../src/chain/index.js';
 import { buildSettle } from '../../src/tx/index.js';
 import { makeSimWallet } from '../support/sim-wallet.js';
 import { stubApi, stubErrorBody } from '../support/stub-worker.js';
@@ -524,6 +524,43 @@ test('a relay hiccup keeps the paired wallet: a buy waits for it, a refused send
   assert.equal(state().connectOpen, true, 'the connect dialog opened after the wait');
   assert.equal(state().pendingBuy, showA.id);
   assert.notEqual(state().wallet.pairing?.uri ?? null, paired);
+});
+
+test('a buy refused as a conflict while the wallet relay blips is retried once the wallet is back, or bought on a new pairing when the wallet is gone, never left spinning', async (t) => {
+  const { controller, wallet, state } = await setup(t, { deps: { keeper: false, reconnectWaitMs: 1_000 } });
+  await controller.start();
+  const showA = controller.onSale().find((s) => s.kind === 'sample-settle');
+  await controller.pool.request('simnet.fund', { address: wallet.addressAt('receive', 0).address, sats: 1_000_000, mine: true });
+  await controller.connect();
+  await waitFor(() => state().wallet.state === 'connected' && state().wallet.balance !== null, 'wallet ready');
+  // The network refuses the first broadcast as a conflict, and at that moment the wallet relay blips (or the wallet
+  // ends the connection).
+  const broadcast = controller.pool.broadcastChecked.bind(controller.pool);
+  let calls = 0;
+  let meanwhile = () => wallet.blip({ ms: 300 });
+  controller.pool.broadcastChecked = async (checked) => {
+    calls += 1;
+    if (calls === 1) {
+      meanwhile();
+      throw new BroadcastError('rejected', 'the transaction was rejected by network rules', { errors: [{ message: 'txn-mempool-conflict' }] });
+    }
+    return broadcast(checked);
+  };
+
+  // The wallet is back within the wait: the retry goes on and the buy is sent.
+  const bought = await controller.buy(showA.id);
+  assert.ok(bought?.key, JSON.stringify(state().flows[showA.id]));
+  assert.equal(calls, 2);
+  assert.equal(state().flows[showA.id].step, 'done');
+
+  // The wallet does not come back (here it ended the connection): the retry does not leave the card spinning on
+  // "preparing"; a new pairing opens and the buy runs on it.
+  calls = 0;
+  meanwhile = () => controller.session.manager.emit('disconnect', 'user_disconnect', 'Wallet disconnected');
+  await controller.buy(showA.id);
+  await waitFor(() => state().flows[showA.id]?.step === 'done' && state().flows[showA.id].ticketKey !== bought.key, 'the buy on the new pairing');
+  assert.equal(calls, 2);
+  assert.equal(state().pendingBuy, null);
 });
 
 test('reopening the connect dialog shows the same link while it waits for a wallet; the other relay makes a new one', async () => {

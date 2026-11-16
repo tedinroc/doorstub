@@ -808,12 +808,15 @@ export const createController = ({ runtime, deps = {} }) => {
     const show = showById(showId);
     if (show === undefined) return;
     // A relay hiccup is not a lost wallet: wait for it to come back before starting a new pairing.
+    // A retry after a conflict comes here with its own "preparing" on the card, so it is not a second click.
     if (session?.wallet != null && get().wallet.state === 'reconnecting') {
-      if (busyStep(flowOf(showId))) return;
+      if (!retrying && busyStep(flowOf(showId))) return;
       await reconnectFor(showId, 'buy');
       setFlow(showId, null);
     }
     if (session?.wallet == null || get().wallet.state !== 'connected') {
+      // Nothing is left spinning on the card: the buy starts again from the top once a wallet is ready.
+      if (busyStep(flowOf(showId))) setFlow(showId, null);
       set({ pendingBuy: showId });
       if (!get().connectOpen) await connect();
       return;
