@@ -8,13 +8,26 @@
 // walletInputIndexes are plain P2PKH coins left with empty unlocking bytecode
 // for the owner's wallet to sign. No builder signs anything with a wallet key;
 // closeSales asks a caller-supplied callback for the organiser's signature.
-import { encodeTransaction, getDustThreshold, hash256, generateSigningSerializationBch } from '@bitauth/libauth';
+import {
+  encodeTransaction,
+  generateSigningSerializationBch,
+  getDustThreshold,
+  hash256,
+  isArbitraryDataOutput,
+  secp256k1,
+  sha256,
+} from '@bitauth/libauth';
 import {
   DEFAULT_FEE_RATE,
   FEE_DUST_FLOOR_SATS,
   LOCKTIME_THRESHOLD,
+  MAX_BUY_FUNDING_COINS,
   MAX_BUY_OUTPUTS,
+  MAX_DATA_OUTPUT_BYTES,
+  MAX_REFUND_COINS,
+  MAX_SETTLE_COINS,
   MAX_SOLD_PER_SHARD,
+  MAX_STANDARD_TX_BYTES,
   P2PKH_UNLOCK_MAX_BYTES,
   SEQUENCE_FINAL,
   SEQUENCE_LOCKTIME,
@@ -28,6 +41,7 @@ import {
   decodeTaggedCommitment,
   encodeBoxOfficeCommitment,
   encodeMarkerCommitment,
+  encodeRefundNoticeMessage,
   encodeSeat,
   encodeTicketCommitment,
   p2pkhLockingBytecode,
@@ -102,6 +116,25 @@ const assertPlainCoin = (utxo, name) => {
 
 const p2pkhPlaceholders = (indexes) => new Map(indexes.map((i) => [i, P2PKH_UNLOCK_MAX_BYTES]));
 
+/**
+ * Refuse a transaction the network would not relay: every output must be at
+ * least its dust threshold (0 for an OP_RETURN data output) and never
+ * negative, and the transaction (with wallet inputs at their largest signed
+ * size) must fit the 100,000-byte standard limit.
+ */
+const assertRelayable = (transaction, placeholders, what) => {
+  transaction.outputs.forEach((output, i) => {
+    if (output.valueSatoshis < 0n) fail('negative-output', `${what}: output ${i} would be ${output.valueSatoshis} sats`);
+    const dust = getDustThreshold(output);
+    if (output.valueSatoshis < dust) {
+      fail('dust-output', `${what}: output ${i} would be ${output.valueSatoshis} sats, below its dust threshold of ${dust}`);
+    }
+  });
+  const size = estimateSize(transaction, placeholders);
+  if (size > MAX_STANDARD_TX_BYTES) fail('tx-too-large', `${what}: ${size} bytes is over the ${MAX_STANDARD_TX_BYTES}-byte standard limit`);
+  return transaction;
+};
+
 /** Fee (sats) on a coin of `value` at `bps`, waived (0) when it would be dust. Mirrors Escrow. */
 export const feeOnCoin = (value, bps) => {
   const fee = (BigInt(value) * BigInt(bps)) / 10000n;
@@ -141,7 +174,13 @@ export const buildGenesis = ({
       },
     });
   }
-  if (dataOutput !== undefined) outputs.push({ lockingBytecode: dataOutput, valueSatoshis: 0n });
+  if (dataOutput !== undefined) {
+    assertBytes(dataOutput, undefined, 'dataOutput');
+    if (!isArbitraryDataOutput(dataOutput) || dataOutput.length > MAX_DATA_OUTPUT_BYTES) {
+      fail('bad-data-output', `dataOutput must be OP_RETURN followed only by pushes, at most ${MAX_DATA_OUTPUT_BYTES} bytes`);
+    }
+    outputs.push({ lockingBytecode: dataOutput, valueSatoshis: 0n });
+  }
 
   const inputs = fundingUtxos.map((utxo) => toInput(utxo));
   const walletInputIndexes = inputs.map((_, i) => i);
@@ -156,7 +195,7 @@ export const buildGenesis = ({
     kind: 'genesis',
     show,
     contracts,
-    transaction: built.transaction,
+    transaction: assertRelayable(built.transaction, p2pkhPlaceholders(walletInputIndexes), 'genesis'),
     sourceOutputs: fundingUtxos.map((u) => u.output),
     walletInputIndexes,
     fee: built.fee,
@@ -165,20 +204,52 @@ export const buildGenesis = ({
 };
 
 /**
+ * Check an organiser refund notice ({ scope: 'C' } or { scope: 'R', seat },
+ * with `signature`) against the show's data key, as Escrow.refund would.
+ */
+export const verifyRefundNotice = ({ show, notice }) => {
+  const message = encodeRefundNoticeMessage({ scope: notice.scope, category: show.category, seat: notice.seat });
+  const signature = notice.signature;
+  if (!(signature instanceof Uint8Array)) return false;
+  const digest = sha256.hash(message);
+  return signature.length === 64
+    ? secp256k1.verifySignatureSchnorr(signature, show.organiserDataPk, digest)
+    : secp256k1.verifySignatureDERLowS(signature, show.organiserDataPk, digest);
+};
+
+/**
  * Buy one seat. Input 0 is the BoxOffice shard (no signature); inputs 1+ are
- * the buyer's plain coins (the wallet signs them). Outputs: shard, ticket,
- * escrow coin, then change if worth having.
+ * the buyer's plain coins (the wallet signs them, at most
+ * MAX_BUY_FUNDING_COINS). Outputs: shard, ticket, escrow coin, then change if
+ * worth having.
+ *
+ * BCH cannot end sales on chain (a locktime is only a lower bound), so the
+ * builder does: `currentHeight` (the chain tip) is required, and the builder
+ * refuses at or after startHeight, or once any valid 'C' notice in `notices`
+ * cancelled the show. A buy after either would only lose the buyer money.
  */
 export const buildBuy = ({
   show,
   boxOfficeUtxo,
   fundingUtxos,
   buyerPkh,
+  currentHeight,
+  notices = [],
   changeLockingBytecode = p2pkhLockingBytecode(buyerPkh),
   feeRate = DEFAULT_FEE_RATE,
   contracts = showContracts(show),
 }) => {
+  validateShow(show);
   assertBytes(buyerPkh, 20, 'buyerPkh');
+  if (!Number.isInteger(currentHeight) || currentHeight < 0) fail('no-height', 'buildBuy needs the current block height (currentHeight)');
+  if (BigInt(currentHeight) >= BigInt(show.startHeight)) {
+    fail('sales-ended', `the show starts at block ${show.startHeight}; sales end there (BCH cannot enforce this on chain, so the app does)`);
+  }
+  for (const notice of notices) {
+    if (notice?.scope !== 'C') continue;
+    if (!verifyRefundNotice({ show, notice })) fail('bad-notice', 'a cancel notice was given but its signature does not verify');
+    fail('sales-cancelled', 'the organiser cancelled this show; buying now would only be refunded');
+  }
   const { boxOffice, escrow } = contracts;
   if (!sameBytes(boxOfficeUtxo.output.lockingBytecode, boxOffice.lockingBytecode)) {
     fail('wrong-box-office', 'coin is not at this show\'s BoxOffice');
@@ -188,6 +259,9 @@ export const buildBuy = ({
   if (!state.open) fail('sales-closed', 'sales are closed on this shard');
   if (state.sold >= MAX_SOLD_PER_SHARD) fail('shard-full', 'this shard has sold its last seat');
   if (!Array.isArray(fundingUtxos) || fundingUtxos.length === 0) fail('no-funding', 'buy needs at least one coin');
+  if (fundingUtxos.length > MAX_BUY_FUNDING_COINS) {
+    fail('too-many-inputs', `buy takes at most ${MAX_BUY_FUNDING_COINS} funding coins (BoxOffice loops over every input)`);
+  }
   fundingUtxos.forEach((utxo, i) => assertPlainCoin(utxo, `funding coin ${i}`));
 
   const sold = state.sold + 1;
@@ -231,7 +305,7 @@ export const buildBuy = ({
   if (built.transaction.outputs.length > MAX_BUY_OUTPUTS) fail('too-many-outputs', 'buy allows at most 6 outputs');
   return {
     kind: 'buy',
-    transaction: built.transaction,
+    transaction: assertRelayable(built.transaction, p2pkhPlaceholders(walletInputIndexes), 'buy'),
     sourceOutputs: [boxOfficeUtxo.output, ...fundingUtxos.map((u) => u.output)],
     walletInputIndexes,
     fee: built.fee,
@@ -307,7 +381,7 @@ export const buildCloseSales = ({
   });
   return {
     kind: 'closeSales',
-    transaction: { ...unsigned, inputs: signedInputs },
+    transaction: assertRelayable({ ...unsigned, inputs: signedInputs }, p2pkhPlaceholders(walletInputIndexes), 'closeSales'),
     sourceOutputs,
     walletInputIndexes,
     fee: built.fee,
@@ -377,7 +451,7 @@ export const buildHandBack = ({ show, escrowUtxo, ticketUtxo, feeRate = DEFAULT_
   }
   return {
     kind: 'handBack',
-    transaction: { ...draft, outputs },
+    transaction: assertRelayable({ ...draft, outputs }, placeholders, 'hand-back'),
     sourceOutputs: [escrowUtxo.output, ticketUtxo.output],
     walletInputIndexes: [1],
     fee: minerFee,
@@ -407,7 +481,11 @@ export const buildCheckIn = ({ show, escrowUtxo, ticketUtxo, feeRate = DEFAULT_F
   assertMinerFee(minerFee, BigInt(show.minerFeeCap), 'check-in');
   return {
     kind: 'checkIn',
-    transaction: { ...draft, outputs: [{ lockingBytecode: payee, valueSatoshis: marker.value - minerFee }, keepsake] },
+    transaction: assertRelayable(
+      { ...draft, outputs: [{ lockingBytecode: payee, valueSatoshis: marker.value - minerFee }, keepsake] },
+      p2pkhPlaceholders([1]),
+      'check-in',
+    ),
     sourceOutputs: [escrowUtxo.output, ticketUtxo.output],
     walletInputIndexes: [1],
     fee: minerFee,
@@ -438,6 +516,9 @@ export const buildSettle = ({
 }) => {
   const { escrow } = contracts;
   if (!Array.isArray(escrowUtxos) || escrowUtxos.length === 0) fail('no-coins', 'settle needs at least one escrow coin');
+  if (escrowUtxos.length > MAX_SETTLE_COINS) {
+    fail('batch-too-large', `settle takes at most ${MAX_SETTLE_COINS} coins per transaction; send several`);
+  }
   if (!Number.isInteger(locktime) || locktime < 0 || locktime >= LOCKTIME_THRESHOLD) fail('bad-locktime', 'locktime must be a block height');
   if (BigInt(locktime) < BigInt(show.startHeight) + BigInt(show.graceBlocks)) {
     fail('too-early', 'settle opens at startHeight + graceBlocks');
@@ -462,7 +543,7 @@ export const buildSettle = ({
   ];
   return {
     kind: 'settle',
-    transaction: { ...draft, outputs },
+    transaction: assertRelayable({ ...draft, outputs }, new Map(), 'settle'),
     sourceOutputs: coins.map((coin) => coin.utxo.output),
     walletInputIndexes: [],
     fee: sum(shares),
@@ -480,6 +561,9 @@ export const buildSettle = ({
 export const buildRefund = ({ show, escrowUtxos, notices, feeRate = DEFAULT_FEE_RATE, contracts = showContracts(show) }) => {
   const { escrow } = contracts;
   if (!Array.isArray(escrowUtxos) || escrowUtxos.length === 0) fail('no-coins', 'refund needs at least one escrow coin');
+  if (escrowUtxos.length > MAX_REFUND_COINS) {
+    fail('batch-too-large', `refund takes at most ${MAX_REFUND_COINS} coins per transaction; send several`);
+  }
   const coins = escrowUtxos.map((utxo, i) => {
     const marker = readEscrowCoin(utxo, show, escrow, `escrow coin ${i}`);
     const notice =
@@ -498,7 +582,11 @@ export const buildRefund = ({ show, escrowUtxos, notices, feeRate = DEFAULT_FEE_
   shares.forEach((share) => assertMinerFee(share, BigInt(show.minerFeeCap), 'refund'));
   return {
     kind: 'refund',
-    transaction: { ...draft, outputs: coins.map((coin, i) => ({ ...draftOutputs[i], valueSatoshis: coin.marker.value - shares[i] })) },
+    transaction: assertRelayable(
+      { ...draft, outputs: coins.map((coin, i) => ({ ...draftOutputs[i], valueSatoshis: coin.marker.value - shares[i] })) },
+      new Map(),
+      'refund',
+    ),
     sourceOutputs: coins.map((coin) => coin.utxo.output),
     walletInputIndexes: [],
     fee: sum(shares),

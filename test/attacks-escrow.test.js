@@ -5,20 +5,28 @@
 // behaviour shows up here.
 //
 // Sample show: price 10,000 sats, so an escrow coin holds V = 11,000;
-// minerFeeCap 5,000; settle opens at locktime 930,144.
+// minerFeeCap 1,500; settle opens at locktime 930,144.
+//
+// Slot rule (SPEC.md 3.2): no path allows an output outside its slots, so a
+// payout may fall short of the coin's due by at most minerFeeCap, and that
+// shortfall can only be miner fee. The "skim" cases below were accepted
+// before the slot rule and are rejected now.
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { flattenBinArray } from '@bitauth/libauth';
 import {
+  boxOfficeContract,
   buildBuy,
   buildCheckIn,
+  escrowContract,
   encodeMarkerCommitment,
   encodeRefundNoticeMessage,
   encodeTicketCommitment,
   scopeByte,
+  validateShow,
 } from '../src/tx/index.js';
 import { signDataMessage } from '../src/tx/sign.js';
-import { fakeCoin, freshKey, makeShow, signWallet, utxoAt } from './helpers.js';
+import { fakeCoin, freshKey, makeShow, saleHeight, sampleShowParams, signWallet, utxoAt } from './helpers.js';
 import {
   SEQUENCE_LOCKTIME,
   assemble,
@@ -40,14 +48,14 @@ import {
   why,
 } from './kit.js';
 
-const CAP = 5_000n;
+const CAP = 1_500n;
 
 /** A sold seat as made-up coins: the escrow coin and the matching ticket at the buyer's address. */
 const sale = (ctx, { buyer = freshKey(), seat = seatOf(0, 1) } = {}) => ({
   buyer,
   seat,
-  esc: escrowCoin(ctx, { seat, buyerPkh: buyer.pkh }),
-  tkt: ticketCoin(ctx, { seat, buyerPkh: buyer.pkh }),
+  esc: escrowCoin(ctx, { seat, buyerPkh: buyer.pkh, currentHeight: saleHeight(ctx.show) }),
+  tkt: ticketCoin(ctx, { seat, buyerPkh: buyer.pkh, currentHeight: saleHeight(ctx.show) }),
 });
 
 /** The ticket again as an output (keepsake) at `lock`. */
@@ -177,14 +185,58 @@ describe('Escrow.handBack attacks', () => {
     t.diagnostic(why(expectReject(assert, honest(ctx, s, [out(p2pkh(freshKey().pkh), coinValue(ctx))]), { failing: 0 })));
   });
 
-  test('control + REJECT fee drain: refund at V - cap passes, V - cap - 1 fails', (t) => {
+  test('control + REJECT fee drain: refund at V - cap passes (the rest is miner fee), V - cap - 1 fails', (t) => {
     const ctx = makeShow(assert);
     const s = sale(ctx);
-    const skimmer = p2pkh(freshKey().pkh);
     const V = coinValue(ctx);
-    expectAccept(assert, honest(ctx, s, [out(p2pkh(s.buyer.pkh), V - CAP), out(skimmer, CAP)]), 'at the cap');
-    const resolved = honest(ctx, s, [out(p2pkh(s.buyer.pkh), V - CAP - 1n), out(skimmer, CAP + 1n)]);
+    expectAccept(assert, honest(ctx, s, [out(p2pkh(s.buyer.pkh), V - CAP)]), 'at the cap');
+    const resolved = honest(ctx, s, [out(p2pkh(s.buyer.pkh), V - CAP - 1n)]);
     t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT skim: the ticket\'s slot paid to someone else, even inside the cap', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const V = coinValue(ctx);
+    const resolved = honest(ctx, s, [out(p2pkh(s.buyer.pkh), V - CAP), out(p2pkh(freshKey().pkh), CAP)]);
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT skim: an output beyond the slots (no fee is due, so there is no fee slot)', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const V = coinValue(ctx);
+    const resolved = honest(ctx, s, [out(p2pkh(s.buyer.pkh), V - CAP), out(p2pkh(s.buyer.pkh), 600), out(p2pkh(freshKey().pkh), 900)]);
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT skim: a plain coin added to open a slot for the skimmer', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const skimmer = freshKey();
+    const V = coinValue(ctx);
+    const resolved = assemble({
+      inputs: [
+        { coin: s.esc, unlock: escrowUnlock(ctx).handBack(1) },
+        { coin: s.tkt, signer: s.buyer },
+        { coin: fakeCoin(skimmer.pkh, 2_000), signer: skimmer },
+      ],
+      outputs: [out(p2pkh(s.buyer.pkh), V - CAP), out(p2pkh(s.buyer.pkh), 1000), out(p2pkh(skimmer.pkh), 2_000n + CAP - 1000n)],
+    });
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT hand-back with the escrow coin after its ticket (escrow coins come first)', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const resolved = assemble({
+      inputs: [
+        { coin: s.tkt, signer: s.buyer },
+        { coin: s.esc, unlock: escrowUnlock(ctx).handBack(0) },
+      ],
+      outputs: [out(p2pkh(s.buyer.pkh), 1000), out(p2pkh(s.buyer.pkh), coinValue(ctx) - 500n)],
+    });
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 1 })));
   });
 
   test('REJECT the ticket survives the hand-back (sent back to the holder)', (t) => {
@@ -242,6 +294,13 @@ describe('Escrow.handBack attacks', () => {
       const ctx = feeShow();
       const s = sale(ctx);
       const resolved = honest(ctx, s, twoOut(ctx, s, coinValue(ctx) - FEE - CAP - 1n, FEE + CAP));
+      t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+    });
+
+    test('REJECT fee output padded above the posted fee (organiser takes the allowance)', (t) => {
+      const ctx = feeShow();
+      const s = sale(ctx);
+      const resolved = honest(ctx, s, twoOut(ctx, s, coinValue(ctx) - FEE - CAP, FEE + CAP - 500n));
       t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
     });
 
@@ -340,13 +399,44 @@ describe('Escrow.checkIn attacks', () => {
     t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
   });
 
-  test('control + REJECT payout floor: organiser gets V - cap (passes), V - cap - 1 (fails)', (t) => {
+  test('control + REJECT payout floor: organiser gets V - cap (passes, the rest is miner fee), V - cap - 1 (fails)', (t) => {
     const ctx = makeShow(assert);
     const s = sale(ctx);
     const V = coinValue(ctx);
-    const holder = p2pkh(s.buyer.pkh);
-    expectAccept(assert, honest(ctx, s, [out(p2pkh(ctx.organiser.pkh), V - CAP), keepsakeOut(ctx, s), out(holder, CAP - 1000n)]), 'LIMIT: holder keeps up to cap - miner fee');
-    const resolved = honest(ctx, s, [out(p2pkh(ctx.organiser.pkh), V - CAP - 1n), keepsakeOut(ctx, s), out(holder, CAP - 999n)]);
+    expectAccept(assert, honest(ctx, s, [out(p2pkh(ctx.organiser.pkh), V - CAP), keepsakeOut(ctx, s)]), 'at the cap');
+    const resolved = honest(ctx, s, [out(p2pkh(ctx.organiser.pkh), V - CAP - 1n), keepsakeOut(ctx, s)]);
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT holder skim: a third output for the holder, even inside the cap', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const V = coinValue(ctx);
+    const resolved = honest(ctx, s, [out(p2pkh(ctx.organiser.pkh), V - CAP), keepsakeOut(ctx, s), out(p2pkh(s.buyer.pkh), 600)]);
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT holder skim: the keepsake carries more than the ticket did', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const V = coinValue(ctx);
+    const fat = nftOut(p2pkh(s.buyer.pkh), 2_000, { category: ctx.show.category, commitment: encodeTicketCommitment(s.seat, s.buyer.pkh) });
+    const resolved = honest(ctx, s, [out(p2pkh(ctx.organiser.pkh), V - CAP), fat]);
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT holder skim: a plain coin added to open a third slot', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const V = coinValue(ctx);
+    const resolved = assemble({
+      inputs: [
+        { coin: s.esc, unlock: escrowUnlock(ctx).checkIn(1) },
+        { coin: s.tkt, signer: s.buyer },
+        { coin: fakeCoin(s.buyer.pkh, 2_000), signer: s.buyer },
+      ],
+      outputs: [out(p2pkh(ctx.organiser.pkh), V - CAP), keepsakeOut(ctx, s), out(p2pkh(s.buyer.pkh), 2_000n + CAP - 1000n)],
+    });
     t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
   });
 
@@ -413,7 +503,7 @@ describe('Escrow.checkIn attacks', () => {
     const ctx = makeShow(assert);
     const holder = freshKey();
     const buy = (shard) => {
-      const built = buildBuy({ show: ctx.show, boxOfficeUtxo: shard, fundingUtxos: [fakeCoin(holder.pkh, 50_000)], buyerPkh: holder.pkh });
+      const built = buildBuy({ show: ctx.show, boxOfficeUtxo: shard, fundingUtxos: [fakeCoin(holder.pkh, 50_000)], buyerPkh: holder.pkh, currentHeight: saleHeight(ctx.show) });
       const signed = signWallet(built, holder.privateKey);
       return { seat: built.seat, ticket: utxoAt(signed.transaction, 1), esc: utxoAt(signed.transaction, 2) };
     };
@@ -526,14 +616,43 @@ describe('Escrow.settle attacks', () => {
     t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
   });
 
-  test('LIMIT + REJECT pusher skim: up to minerFeeCap passes, one sat more fails', (t) => {
+  test('control + REJECT settle floor: refund at V - cap passes (the rest is miner fee), V - cap - 1 fails', (t) => {
     const ctx = makeShow(assert);
     const s = sale(ctx);
-    const pusher = p2pkh(freshKey().pkh);
     const V = coinValue(ctx);
-    expectAccept(assert, honest(ctx, [s], [out(p2pkh(s.buyer.pkh), V - CAP), out(pusher, CAP - 1000n)]), 'LIMIT: pusher keeps up to cap - miner fee');
-    const resolved = honest(ctx, [s], [out(p2pkh(s.buyer.pkh), V - CAP - 1n), out(pusher, CAP - 999n)]);
+    expectAccept(assert, honest(ctx, [s], [out(p2pkh(s.buyer.pkh), V - CAP)]), 'at the cap');
+    const resolved = honest(ctx, [s], [out(p2pkh(s.buyer.pkh), V - CAP - 1n)]);
     t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT pusher skim: an extra output for the pusher, even inside the cap', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const V = coinValue(ctx);
+    const resolved = honest(ctx, [s], [out(p2pkh(s.buyer.pkh), V - CAP), out(p2pkh(freshKey().pkh), CAP - 900n)]);
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT pusher skim: the pusher adds a coin of their own to open a slot', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const pusher = freshKey();
+    const V = coinValue(ctx);
+    const resolved = assemble({
+      inputs: [settleInput(ctx, s.esc), { coin: fakeCoin(pusher.pkh, 2_000), signer: pusher }],
+      outputs: [out(p2pkh(s.buyer.pkh), V - CAP), out(p2pkh(pusher.pkh), 2_000n + CAP - 1000n)],
+      locktime: settleHeight(ctx),
+    });
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT a buyer who pushes a batch takes another coin\'s allowance through their own payout', (t) => {
+    const ctx = makeShow(assert);
+    const victim = sale(ctx, { seat: seatOf(0, 1) });
+    const pusher = sale(ctx, { seat: seatOf(0, 2) });
+    const V = coinValue(ctx);
+    const resolved = honest(ctx, [victim, pusher], [out(p2pkh(victim.buyer.pkh), V - CAP), out(p2pkh(pusher.buyer.pkh), V + CAP - 500n)]);
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 1 })));
   });
 
   test('REJECT double satisfaction: two coins of one buyer, one refund output', (t) => {
@@ -604,7 +723,8 @@ describe('Escrow.settle attacks', () => {
       const ctx = feeShow();
       const coins = [sale(ctx), sale(ctx, { seat: seatOf(0, 2) })];
       const resolved = honest(ctx, coins, [...refundAll(ctx, coins, FEE + 500n), out(p2pkh(ctx.organiser.pkh), 2n * FEE)]);
-      t.diagnostic(why(expectReject(assert, resolved, { failing: 1 })));
+      // coin 1 finds no fee slot; coin 0 finds a fee that is not exactly its own
+      t.diagnostic(why(expectReject(assert, resolved, { failing: [0, 1] })));
     });
 
     test('REJECT fee double-counted: second fee slot paid to the pusher', (t) => {
@@ -615,7 +735,14 @@ describe('Escrow.settle attacks', () => {
         out(p2pkh(ctx.organiser.pkh), 2n * FEE),
         out(p2pkh(freshKey().pkh), FEE),
       ]);
-      t.diagnostic(why(expectReject(assert, resolved, { failing: 1 })));
+      t.diagnostic(why(expectReject(assert, resolved, { failing: [0, 1] })));
+    });
+
+    test('REJECT fee output padded above the posted fee (organiser takes the allowance)', (t) => {
+      const ctx = feeShow();
+      const s = sale(ctx);
+      const resolved = honest(ctx, [s], [out(p2pkh(s.buyer.pkh), coinValue(ctx) - FEE - CAP), out(p2pkh(ctx.organiser.pkh), FEE + CAP - 500n)]);
+      t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
     });
 
     test('REJECT fee skipped entirely (refund the full coin to the buyer)', (t) => {
@@ -624,6 +751,49 @@ describe('Escrow.settle attacks', () => {
       const resolved = honest(ctx, [s], [out(p2pkh(s.buyer.pkh), coinValue(ctx) - 500n)]);
       t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
     });
+  });
+});
+
+describe('settle fee slots when only some coins owe a fee (price 100,000, 50 bps)', () => {
+  // 50 bps of 101,000 is 505 sats, which is waived (under 546); a coin of
+  // 120,000 owes 600. Coins that owe a fee come first; a fee-free coin has no
+  // fee slot, and no output may sit there.
+  const mixedShow = () => makeShow(assert, { overrides: { price: 100_000n, noShowFeeBps: 50 } });
+  const owingSale = (ctx) => {
+    const buyer = freshKey();
+    const seat = seatOf(0, 2);
+    return { buyer, seat, esc: escrowCoin(ctx, { seat, buyerPkh: buyer.pkh, value: 120_000n }) };
+  };
+
+  test('control: the coin that owes a fee first, its fee at k + 0', () => {
+    const ctx = mixedShow();
+    const free = sale(ctx);
+    const owing = owingSale(ctx);
+    const org = p2pkh(ctx.organiser.pkh);
+    const resolved = assemble({
+      inputs: [settleInput(ctx, owing.esc), settleInput(ctx, free.esc)],
+      outputs: [out(p2pkh(owing.buyer.pkh), 120_000n - 600n - 500n), out(p2pkh(free.buyer.pkh), 101_000n - 500n), out(org, 600)],
+      locktime: settleHeight(ctx),
+    });
+    expectAccept(assert, resolved);
+  });
+
+  test('REJECT a fee-free coin\'s fee slot paid to someone else', (t) => {
+    const ctx = mixedShow();
+    const free = sale(ctx);
+    const owing = owingSale(ctx);
+    const org = p2pkh(ctx.organiser.pkh);
+    const resolved = assemble({
+      inputs: [settleInput(ctx, free.esc), settleInput(ctx, owing.esc)],
+      outputs: [
+        out(p2pkh(free.buyer.pkh), 101_000n - 500n),
+        out(p2pkh(owing.buyer.pkh), 120_000n - 600n - 500n),
+        out(p2pkh(freshKey().pkh), 600), // slot k + 0 belongs to the fee-free coin
+        out(org, 600),
+      ],
+      locktime: settleHeight(ctx),
+    });
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
   });
 });
 
@@ -717,20 +887,57 @@ describe('Escrow.refund attacks', () => {
     t.diagnostic(why(expectReject(assert, run(ctx, [s], new Uint8Array(), 'C'), { failing: 0 })));
   });
 
-  test('REJECT refund paid to the pusher (organiser cannot redirect)', (t) => {
+  test('REJECT refund paid to the pusher (the organiser cannot redirect it)', (t) => {
     const ctx = makeShow(assert);
     const s = sale(ctx);
     const resolved = run(ctx, [s], notice(ctx, 'C'), 'C', [out(p2pkh(ctx.organiser.pkh), coinValue(ctx) - 500n)]);
     t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
   });
 
-  test('LIMIT + REJECT pusher skim: up to minerFeeCap passes, one sat more fails', (t) => {
+  test('control + REJECT refund floor: V - cap passes (the rest is miner fee), V - cap - 1 fails', (t) => {
     const ctx = makeShow(assert);
     const s = sale(ctx);
     const V = coinValue(ctx);
-    const pusher = p2pkh(freshKey().pkh);
-    expectAccept(assert, run(ctx, [s], notice(ctx, 'C'), 'C', [out(p2pkh(s.buyer.pkh), V - CAP), out(pusher, CAP - 1000n)]), 'LIMIT');
-    const resolved = run(ctx, [s], notice(ctx, 'C'), 'C', [out(p2pkh(s.buyer.pkh), V - CAP - 1n), out(pusher, CAP - 999n)]);
+    expectAccept(assert, run(ctx, [s], notice(ctx, 'C'), 'C', [out(p2pkh(s.buyer.pkh), V - CAP)]), 'at the cap');
+    const resolved = run(ctx, [s], notice(ctx, 'C'), 'C', [out(p2pkh(s.buyer.pkh), V - CAP - 1n)]);
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT pusher skim under a C or R notice: an extra output for the pusher, even inside the cap', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const V = coinValue(ctx);
+    const outputs = [out(p2pkh(s.buyer.pkh), V - CAP), out(p2pkh(freshKey().pkh), CAP - 900n)];
+    t.diagnostic(why(expectReject(assert, run(ctx, [s], notice(ctx, 'C'), 'C', outputs), { failing: 0 })));
+    t.diagnostic(why(expectReject(assert, run(ctx, [s], notice(ctx, 'R', s.seat), 'R', outputs), { failing: 0 })));
+  });
+
+  test('REJECT the organiser cancels and pays himself out of three refunds (F1)', (t) => {
+    const ctx = makeShow(assert);
+    const coins = [sale(ctx, { seat: seatOf(0, 1) }), sale(ctx, { seat: seatOf(0, 2) }), sale(ctx, { seat: seatOf(1, 1) })];
+    const V = coinValue(ctx);
+    const outputs = [...coins.map((s) => out(p2pkh(s.buyer.pkh), V - CAP)), out(p2pkh(ctx.organiser.pkh), 3n * CAP - 2_600n)];
+    t.diagnostic(why(expectReject(assert, run(ctx, coins, notice(ctx, 'C'), 'C', outputs), { failing: [0, 1, 2] })));
+  });
+
+  test('REJECT an organiser who also bought a ticket takes the others\' allowance through his own refund', (t) => {
+    const ctx = makeShow(assert);
+    const victims = [sale(ctx, { seat: seatOf(0, 1) }), sale(ctx, { seat: seatOf(0, 2) })];
+    const own = sale(ctx, { buyer: ctx.organiser, seat: seatOf(0, 3) });
+    const V = coinValue(ctx);
+    const outputs = [...victims.map((s) => out(p2pkh(s.buyer.pkh), V - CAP)), out(p2pkh(ctx.organiser.pkh), V + 2n * CAP - 900n)];
+    t.diagnostic(why(expectReject(assert, run(ctx, [...victims, own], notice(ctx, 'C'), 'C', outputs), { failing: 2 })));
+  });
+
+  test('REJECT the pusher adds a coin of their own to a refund to open a slot', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const pusher = freshKey();
+    const V = coinValue(ctx);
+    const resolved = assemble({
+      inputs: [refundInput(ctx, s.esc, notice(ctx, 'C'), 'C'), { coin: fakeCoin(pusher.pkh, 2_000), signer: pusher }],
+      outputs: [out(p2pkh(s.buyer.pkh), V - CAP), out(p2pkh(pusher.pkh), 2_000n + CAP - 1000n)],
+    });
     t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
   });
 
@@ -778,7 +985,20 @@ describe('lifted holder signatures', () => {
 });
 
 describe('mixed paths and stray coins', () => {
-  test('control: hand-back, settle and refund batched in one transaction pass', () => {
+  test('control: settle and refund batched in one transaction pass', () => {
+    const ctx = makeShow(assert);
+    const b = sale(ctx, { seat: seatOf(0, 2) });
+    const c = sale(ctx, { seat: seatOf(0, 3) });
+    const V = coinValue(ctx);
+    const resolved = assemble({
+      inputs: [settleInput(ctx, b.esc), refundInput(ctx, c.esc, notice(ctx, 'R', c.seat), 'R')],
+      outputs: [out(p2pkh(b.buyer.pkh), V - 800n), out(p2pkh(c.buyer.pkh), V - 800n)],
+      locktime: settleHeight(ctx),
+    });
+    expectAccept(assert, resolved);
+  });
+
+  test('REJECT a hand-back batched with a settle and a refund (settle and refund take only Escrow coins)', (t) => {
     const ctx = makeShow(assert);
     const a = sale(ctx, { seat: seatOf(0, 1) });
     const b = sale(ctx, { seat: seatOf(0, 2) });
@@ -794,7 +1014,7 @@ describe('mixed paths and stray coins', () => {
       outputs: [out(p2pkh(a.buyer.pkh), V + 200n), out(p2pkh(b.buyer.pkh), V - 800n), out(p2pkh(c.buyer.pkh), V - 800n)],
       locktime: settleHeight(ctx),
     });
-    expectAccept(assert, resolved);
+    t.diagnostic(why(expectReject(assert, resolved, { failing: [1, 2] })));
   });
 
   test('REJECT double satisfaction across paths: hand-back and settle of one buyer share an output', (t) => {
@@ -817,13 +1037,13 @@ describe('mixed paths and stray coins', () => {
     const b = sale(ctx, { buyer, seat: seatOf(0, 2) });
     const resolved = assemble({
       inputs: [refundInput(ctx, a.esc, notice(ctx, 'C'), 'C'), settleInput(ctx, b.esc)],
-      outputs: [out(p2pkh(buyer.pkh), coinValue(ctx) + 5_000n), out(p2pkh(freshKey().pkh), coinValue(ctx) - 6_000n)],
+      outputs: [out(p2pkh(buyer.pkh), coinValue(ctx)), out(p2pkh(freshKey().pkh), coinValue(ctx) - 1_000n)],
       locktime: settleHeight(ctx),
     });
     t.diagnostic(why(expectReject(assert, resolved, { failing: 1 })));
   });
 
-  test('REJECT check-in mixed with a hand-back (the hand-back sees the keepsake)', (t) => {
+  test('REJECT check-in mixed with a hand-back', (t) => {
     const ctx = makeShow(assert);
     const holder = freshKey();
     const a = sale(ctx, { buyer: holder, seat: seatOf(0, 1) });
@@ -837,10 +1057,11 @@ describe('mixed paths and stray coins', () => {
       ],
       outputs: [out(p2pkh(ctx.organiser.pkh), coinValue(ctx) - 500n), out(p2pkh(holder.pkh), coinValue(ctx) - 500n), keepsakeOut(ctx, a)],
     });
-    t.diagnostic(why(expectReject(assert, resolved, { failing: 1 })));
+    // the check-in allows only two inputs; the hand-back sees the keepsake
+    t.diagnostic(why(expectReject(assert, resolved, { failing: [0, 1] })));
   });
 
-  test('REJECT check-in mixed with a settle (the settle sees the keepsake)', (t) => {
+  test('REJECT check-in mixed with a settle', (t) => {
     const ctx = makeShow(assert);
     const holder = freshKey();
     const a = sale(ctx, { buyer: holder, seat: seatOf(0, 1) });
@@ -850,7 +1071,8 @@ describe('mixed paths and stray coins', () => {
       outputs: [out(p2pkh(ctx.organiser.pkh), coinValue(ctx) - 500n), out(p2pkh(b.buyer.pkh), coinValue(ctx) - 500n), keepsakeOut(ctx, a)],
       locktime: settleHeight(ctx),
     });
-    t.diagnostic(why(expectReject(assert, resolved, { failing: 1 })));
+    // the check-in allows only two inputs; the settle takes only Escrow coins
+    t.diagnostic(why(expectReject(assert, resolved, { failing: [0, 1] })));
   });
 
   test('REJECT buy and closeSales on a plain coin sent to the BoxOffice (stuck for good)', (t) => {
@@ -870,7 +1092,7 @@ describe('mixed paths and stray coins', () => {
     const ctx = makeShow(assert);
     const buyer = freshKey();
     const stray = coin(out(ctx.contracts.escrow.lockingBytecode, 50_000));
-    const tkt = ticketCoin(ctx, { seat: seatOf(0, 1), buyerPkh: buyer.pkh });
+    const tkt = ticketCoin(ctx, { seat: seatOf(0, 1), buyerPkh: buyer.pkh, currentHeight: saleHeight(ctx.show) });
     const U = escrowUnlock(ctx);
     const cases = {
       handBack: assemble({ inputs: [{ coin: stray, unlock: U.handBack(1) }, { coin: tkt, signer: buyer }], outputs: [out(p2pkh(buyer.pkh), 50_000)] }),
@@ -929,5 +1151,112 @@ describe('mixed paths and stray coins', () => {
     const s = sale(ctx);
     const resolved = assemble({ inputs: [settleInput(ctx, s.esc)], outputs: [out(p2pkh(s.buyer.pkh), coinValue(ctx) - 500n)], locktime: settleHeight(ctx) });
     expectAccept(assert, resolved);
+  });
+});
+
+describe('payout and fee outputs carry no tokens (M6)', () => {
+  // Any input that spends output 0 of its transaction can create a new token
+  // category in the spending transaction. The kit's made-up coins sit at
+  // vout 0, so each case can mint junk tokens of a fresh category onto an
+  // Escrow payout or fee output. (Real escrow coins sit at vout 2; tickets
+  // and keepsakes can sit at vout 0.)
+  const junk = (fromCoin) => ({ amount: 1_000_000_000n, category: fromCoin.txid });
+  const withJunk = (output, fromCoin) => ({ ...output, token: junk(fromCoin) });
+  const V = (ctx) => coinValue(ctx);
+
+  test('REJECT settle: junk tokens minted onto the buyer\'s refund (a griefing pusher)', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const honest = (refund) => assemble({ inputs: [settleInput(ctx, s.esc)], outputs: [refund], locktime: settleHeight(ctx) });
+    expectAccept(assert, honest(out(p2pkh(s.buyer.pkh), V(ctx) - 500n)), 'control');
+    t.diagnostic(why(expectReject(assert, honest(withJunk(out(p2pkh(s.buyer.pkh), V(ctx) - 500n), s.esc)), { failing: 0 })));
+    const bigNft = { ...out(p2pkh(s.buyer.pkh), V(ctx) - 500n), token: { amount: 0n, category: s.esc.txid, nft: { capability: 'none', commitment: new Uint8Array(128) } } };
+    t.diagnostic(why(expectReject(assert, honest(bigNft), { failing: 0 })));
+  });
+
+  test('REJECT refund under a C notice: junk tokens on the buyer\'s refund', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const resolved = assemble({ inputs: [refundInput(ctx, s.esc, notice(ctx, 'C'), 'C')], outputs: [withJunk(out(p2pkh(s.buyer.pkh), V(ctx) - 500n), s.esc)] });
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT settle with a no-show fee: junk tokens on the organiser\'s fee output', (t) => {
+    const ctx = makeShow(assert, { overrides: { price: 100_000n, noShowFeeBps: 1000 } });
+    const s = sale(ctx);
+    const fee = 10_100n;
+    const resolved = assemble({
+      inputs: [settleInput(ctx, s.esc)],
+      outputs: [out(p2pkh(s.buyer.pkh), V(ctx) - fee - 500n), withJunk(out(p2pkh(ctx.organiser.pkh), fee), s.esc)],
+      locktime: settleHeight(ctx),
+    });
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT hand-back: junk tokens (minted from the ticket input) on the refund or on the fee output', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const handBack = (outputs) => assemble({ inputs: [{ coin: s.esc, unlock: escrowUnlock(ctx).handBack(1) }, { coin: s.tkt, signer: s.buyer }], outputs });
+    t.diagnostic(why(expectReject(assert, handBack([withJunk(out(p2pkh(s.buyer.pkh), V(ctx)), s.tkt)]), { failing: 0 })));
+    const feeCtx = makeShow(assert, { overrides: { price: 100_000n, handBackFeeBps: 500 } });
+    const f = sale(feeCtx);
+    const fee = 5_050n;
+    const resolved = assemble({
+      inputs: [{ coin: f.esc, unlock: escrowUnlock(feeCtx).handBack(1) }, { coin: f.tkt, signer: f.buyer }],
+      outputs: [out(p2pkh(f.buyer.pkh), V(feeCtx) - fee - 500n), out(p2pkh(f.buyer.pkh), 1000), withJunk(out(p2pkh(feeCtx.organiser.pkh), fee), f.tkt)],
+    });
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT check-in: junk tokens (minted from the ticket input) on the organiser\'s payout', (t) => {
+    const ctx = makeShow(assert);
+    const s = sale(ctx);
+    const resolved = assemble({
+      inputs: [{ coin: s.esc, unlock: escrowUnlock(ctx).checkIn(1) }, { coin: s.tkt, signer: s.buyer }],
+      outputs: [withJunk(out(p2pkh(ctx.organiser.pkh), V(ctx) - 1000n), s.tkt), keepsakeOut(ctx, s)],
+    });
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+});
+
+describe('a show with an absurd minerFeeCap, deployed by hand past validateShow (M1, TOK-2)', () => {
+  // validateShow refuses minerFeeCap above 2,000 sats. Even if someone deploys
+  // the contracts with a cap of 1,000,000 anyway, the slot rule means the
+  // allowance can only be burned as miner fee: nobody can keep it.
+  const absurd = () => {
+    const organiser = freshKey();
+    const dataKey = freshKey();
+    const show = { ...sampleShowParams(organiser, dataKey), category: crypto.getRandomValues(new Uint8Array(32)), minerFeeCap: 1_000_000n };
+    assert.throws(() => validateShow(show), (error) => error.code === 'bad-show');
+    const escrow = escrowContract(show);
+    return { organiser, dataKey, show, contracts: { escrow, boxOffice: boxOfficeContract(show, escrow.lockingBytecode) } };
+  };
+
+  test('REJECT the organiser cancels before the show and takes 9,454 of an 11,000-sat coin', (t) => {
+    const ctx = absurd();
+    const s = sale(ctx);
+    const resolved = assemble({
+      inputs: [refundInput(ctx, s.esc, notice(ctx, 'C'), 'C')],
+      outputs: [out(p2pkh(s.buyer.pkh), 546), out(p2pkh(ctx.organiser.pkh), 9_454)],
+    });
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('REJECT a stranger settles after the show and takes 9,454 of an 11,000-sat coin', (t) => {
+    const ctx = absurd();
+    const s = sale(ctx);
+    const resolved = assemble({
+      inputs: [settleInput(ctx, s.esc)],
+      outputs: [out(p2pkh(s.buyer.pkh), 546), out(p2pkh(freshKey().pkh), 9_454)],
+      locktime: settleHeight(ctx),
+    });
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
+  });
+
+  test('LIMIT on such a show a pusher can still burn the cap as miner fee (why validateShow bounds it)', () => {
+    const ctx = absurd();
+    const s = sale(ctx);
+    const resolved = assemble({ inputs: [refundInput(ctx, s.esc, notice(ctx, 'C'), 'C')], outputs: [out(p2pkh(s.buyer.pkh), 546)] });
+    expectAccept(assert, resolved, 'buyer gets 546, the miner gets the rest, the pusher gets nothing');
   });
 });

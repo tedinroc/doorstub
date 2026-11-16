@@ -6,8 +6,21 @@ pragma cashscript ^0.14.0;
 //
 // Every path pays the output at this.activeInputIndex, so one output can never
 // satisfy two escrow coins. A fee (if any) goes to the output at
-// this.activeInputIndex + tx.inputs.length, which is also unique per coin.
-// Whoever builds the transaction can keep at most minerFeeCap of a coin.
+// this.activeInputIndex + tx.inputs.length, which is also unique per coin, and
+// must equal the posted fee exactly.
+//
+// Slots. No path allows an output outside its slots, and every output except
+// the check-in keepsake carries no token, so the marker (and in a hand-back the
+// ticket) is always burned:
+//   settle, refund  every input is a coin at this Escrow; outputs are each
+//                   coin's payout, plus its fee slot when a fee is due
+//   handBack        coins at this Escrow come first, then tickets of this show;
+//                   a ticket's own slot can only return to the ticket's address
+//   checkIn         exactly the coin and its ticket in; the payout and the
+//                   keepsake out
+// A payout may fall short of the coin's due by at most minerFeeCap. Because no
+// other output can exist, that shortfall can only be miner fee: whoever builds
+// the transaction can burn it, but cannot keep it.
 //
 // Constructor:
 //   category         the show's token category (32 bytes, as OP_UTXOTOKENCATEGORY returns it)
@@ -17,7 +30,7 @@ pragma cashscript ^0.14.0;
 //   graceBlocks      blocks after startHeight before unused tickets settle
 //   handBackFeeBps   hand-back fee in basis points of the coin value
 //   noShowFeeBps     no-show fee in basis points of the coin value
-//   minerFeeCap      most satoshis a coin may lose to the transaction builder
+//   minerFeeCap      most satoshis of a coin that may go to the miner fee
 contract Escrow(
     bytes32 category,
     bytes20 organiserPkh,
@@ -34,6 +47,7 @@ contract Escrow(
     // Ticket and marker are both burned.
     function handBack(int ticketInputIndex) {
         int idx = this.activeInputIndex;
+        bytes myLock = tx.inputs[idx].lockingBytecode;
         require(tx.inputs[idx].tokenCategory == category);
         bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);
         require(tag == 0x45);
@@ -45,33 +59,52 @@ contract Escrow(
         require(tx.inputs[ticketInputIndex].nftCommitment == 0x54 + body);
         require(tx.inputs[ticketInputIndex].lockingBytecode == buyerLock);
 
+        // Inputs: coins at this Escrow, then tokens of this show (tickets). No
+        // plain coins. A ticket's own output slot returns to its own address.
+        int n = tx.inputs.length;
+        int escrows = 0;
+        int i = 0;
+        while (i < n) {
+            if (tx.inputs[i].lockingBytecode == myLock) {
+                escrows = escrows + 1;
+            } else {
+                require(tx.inputs[i].tokenCategory == category);
+                if (i < tx.outputs.length) {
+                    require(tx.outputs[i].lockingBytecode == tx.inputs[i].lockingBytecode);
+                    require(tx.outputs[i].tokenCategory == 0x);
+                }
+            }
+            i = i + 1;
+        }
+        // every escrow coin sits below the count, so the coins are inputs 0..escrows-1
+        require(idx < escrows);
+
         int value = tx.inputs[idx].value;
         int fee = value * handBackFeeBps / 10000;
         if (fee < 546) {
             fee = 0;
         }
-        int j = 0;
-        while (j < tx.outputs.length) {
-            bytes outCategory = tx.outputs[j].tokenCategory;
-            if (outCategory.length != 0) {
-                require(outCategory.split(32)[0] != category);
-            }
-            j = j + 1;
-        }
 
         require(tx.outputs[idx].lockingBytecode == buyerLock);
+        require(tx.outputs[idx].tokenCategory == 0x);
         require(tx.outputs[idx].value >= value - fee - minerFeeCap);
         if (fee > 0) {
-            int feeIndex = idx + tx.inputs.length;
+            int feeIndex = idx + n;
             require(tx.outputs[feeIndex].lockingBytecode == new LockingBytecodeP2PKH(organiserPkh));
-            require(tx.outputs[feeIndex].value >= fee);
+            require(tx.outputs[feeIndex].tokenCategory == 0x);
+            require(tx.outputs[feeIndex].value == fee);
+            require(tx.outputs.length <= n + escrows);
+        } else {
+            // no fee slot for this coin: coins that owe a fee come first
+            require(tx.outputs.length <= n + idx);
         }
     }
 
     // The holder checks in at the door (K1). The coin pays the organiser; the
     // ticket goes back to the holder as a keepsake stub with no money behind it.
-    // The keepsake sits at the output with the ticket input's index; it is the
-    // only output of this category, so the marker is burned.
+    // Exactly two inputs (this coin and the ticket) and two outputs (the payout
+    // at this coin's index and the keepsake at the ticket's index), so the
+    // marker is burned and nothing else can be paid.
     function checkIn(int ticketInputIndex) {
         int idx = this.activeInputIndex;
         require(tx.inputs[idx].tokenCategory == category);
@@ -86,23 +119,17 @@ contract Escrow(
         require(tx.inputs[ticketInputIndex].nftCommitment == ticketCommitment);
         require(tx.inputs[ticketInputIndex].lockingBytecode == buyerLock);
 
-        int j = 0;
-        while (j < tx.outputs.length) {
-            if (j != ticketInputIndex) {
-                bytes outCategory = tx.outputs[j].tokenCategory;
-                if (outCategory.length != 0) {
-                    require(outCategory.split(32)[0] != category);
-                }
-            }
-            j = j + 1;
-        }
+        require(tx.inputs.length == 2);
+        require(tx.outputs.length == 2);
 
         require(tx.outputs[idx].lockingBytecode == new LockingBytecodeP2PKH(organiserPkh));
+        require(tx.outputs[idx].tokenCategory == 0x);
         require(tx.outputs[idx].value >= tx.inputs[idx].value - minerFeeCap);
 
         require(tx.outputs[ticketInputIndex].lockingBytecode == buyerLock);
         require(tx.outputs[ticketInputIndex].tokenCategory == category);
         require(tx.outputs[ticketInputIndex].nftCommitment == ticketCommitment);
+        require(tx.outputs[ticketInputIndex].value <= tx.inputs[ticketInputIndex].value);
     }
 
     // After startHeight + graceBlocks, anyone may refund an unused ticket's
@@ -111,40 +138,51 @@ contract Escrow(
         require(tx.time >= startHeight + graceBlocks);
 
         int idx = this.activeInputIndex;
+        bytes myLock = tx.inputs[idx].lockingBytecode;
         require(tx.inputs[idx].tokenCategory == category);
         bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);
         require(tag == 0x45);
         require(body.length == 23);
         bytes20 buyerPkh = unsafe_bytes20(body.split(3)[1]);
 
+        // every input is a coin at this Escrow
+        int n = tx.inputs.length;
+        int i = 0;
+        while (i < n) {
+            require(tx.inputs[i].lockingBytecode == myLock);
+            i = i + 1;
+        }
+
         int value = tx.inputs[idx].value;
         int fee = value * noShowFeeBps / 10000;
         if (fee < 546) {
             fee = 0;
         }
-        int j = 0;
-        while (j < tx.outputs.length) {
-            bytes outCategory = tx.outputs[j].tokenCategory;
-            if (outCategory.length != 0) {
-                require(outCategory.split(32)[0] != category);
-            }
-            j = j + 1;
-        }
 
         require(tx.outputs[idx].lockingBytecode == new LockingBytecodeP2PKH(buyerPkh));
-        require(tx.outputs[idx].value >= value - fee - minerFeeCap);
+        require(tx.outputs[idx].tokenCategory == 0x);
+        int payout = tx.outputs[idx].value;
+        require(payout >= value - fee - minerFeeCap);
+        require(payout <= value - fee);
         if (fee > 0) {
-            int feeIndex = idx + tx.inputs.length;
+            int feeIndex = idx + n;
             require(tx.outputs[feeIndex].lockingBytecode == new LockingBytecodeP2PKH(organiserPkh));
-            require(tx.outputs[feeIndex].value >= fee);
+            require(tx.outputs[feeIndex].tokenCategory == 0x);
+            require(tx.outputs[feeIndex].value == fee);
+            require(tx.outputs.length <= n + n);
+        } else {
+            // no fee slot for this coin: coins that owe a fee come first
+            require(tx.outputs.length <= n + idx);
         }
     }
 
     // The organiser cancels (K5): a data signature over 'C'|category refunds the
     // whole show; one over 'R'|category|seat refunds one ticket. Anyone may push
-    // it. The money can only go back to the buyer.
+    // it. Every output is a payout to its own coin's buyer, so the money can
+    // only go back to the buyers (less at most minerFeeCap each, as miner fee).
     function refund(datasig organiserDataSig, bytes1 scope) {
         int idx = this.activeInputIndex;
+        bytes myLock = tx.inputs[idx].lockingBytecode;
         require(tx.inputs[idx].tokenCategory == category);
         bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);
         require(tag == 0x45);
@@ -160,16 +198,19 @@ contract Escrow(
         }
         require(checkDataSig(organiserDataSig, message, organiserDataPk));
 
-        int j = 0;
-        while (j < tx.outputs.length) {
-            bytes outCategory = tx.outputs[j].tokenCategory;
-            if (outCategory.length != 0) {
-                require(outCategory.split(32)[0] != category);
-            }
-            j = j + 1;
+        // every input is a coin at this Escrow, and every output is a payout slot
+        int n = tx.inputs.length;
+        int i = 0;
+        while (i < n) {
+            require(tx.inputs[i].lockingBytecode == myLock);
+            i = i + 1;
         }
+        require(tx.outputs.length <= n);
 
         require(tx.outputs[idx].lockingBytecode == new LockingBytecodeP2PKH(buyerPkh));
-        require(tx.outputs[idx].value >= tx.inputs[idx].value - minerFeeCap);
+        require(tx.outputs[idx].tokenCategory == 0x);
+        int payout = tx.outputs[idx].value;
+        require(payout >= tx.inputs[idx].value - minerFeeCap);
+        require(payout <= tx.inputs[idx].value);
     }
 }

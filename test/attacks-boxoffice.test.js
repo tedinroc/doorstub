@@ -15,7 +15,7 @@ import {
   encodeTicketCommitment,
 } from '../src/tx/index.js';
 import { signDigest } from '../src/tx/sign.js';
-import { fakeCoin, freshKey, makeShow, randomTxid, signWallet, utxoAt } from './helpers.js';
+import { fakeCoin, freshKey, makeShow, randomTxid, saleHeight, signWallet, utxoAt } from './helpers.js';
 import {
   SEQUENCE_LOCKTIME,
   assemble,
@@ -350,7 +350,7 @@ describe('BoxOffice.buy attacks', () => {
     const closedShard = utxoAt(signedClose.transaction, 0);
     const buyer = freshKey();
     assert.throws(
-      () => buildBuy({ show: ctx.show, boxOfficeUtxo: closedShard, fundingUtxos: [fakeCoin(buyer.pkh, 50_000)], buyerPkh: buyer.pkh }),
+      () => buildBuy({ show: ctx.show, boxOfficeUtxo: closedShard, fundingUtxos: [fakeCoin(buyer.pkh, 50_000)], buyerPkh: buyer.pkh, currentHeight: saleHeight(ctx.show) }),
       (error) => error.code === 'sales-closed',
     );
     // Hand-built: same outputs as an open sale, but spending the closed shard.
@@ -371,11 +371,11 @@ describe('BoxOffice.buy attacks', () => {
     const ctx = makeShow(assert);
     const buyer = freshKey();
     const almost = shardCoin(ctx, { sold: 32_766 });
-    const last = buildBuy({ show: ctx.show, boxOfficeUtxo: almost, fundingUtxos: [fakeCoin(buyer.pkh, 50_000)], buyerPkh: buyer.pkh });
+    const last = buildBuy({ show: ctx.show, boxOfficeUtxo: almost, fundingUtxos: [fakeCoin(buyer.pkh, 50_000)], buyerPkh: buyer.pkh, currentHeight: saleHeight(ctx.show) });
     expectAccept(assert, signWallet(last, buyer.privateKey), 'seat 32,767');
     const full = shardCoin(ctx, { sold: 32_767 });
     assert.throws(
-      () => buildBuy({ show: ctx.show, boxOfficeUtxo: full, fundingUtxos: [fakeCoin(buyer.pkh, 50_000)], buyerPkh: buyer.pkh }),
+      () => buildBuy({ show: ctx.show, boxOfficeUtxo: full, fundingUtxos: [fakeCoin(buyer.pkh, 50_000)], buyerPkh: buyer.pkh, currentHeight: saleHeight(ctx.show) }),
       (error) => error.code === 'shard-full',
     );
     // Hand-built: whatever the outputs say, toPaddedBytes(32768, 2) fails.
@@ -554,6 +554,23 @@ describe('BoxOffice.closeSales attacks', () => {
     const h = honestClose(ctx);
     const outputs = withOutput(h.outputs, 0, { ...h.outputs[0], token: { ...h.outputs[0].token, amount: 1n } });
     t.diagnostic(why(expectReject(assert, assemble({ inputs: h.inputs, outputs }), { verify: /fungible|amount|token/i })));
+  });
+
+  test('REJECT closeSales on a shard of another category planted at the BoxOffice (BoxOffice knows its category)', (t) => {
+    const ctx = makeShow(assert);
+    const otherCategory = randomTxid();
+    const planted = shardCoin(ctx, { category: otherCategory });
+    const funding = fakeCoin(ctx.organiser.pkh, 20_000);
+    const closed = nftOut(ctx.contracts.boxOffice.lockingBytecode, 1000, {
+      category: otherCategory,
+      commitment: encodeBoxOfficeCommitment({ open: false, shard: 0, sold: 0 }),
+      capability: 'minting',
+    });
+    const resolved = assemble({
+      inputs: [{ coin: planted, unlock: closeSalesUnlock(ctx) }, { coin: funding, signer: ctx.organiser }],
+      outputs: [closed, out(p2pkh(ctx.organiser.pkh), 19_000)],
+    });
+    t.diagnostic(why(expectReject(assert, resolved, { failing: 0 })));
   });
 
   test('LIMIT closeSales may leave extra CLOSED tokens at the BoxOffice; they can never sell', (t) => {

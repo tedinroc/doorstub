@@ -71,176 +71,248 @@
       ]
     }
   ],
-  "bytecode": "OP_8 OP_PICK OP_0 OP_NUMEQUAL OP_IF OP_INPUTINDEX OP_DUP OP_UTXOTOKENCATEGORY OP_2 OP_PICK OP_EQUALVERIFY OP_DUP OP_UTXOTOKENCOMMITMENT OP_1 OP_SPLIT OP_SWAP 45 OP_EQUALVERIFY OP_SIZE 17 OP_NUMEQUALVERIFY OP_DUP OP_3 OP_SPLIT OP_NIP 76a914 OP_SWAP OP_CAT 88ac OP_CAT OP_12 OP_PICK OP_UTXOTOKENCATEGORY OP_4 OP_PICK OP_EQUALVERIFY OP_12 OP_PICK OP_UTXOTOKENCOMMITMENT 54 OP_3 OP_ROLL OP_CAT OP_EQUALVERIFY OP_11 OP_ROLL OP_UTXOBYTECODE OP_OVER OP_EQUALVERIFY OP_OVER OP_UTXOVALUE OP_DUP OP_9 OP_ROLL OP_MUL 1027 OP_DIV OP_DUP 2202 OP_LESSTHAN OP_IF OP_DROP OP_0 OP_ENDIF OP_0 OP_BEGIN OP_DUP OP_TXOUTPUTCOUNT OP_LESSTHAN OP_DUP OP_TOALTSTACK OP_IF OP_DUP OP_OUTPUTTOKENCATEGORY OP_SIZE OP_0 OP_NUMNOTEQUAL OP_IF OP_DUP 20 OP_SPLIT OP_DROP OP_7 OP_PICK OP_EQUAL OP_NOT OP_VERIFY OP_ENDIF OP_SWAP OP_1ADD OP_NIP OP_ENDIF OP_FROMALTSTACK OP_NOT OP_UNTIL OP_4 OP_PICK OP_OUTPUTBYTECODE OP_4 OP_ROLL OP_EQUALVERIFY OP_3 OP_PICK OP_OUTPUTVALUE OP_3 OP_ROLL OP_3 OP_PICK OP_SUB OP_11 OP_ROLL OP_SUB OP_GREATERTHANOREQUAL OP_VERIFY OP_OVER OP_0 OP_GREATERTHAN OP_IF OP_2 OP_PICK OP_TXINPUTCOUNT OP_ADD OP_DUP OP_OUTPUTBYTECODE 76a914 OP_7 OP_PICK OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_DUP OP_OUTPUTVALUE OP_3 OP_PICK OP_GREATERTHANOREQUAL OP_VERIFY OP_DROP OP_ENDIF OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_1 OP_ELSE OP_8 OP_PICK OP_1 OP_NUMEQUAL OP_IF OP_INPUTINDEX OP_DUP OP_UTXOTOKENCATEGORY OP_2 OP_PICK OP_EQUALVERIFY OP_DUP OP_UTXOTOKENCOMMITMENT OP_1 OP_SPLIT OP_SWAP 45 OP_EQUALVERIFY OP_SIZE 17 OP_NUMEQUALVERIFY OP_DUP OP_3 OP_SPLIT OP_NIP 76a914 OP_SWAP OP_CAT 88ac OP_CAT 54 OP_ROT OP_CAT OP_12 OP_PICK OP_UTXOTOKENCATEGORY OP_4 OP_PICK OP_EQUALVERIFY OP_12 OP_PICK OP_UTXOTOKENCOMMITMENT OP_OVER OP_EQUALVERIFY OP_12 OP_PICK OP_UTXOBYTECODE OP_2 OP_PICK OP_EQUALVERIFY OP_0 OP_BEGIN OP_DUP OP_TXOUTPUTCOUNT OP_LESSTHAN OP_DUP OP_TOALTSTACK OP_IF OP_DUP OP_14 OP_PICK OP_NUMNOTEQUAL OP_IF OP_DUP OP_OUTPUTTOKENCATEGORY OP_SIZE OP_0 OP_NUMNOTEQUAL OP_IF OP_DUP 20 OP_SPLIT OP_DROP OP_6 OP_PICK OP_EQUAL OP_NOT OP_VERIFY OP_ENDIF OP_DROP OP_ENDIF OP_1ADD OP_ENDIF OP_FROMALTSTACK OP_NOT OP_UNTIL OP_3 OP_PICK OP_OUTPUTBYTECODE 76a914 OP_7 OP_ROLL OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_3 OP_PICK OP_OUTPUTVALUE OP_4 OP_ROLL OP_UTXOVALUE OP_11 OP_ROLL OP_SUB OP_GREATERTHANOREQUAL OP_VERIFY OP_10 OP_PICK OP_OUTPUTBYTECODE OP_3 OP_ROLL OP_EQUALVERIFY OP_9 OP_PICK OP_OUTPUTTOKENCATEGORY OP_3 OP_ROLL OP_EQUALVERIFY OP_8 OP_ROLL OP_OUTPUTTOKENCOMMITMENT OP_ROT OP_EQUALVERIFY OP_2DROP OP_2DROP OP_2DROP OP_DROP OP_1 OP_ELSE OP_8 OP_PICK OP_2 OP_NUMEQUAL OP_IF OP_3 OP_ROLL OP_4 OP_ROLL OP_ADD OP_CHECKLOCKTIMEVERIFY OP_DROP OP_INPUTINDEX OP_DUP OP_UTXOTOKENCATEGORY OP_2 OP_PICK OP_EQUALVERIFY OP_DUP OP_UTXOTOKENCOMMITMENT OP_1 OP_SPLIT OP_SWAP 45 OP_EQUALVERIFY OP_SIZE 17 OP_NUMEQUALVERIFY OP_3 OP_SPLIT OP_NIP OP_OVER OP_UTXOVALUE OP_DUP OP_8 OP_ROLL OP_MUL 1027 OP_DIV OP_DUP 2202 OP_LESSTHAN OP_IF OP_DROP OP_0 OP_ENDIF OP_0 OP_BEGIN OP_DUP OP_TXOUTPUTCOUNT OP_LESSTHAN OP_DUP OP_TOALTSTACK OP_IF OP_DUP OP_OUTPUTTOKENCATEGORY OP_SIZE OP_0 OP_NUMNOTEQUAL OP_IF OP_DUP 20 OP_SPLIT OP_DROP OP_7 OP_PICK OP_EQUAL OP_NOT OP_VERIFY OP_ENDIF OP_SWAP OP_1ADD OP_NIP OP_ENDIF OP_FROMALTSTACK OP_NOT OP_UNTIL OP_4 OP_PICK OP_OUTPUTBYTECODE 76a914 OP_5 OP_ROLL OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_3 OP_PICK OP_OUTPUTVALUE OP_3 OP_ROLL OP_3 OP_PICK OP_SUB OP_9 OP_ROLL OP_SUB OP_GREATERTHANOREQUAL OP_VERIFY OP_OVER OP_0 OP_GREATERTHAN OP_IF OP_2 OP_PICK OP_TXINPUTCOUNT OP_ADD OP_DUP OP_OUTPUTBYTECODE 76a914 OP_7 OP_PICK OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_DUP OP_OUTPUTVALUE OP_3 OP_PICK OP_GREATERTHANOREQUAL OP_VERIFY OP_DROP OP_ENDIF OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_1 OP_ELSE OP_8 OP_ROLL OP_3 OP_NUMEQUALVERIFY OP_9 OP_ROLL OP_SIZE OP_1 OP_EQUALVERIFY OP_INPUTINDEX OP_DUP OP_UTXOTOKENCATEGORY OP_3 OP_PICK OP_EQUALVERIFY OP_DUP OP_UTXOTOKENCOMMITMENT OP_1 OP_SPLIT OP_SWAP 45 OP_EQUALVERIFY OP_SIZE 17 OP_NUMEQUALVERIFY OP_3 OP_SPLIT OP_3 OP_PICK OP_5 OP_PICK OP_CAT OP_4 OP_PICK 52 OP_EQUAL OP_IF OP_DUP OP_3 OP_PICK OP_CAT OP_NIP OP_ELSE OP_4 OP_PICK 43 OP_EQUALVERIFY OP_ENDIF OP_13 OP_ROLL OP_SWAP OP_8 OP_ROLL OP_CHECKDATASIGVERIFY OP_0 OP_BEGIN OP_DUP OP_TXOUTPUTCOUNT OP_LESSTHAN OP_DUP OP_TOALTSTACK OP_IF OP_DUP OP_OUTPUTTOKENCATEGORY OP_SIZE OP_0 OP_NUMNOTEQUAL OP_IF OP_DUP 20 OP_SPLIT OP_DROP OP_7 OP_PICK OP_EQUAL OP_NOT OP_VERIFY OP_ENDIF OP_SWAP OP_1ADD OP_NIP OP_ENDIF OP_FROMALTSTACK OP_NOT OP_UNTIL OP_3 OP_PICK OP_OUTPUTBYTECODE 76a914 OP_3 OP_ROLL OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_2 OP_PICK OP_OUTPUTVALUE OP_3 OP_ROLL OP_UTXOVALUE OP_11 OP_ROLL OP_SUB OP_GREATERTHANOREQUAL OP_VERIFY OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_DROP OP_1 OP_ENDIF OP_ENDIF OP_ENDIF",
-  "source": "pragma cashscript ^0.14.0;\n\n// Doorstub Escrow: one address per show. Each ticket's money is one coin here,\n// marked by an immutable NFT 'E'|seat|buyerPkh (24 bytes) of the show's category.\n// The matching ticket is 'T'|seat|buyerPkh (24 bytes), held at P2PKH(buyerPkh).\n//\n// Every path pays the output at this.activeInputIndex, so one output can never\n// satisfy two escrow coins. A fee (if any) goes to the output at\n// this.activeInputIndex + tx.inputs.length, which is also unique per coin.\n// Whoever builds the transaction can keep at most minerFeeCap of a coin.\n//\n// Constructor:\n//   category         the show's token category (32 bytes, as OP_UTXOTOKENCATEGORY returns it)\n//   organiserPkh     the organiser's payee (P2PKH) for check-ins and fees\n//   organiserDataPk  the organiser key for data-signed refund notices\n//   startHeight      block height when the show starts\n//   graceBlocks      blocks after startHeight before unused tickets settle\n//   handBackFeeBps   hand-back fee in basis points of the coin value\n//   noShowFeeBps     no-show fee in basis points of the coin value\n//   minerFeeCap      most satoshis a coin may lose to the transaction builder\ncontract Escrow(\n    bytes32 category,\n    bytes20 organiserPkh,\n    pubkey organiserDataPk,\n    int startHeight,\n    int graceBlocks,\n    int handBackFeeBps,\n    int noShowFeeBps,\n    int minerFeeCap\n) {\n\n    // The holder hands the ticket back for a refund, minus the posted fee.\n    // The ticket input sits at P2PKH(buyerPkh), so the buyer's wallet signs it.\n    // Ticket and marker are both burned.\n    function handBack(int ticketInputIndex) {\n        int idx = this.activeInputIndex;\n        require(tx.inputs[idx].tokenCategory == category);\n        bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);\n        require(tag == 0x45);\n        require(body.length == 23);\n        bytes20 buyerPkh = unsafe_bytes20(body.split(3)[1]);\n        bytes buyerLock = new LockingBytecodeP2PKH(buyerPkh);\n\n        require(tx.inputs[ticketInputIndex].tokenCategory == category);\n        require(tx.inputs[ticketInputIndex].nftCommitment == 0x54 + body);\n        require(tx.inputs[ticketInputIndex].lockingBytecode == buyerLock);\n\n        int value = tx.inputs[idx].value;\n        int fee = value * handBackFeeBps / 10000;\n        if (fee < 546) {\n            fee = 0;\n        }\n        int j = 0;\n        while (j < tx.outputs.length) {\n            bytes outCategory = tx.outputs[j].tokenCategory;\n            if (outCategory.length != 0) {\n                require(outCategory.split(32)[0] != category);\n            }\n            j = j + 1;\n        }\n\n        require(tx.outputs[idx].lockingBytecode == buyerLock);\n        require(tx.outputs[idx].value >= value - fee - minerFeeCap);\n        if (fee > 0) {\n            int feeIndex = idx + tx.inputs.length;\n            require(tx.outputs[feeIndex].lockingBytecode == new LockingBytecodeP2PKH(organiserPkh));\n            require(tx.outputs[feeIndex].value >= fee);\n        }\n    }\n\n    // The holder checks in at the door (K1). The coin pays the organiser; the\n    // ticket goes back to the holder as a keepsake stub with no money behind it.\n    // The keepsake sits at the output with the ticket input's index; it is the\n    // only output of this category, so the marker is burned.\n    function checkIn(int ticketInputIndex) {\n        int idx = this.activeInputIndex;\n        require(tx.inputs[idx].tokenCategory == category);\n        bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);\n        require(tag == 0x45);\n        require(body.length == 23);\n        bytes20 buyerPkh = unsafe_bytes20(body.split(3)[1]);\n        bytes buyerLock = new LockingBytecodeP2PKH(buyerPkh);\n        bytes ticketCommitment = 0x54 + body;\n\n        require(tx.inputs[ticketInputIndex].tokenCategory == category);\n        require(tx.inputs[ticketInputIndex].nftCommitment == ticketCommitment);\n        require(tx.inputs[ticketInputIndex].lockingBytecode == buyerLock);\n\n        int j = 0;\n        while (j < tx.outputs.length) {\n            if (j != ticketInputIndex) {\n                bytes outCategory = tx.outputs[j].tokenCategory;\n                if (outCategory.length != 0) {\n                    require(outCategory.split(32)[0] != category);\n                }\n            }\n            j = j + 1;\n        }\n\n        require(tx.outputs[idx].lockingBytecode == new LockingBytecodeP2PKH(organiserPkh));\n        require(tx.outputs[idx].value >= tx.inputs[idx].value - minerFeeCap);\n\n        require(tx.outputs[ticketInputIndex].lockingBytecode == buyerLock);\n        require(tx.outputs[ticketInputIndex].tokenCategory == category);\n        require(tx.outputs[ticketInputIndex].nftCommitment == ticketCommitment);\n    }\n\n    // After startHeight + graceBlocks, anyone may refund an unused ticket's\n    // coin to its buyer, minus the posted no-show fee (K2).\n    function settle() {\n        require(tx.time >= startHeight + graceBlocks);\n\n        int idx = this.activeInputIndex;\n        require(tx.inputs[idx].tokenCategory == category);\n        bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);\n        require(tag == 0x45);\n        require(body.length == 23);\n        bytes20 buyerPkh = unsafe_bytes20(body.split(3)[1]);\n\n        int value = tx.inputs[idx].value;\n        int fee = value * noShowFeeBps / 10000;\n        if (fee < 546) {\n            fee = 0;\n        }\n        int j = 0;\n        while (j < tx.outputs.length) {\n            bytes outCategory = tx.outputs[j].tokenCategory;\n            if (outCategory.length != 0) {\n                require(outCategory.split(32)[0] != category);\n            }\n            j = j + 1;\n        }\n\n        require(tx.outputs[idx].lockingBytecode == new LockingBytecodeP2PKH(buyerPkh));\n        require(tx.outputs[idx].value >= value - fee - minerFeeCap);\n        if (fee > 0) {\n            int feeIndex = idx + tx.inputs.length;\n            require(tx.outputs[feeIndex].lockingBytecode == new LockingBytecodeP2PKH(organiserPkh));\n            require(tx.outputs[feeIndex].value >= fee);\n        }\n    }\n\n    // The organiser cancels (K5): a data signature over 'C'|category refunds the\n    // whole show; one over 'R'|category|seat refunds one ticket. Anyone may push\n    // it. The money can only go back to the buyer.\n    function refund(datasig organiserDataSig, bytes1 scope) {\n        int idx = this.activeInputIndex;\n        require(tx.inputs[idx].tokenCategory == category);\n        bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);\n        require(tag == 0x45);\n        require(body.length == 23);\n        bytes seat, bytes buyerPkhBytes = body.split(3);\n        bytes20 buyerPkh = unsafe_bytes20(buyerPkhBytes);\n\n        bytes message = scope + category;\n        if (scope == 0x52) {\n            message = message + seat;\n        } else {\n            require(scope == 0x43);\n        }\n        require(checkDataSig(organiserDataSig, message, organiserDataPk));\n\n        int j = 0;\n        while (j < tx.outputs.length) {\n            bytes outCategory = tx.outputs[j].tokenCategory;\n            if (outCategory.length != 0) {\n                require(outCategory.split(32)[0] != category);\n            }\n            j = j + 1;\n        }\n\n        require(tx.outputs[idx].lockingBytecode == new LockingBytecodeP2PKH(buyerPkh));\n        require(tx.outputs[idx].value >= tx.inputs[idx].value - minerFeeCap);\n    }\n}\n",
-  "fingerprint": "f0a7756ba850d318246aedc2a8de238f3fff0132ea5377aabb11770d465cf54b",
+  "bytecode": "OP_8 OP_PICK OP_0 OP_NUMEQUAL OP_IF OP_INPUTINDEX OP_DUP OP_UTXOBYTECODE OP_OVER OP_UTXOTOKENCATEGORY OP_3 OP_PICK OP_EQUALVERIFY OP_OVER OP_UTXOTOKENCOMMITMENT OP_1 OP_SPLIT OP_SWAP 45 OP_EQUALVERIFY OP_SIZE 17 OP_NUMEQUALVERIFY OP_DUP OP_3 OP_SPLIT OP_NIP 76a914 OP_SWAP OP_CAT 88ac OP_CAT OP_13 OP_PICK OP_UTXOTOKENCATEGORY OP_5 OP_PICK OP_EQUALVERIFY OP_13 OP_PICK OP_UTXOTOKENCOMMITMENT 54 OP_3 OP_ROLL OP_CAT OP_EQUALVERIFY OP_12 OP_ROLL OP_UTXOBYTECODE OP_OVER OP_EQUALVERIFY OP_TXINPUTCOUNT OP_0 OP_0 OP_BEGIN OP_DUP OP_3 OP_PICK OP_LESSTHAN OP_DUP OP_TOALTSTACK OP_IF OP_DUP OP_UTXOBYTECODE OP_5 OP_PICK OP_EQUAL OP_IF OP_SWAP OP_1ADD OP_SWAP OP_ELSE OP_DUP OP_UTXOTOKENCATEGORY OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TXOUTPUTCOUNT OP_LESSTHAN OP_IF OP_DUP OP_OUTPUTBYTECODE OP_OVER OP_UTXOBYTECODE OP_EQUALVERIFY OP_DUP OP_OUTPUTTOKENCATEGORY OP_0 OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_1ADD OP_ENDIF OP_FROMALTSTACK OP_NOT OP_UNTIL OP_5 OP_PICK OP_2 OP_PICK OP_LESSTHAN OP_VERIFY OP_5 OP_PICK OP_UTXOVALUE OP_DUP OP_13 OP_ROLL OP_MUL 1027 OP_DIV OP_DUP 2202 OP_LESSTHAN OP_IF OP_DROP OP_0 OP_ENDIF OP_7 OP_PICK OP_OUTPUTBYTECODE OP_6 OP_ROLL OP_EQUALVERIFY OP_6 OP_PICK OP_OUTPUTTOKENCATEGORY OP_0 OP_EQUALVERIFY OP_6 OP_PICK OP_OUTPUTVALUE OP_ROT OP_2 OP_PICK OP_SUB OP_14 OP_ROLL OP_SUB OP_GREATERTHANOREQUAL OP_VERIFY OP_DUP OP_0 OP_GREATERTHAN OP_IF OP_5 OP_PICK OP_4 OP_PICK OP_ADD OP_DUP OP_OUTPUTBYTECODE 76a914 OP_10 OP_PICK OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_DUP OP_OUTPUTTOKENCATEGORY OP_0 OP_EQUALVERIFY OP_DUP OP_OUTPUTVALUE OP_2 OP_PICK OP_NUMEQUALVERIFY OP_TXOUTPUTCOUNT OP_5 OP_PICK OP_5 OP_PICK OP_ADD OP_LESSTHANOREQUAL OP_VERIFY OP_DROP OP_ELSE OP_TXOUTPUTCOUNT OP_4 OP_PICK OP_7 OP_PICK OP_ADD OP_LESSTHANOREQUAL OP_VERIFY OP_ENDIF OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_DROP OP_1 OP_ELSE OP_8 OP_PICK OP_1 OP_NUMEQUAL OP_IF OP_INPUTINDEX OP_DUP OP_UTXOTOKENCATEGORY OP_2 OP_PICK OP_EQUALVERIFY OP_DUP OP_UTXOTOKENCOMMITMENT OP_1 OP_SPLIT OP_SWAP 45 OP_EQUALVERIFY OP_SIZE 17 OP_NUMEQUALVERIFY OP_DUP OP_3 OP_SPLIT OP_NIP 76a914 OP_SWAP OP_CAT 88ac OP_CAT 54 OP_ROT OP_CAT OP_12 OP_PICK OP_UTXOTOKENCATEGORY OP_4 OP_PICK OP_EQUALVERIFY OP_12 OP_PICK OP_UTXOTOKENCOMMITMENT OP_OVER OP_EQUALVERIFY OP_12 OP_PICK OP_UTXOBYTECODE OP_2 OP_PICK OP_EQUALVERIFY OP_TXINPUTCOUNT OP_2 OP_NUMEQUALVERIFY OP_TXOUTPUTCOUNT OP_2 OP_NUMEQUALVERIFY OP_2 OP_PICK OP_OUTPUTBYTECODE 76a914 OP_6 OP_ROLL OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_2 OP_PICK OP_OUTPUTTOKENCATEGORY OP_0 OP_EQUALVERIFY OP_2 OP_PICK OP_OUTPUTVALUE OP_3 OP_ROLL OP_UTXOVALUE OP_10 OP_ROLL OP_SUB OP_GREATERTHANOREQUAL OP_VERIFY OP_9 OP_PICK OP_OUTPUTBYTECODE OP_ROT OP_EQUALVERIFY OP_8 OP_PICK OP_OUTPUTTOKENCATEGORY OP_ROT OP_EQUALVERIFY OP_7 OP_PICK OP_OUTPUTTOKENCOMMITMENT OP_EQUALVERIFY OP_6 OP_PICK OP_OUTPUTVALUE OP_7 OP_ROLL OP_UTXOVALUE OP_LESSTHANOREQUAL OP_VERIFY OP_2DROP OP_2DROP OP_2DROP OP_1 OP_ELSE OP_8 OP_PICK OP_2 OP_NUMEQUAL OP_IF OP_3 OP_ROLL OP_4 OP_ROLL OP_ADD OP_CHECKLOCKTIMEVERIFY OP_DROP OP_INPUTINDEX OP_DUP OP_UTXOBYTECODE OP_OVER OP_UTXOTOKENCATEGORY OP_3 OP_ROLL OP_EQUALVERIFY OP_OVER OP_UTXOTOKENCOMMITMENT OP_1 OP_SPLIT OP_SWAP 45 OP_EQUALVERIFY OP_SIZE 17 OP_NUMEQUALVERIFY OP_3 OP_SPLIT OP_NIP OP_TXINPUTCOUNT OP_0 OP_BEGIN OP_2DUP OP_GREATERTHAN OP_DUP OP_TOALTSTACK OP_IF OP_DUP OP_UTXOBYTECODE OP_4 OP_PICK OP_EQUALVERIFY OP_1ADD OP_ENDIF OP_FROMALTSTACK OP_NOT OP_UNTIL OP_4 OP_PICK OP_UTXOVALUE OP_DUP OP_10 OP_ROLL OP_MUL 1027 OP_DIV OP_DUP 2202 OP_LESSTHAN OP_IF OP_DROP OP_0 OP_ENDIF OP_6 OP_PICK OP_OUTPUTBYTECODE 76a914 OP_6 OP_ROLL OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_5 OP_PICK OP_OUTPUTTOKENCATEGORY OP_0 OP_EQUALVERIFY OP_5 OP_PICK OP_OUTPUTVALUE OP_DUP OP_2OVER OP_SUB OP_12 OP_ROLL OP_SUB OP_GREATERTHANOREQUAL OP_VERIFY OP_ROT OP_2 OP_PICK OP_SUB OP_LESSTHANOREQUAL OP_VERIFY OP_DUP OP_0 OP_GREATERTHAN OP_IF OP_4 OP_PICK OP_3 OP_PICK OP_ADD OP_DUP OP_OUTPUTBYTECODE 76a914 OP_8 OP_PICK OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_DUP OP_OUTPUTTOKENCATEGORY OP_0 OP_EQUALVERIFY OP_DUP OP_OUTPUTVALUE OP_2 OP_PICK OP_NUMEQUALVERIFY OP_TXOUTPUTCOUNT OP_4 OP_PICK OP_5 OP_PICK OP_ADD OP_LESSTHANOREQUAL OP_VERIFY OP_DROP OP_ELSE OP_TXOUTPUTCOUNT OP_3 OP_PICK OP_6 OP_PICK OP_ADD OP_LESSTHANOREQUAL OP_VERIFY OP_ENDIF OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_DROP OP_1 OP_ELSE OP_8 OP_ROLL OP_3 OP_NUMEQUALVERIFY OP_9 OP_ROLL OP_SIZE OP_1 OP_EQUALVERIFY OP_INPUTINDEX OP_DUP OP_UTXOBYTECODE OP_OVER OP_UTXOTOKENCATEGORY OP_4 OP_PICK OP_EQUALVERIFY OP_OVER OP_UTXOTOKENCOMMITMENT OP_1 OP_SPLIT OP_SWAP 45 OP_EQUALVERIFY OP_SIZE 17 OP_NUMEQUALVERIFY OP_3 OP_SPLIT OP_4 OP_PICK OP_6 OP_ROLL OP_CAT OP_5 OP_PICK 52 OP_EQUAL OP_IF OP_DUP OP_3 OP_PICK OP_CAT OP_NIP OP_ELSE OP_5 OP_PICK 43 OP_EQUALVERIFY OP_ENDIF OP_13 OP_ROLL OP_SWAP OP_8 OP_ROLL OP_CHECKDATASIGVERIFY OP_TXINPUTCOUNT OP_0 OP_BEGIN OP_2DUP OP_GREATERTHAN OP_DUP OP_TOALTSTACK OP_IF OP_DUP OP_UTXOBYTECODE OP_5 OP_PICK OP_EQUALVERIFY OP_1ADD OP_ENDIF OP_FROMALTSTACK OP_NOT OP_UNTIL OP_TXOUTPUTCOUNT OP_ROT OP_LESSTHANOREQUAL OP_VERIFY OP_4 OP_PICK OP_OUTPUTBYTECODE 76a914 OP_3 OP_ROLL OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_3 OP_PICK OP_OUTPUTTOKENCATEGORY OP_0 OP_EQUALVERIFY OP_3 OP_PICK OP_OUTPUTVALUE OP_DUP OP_5 OP_PICK OP_UTXOVALUE OP_13 OP_ROLL OP_SUB OP_GREATERTHANOREQUAL OP_VERIFY OP_4 OP_ROLL OP_UTXOVALUE OP_LESSTHANOREQUAL OP_VERIFY OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_DROP OP_1 OP_ENDIF OP_ENDIF OP_ENDIF",
+  "source": "pragma cashscript ^0.14.0;\n\n// Doorstub Escrow: one address per show. Each ticket's money is one coin here,\n// marked by an immutable NFT 'E'|seat|buyerPkh (24 bytes) of the show's category.\n// The matching ticket is 'T'|seat|buyerPkh (24 bytes), held at P2PKH(buyerPkh).\n//\n// Every path pays the output at this.activeInputIndex, so one output can never\n// satisfy two escrow coins. A fee (if any) goes to the output at\n// this.activeInputIndex + tx.inputs.length, which is also unique per coin, and\n// must equal the posted fee exactly.\n//\n// Slots. No path allows an output outside its slots, and every output except\n// the check-in keepsake carries no token, so the marker (and in a hand-back the\n// ticket) is always burned:\n//   settle, refund  every input is a coin at this Escrow; outputs are each\n//                   coin's payout, plus its fee slot when a fee is due\n//   handBack        coins at this Escrow come first, then tickets of this show;\n//                   a ticket's own slot can only return to the ticket's address\n//   checkIn         exactly the coin and its ticket in; the payout and the\n//                   keepsake out\n// A payout may fall short of the coin's due by at most minerFeeCap. Because no\n// other output can exist, that shortfall can only be miner fee: whoever builds\n// the transaction can burn it, but cannot keep it.\n//\n// Constructor:\n//   category         the show's token category (32 bytes, as OP_UTXOTOKENCATEGORY returns it)\n//   organiserPkh     the organiser's payee (P2PKH) for check-ins and fees\n//   organiserDataPk  the organiser key for data-signed refund notices\n//   startHeight      block height when the show starts\n//   graceBlocks      blocks after startHeight before unused tickets settle\n//   handBackFeeBps   hand-back fee in basis points of the coin value\n//   noShowFeeBps     no-show fee in basis points of the coin value\n//   minerFeeCap      most satoshis of a coin that may go to the miner fee\ncontract Escrow(\n    bytes32 category,\n    bytes20 organiserPkh,\n    pubkey organiserDataPk,\n    int startHeight,\n    int graceBlocks,\n    int handBackFeeBps,\n    int noShowFeeBps,\n    int minerFeeCap\n) {\n\n    // The holder hands the ticket back for a refund, minus the posted fee.\n    // The ticket input sits at P2PKH(buyerPkh), so the buyer's wallet signs it.\n    // Ticket and marker are both burned.\n    function handBack(int ticketInputIndex) {\n        int idx = this.activeInputIndex;\n        bytes myLock = tx.inputs[idx].lockingBytecode;\n        require(tx.inputs[idx].tokenCategory == category);\n        bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);\n        require(tag == 0x45);\n        require(body.length == 23);\n        bytes20 buyerPkh = unsafe_bytes20(body.split(3)[1]);\n        bytes buyerLock = new LockingBytecodeP2PKH(buyerPkh);\n\n        require(tx.inputs[ticketInputIndex].tokenCategory == category);\n        require(tx.inputs[ticketInputIndex].nftCommitment == 0x54 + body);\n        require(tx.inputs[ticketInputIndex].lockingBytecode == buyerLock);\n\n        // Inputs: coins at this Escrow, then tokens of this show (tickets). No\n        // plain coins. A ticket's own output slot returns to its own address.\n        int n = tx.inputs.length;\n        int escrows = 0;\n        int i = 0;\n        while (i < n) {\n            if (tx.inputs[i].lockingBytecode == myLock) {\n                escrows = escrows + 1;\n            } else {\n                require(tx.inputs[i].tokenCategory == category);\n                if (i < tx.outputs.length) {\n                    require(tx.outputs[i].lockingBytecode == tx.inputs[i].lockingBytecode);\n                    require(tx.outputs[i].tokenCategory == 0x);\n                }\n            }\n            i = i + 1;\n        }\n        // every escrow coin sits below the count, so the coins are inputs 0..escrows-1\n        require(idx < escrows);\n\n        int value = tx.inputs[idx].value;\n        int fee = value * handBackFeeBps / 10000;\n        if (fee < 546) {\n            fee = 0;\n        }\n\n        require(tx.outputs[idx].lockingBytecode == buyerLock);\n        require(tx.outputs[idx].tokenCategory == 0x);\n        require(tx.outputs[idx].value >= value - fee - minerFeeCap);\n        if (fee > 0) {\n            int feeIndex = idx + n;\n            require(tx.outputs[feeIndex].lockingBytecode == new LockingBytecodeP2PKH(organiserPkh));\n            require(tx.outputs[feeIndex].tokenCategory == 0x);\n            require(tx.outputs[feeIndex].value == fee);\n            require(tx.outputs.length <= n + escrows);\n        } else {\n            // no fee slot for this coin: coins that owe a fee come first\n            require(tx.outputs.length <= n + idx);\n        }\n    }\n\n    // The holder checks in at the door (K1). The coin pays the organiser; the\n    // ticket goes back to the holder as a keepsake stub with no money behind it.\n    // Exactly two inputs (this coin and the ticket) and two outputs (the payout\n    // at this coin's index and the keepsake at the ticket's index), so the\n    // marker is burned and nothing else can be paid.\n    function checkIn(int ticketInputIndex) {\n        int idx = this.activeInputIndex;\n        require(tx.inputs[idx].tokenCategory == category);\n        bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);\n        require(tag == 0x45);\n        require(body.length == 23);\n        bytes20 buyerPkh = unsafe_bytes20(body.split(3)[1]);\n        bytes buyerLock = new LockingBytecodeP2PKH(buyerPkh);\n        bytes ticketCommitment = 0x54 + body;\n\n        require(tx.inputs[ticketInputIndex].tokenCategory == category);\n        require(tx.inputs[ticketInputIndex].nftCommitment == ticketCommitment);\n        require(tx.inputs[ticketInputIndex].lockingBytecode == buyerLock);\n\n        require(tx.inputs.length == 2);\n        require(tx.outputs.length == 2);\n\n        require(tx.outputs[idx].lockingBytecode == new LockingBytecodeP2PKH(organiserPkh));\n        require(tx.outputs[idx].tokenCategory == 0x);\n        require(tx.outputs[idx].value >= tx.inputs[idx].value - minerFeeCap);\n\n        require(tx.outputs[ticketInputIndex].lockingBytecode == buyerLock);\n        require(tx.outputs[ticketInputIndex].tokenCategory == category);\n        require(tx.outputs[ticketInputIndex].nftCommitment == ticketCommitment);\n        require(tx.outputs[ticketInputIndex].value <= tx.inputs[ticketInputIndex].value);\n    }\n\n    // After startHeight + graceBlocks, anyone may refund an unused ticket's\n    // coin to its buyer, minus the posted no-show fee (K2).\n    function settle() {\n        require(tx.time >= startHeight + graceBlocks);\n\n        int idx = this.activeInputIndex;\n        bytes myLock = tx.inputs[idx].lockingBytecode;\n        require(tx.inputs[idx].tokenCategory == category);\n        bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);\n        require(tag == 0x45);\n        require(body.length == 23);\n        bytes20 buyerPkh = unsafe_bytes20(body.split(3)[1]);\n\n        // every input is a coin at this Escrow\n        int n = tx.inputs.length;\n        int i = 0;\n        while (i < n) {\n            require(tx.inputs[i].lockingBytecode == myLock);\n            i = i + 1;\n        }\n\n        int value = tx.inputs[idx].value;\n        int fee = value * noShowFeeBps / 10000;\n        if (fee < 546) {\n            fee = 0;\n        }\n\n        require(tx.outputs[idx].lockingBytecode == new LockingBytecodeP2PKH(buyerPkh));\n        require(tx.outputs[idx].tokenCategory == 0x);\n        int payout = tx.outputs[idx].value;\n        require(payout >= value - fee - minerFeeCap);\n        require(payout <= value - fee);\n        if (fee > 0) {\n            int feeIndex = idx + n;\n            require(tx.outputs[feeIndex].lockingBytecode == new LockingBytecodeP2PKH(organiserPkh));\n            require(tx.outputs[feeIndex].tokenCategory == 0x);\n            require(tx.outputs[feeIndex].value == fee);\n            require(tx.outputs.length <= n + n);\n        } else {\n            // no fee slot for this coin: coins that owe a fee come first\n            require(tx.outputs.length <= n + idx);\n        }\n    }\n\n    // The organiser cancels (K5): a data signature over 'C'|category refunds the\n    // whole show; one over 'R'|category|seat refunds one ticket. Anyone may push\n    // it. Every output is a payout to its own coin's buyer, so the money can\n    // only go back to the buyers (less at most minerFeeCap each, as miner fee).\n    function refund(datasig organiserDataSig, bytes1 scope) {\n        int idx = this.activeInputIndex;\n        bytes myLock = tx.inputs[idx].lockingBytecode;\n        require(tx.inputs[idx].tokenCategory == category);\n        bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);\n        require(tag == 0x45);\n        require(body.length == 23);\n        bytes seat, bytes buyerPkhBytes = body.split(3);\n        bytes20 buyerPkh = unsafe_bytes20(buyerPkhBytes);\n\n        bytes message = scope + category;\n        if (scope == 0x52) {\n            message = message + seat;\n        } else {\n            require(scope == 0x43);\n        }\n        require(checkDataSig(organiserDataSig, message, organiserDataPk));\n\n        // every input is a coin at this Escrow, and every output is a payout slot\n        int n = tx.inputs.length;\n        int i = 0;\n        while (i < n) {\n            require(tx.inputs[i].lockingBytecode == myLock);\n            i = i + 1;\n        }\n        require(tx.outputs.length <= n);\n\n        require(tx.outputs[idx].lockingBytecode == new LockingBytecodeP2PKH(buyerPkh));\n        require(tx.outputs[idx].tokenCategory == 0x);\n        int payout = tx.outputs[idx].value;\n        require(payout >= tx.inputs[idx].value - minerFeeCap);\n        require(payout <= tx.inputs[idx].value);\n    }\n}\n",
+  "fingerprint": "19d22526cb84795390dcf6802f3cb0d4b5b31c9284ac7dfa204ff38ebfbf90fb",
   "debug": {
-    "bytecode": "5879009c63c076ce52798876cf517f7c0145888201179d76537f770376a9147c7e0288ac7e5c79ce5479885c79cf0154537a7e885b7ac7788878c676597a9502102796760222029f63750068006576c49f766b6376d182009e637601207f755779879169687c8b77686c91665479cd547a885379cc537a5379945b7a94a2697800a0635279c39376cd0376a91457797e0288ac7e8876cc5379a26975686d6d6d6d6d51675879519c63c076ce52798876cf517f7c0145888201179d76537f770376a9147c7e0288ac7e01547b7e5c79ce5479885c79cf78885c79c7527988006576c49f766b63765e799e6376d182009e637601207f7556798791696875688b686c91665379cd0376a914577a7e0288ac7e885379cc547ac65b7a94a2695a79cd537a885979d1537a88587ad27b886d6d6d7551675879529c63537a547a93b175c076ce52798876cf517f7c0145888201179d537f7778c676587a9502102796760222029f63750068006576c49f766b6376d182009e637601207f755779879169687c8b77686c91665479cd0376a914557a7e0288ac7e885379cc537a537994597a94a2697800a0635279c39376cd0376a91457797e0288ac7e8876cc5379a26975686d6d6d6d5167587a539d597a825188c076ce53798876cf517f7c0145888201179d537f537955797e5479015287637653797e77675479014388685d7a7c587abb006576c49f766b6376d182009e637601207f755779879169687c8b77686c91665379cd0376a914537a7e0288ac7e885279cc537ac65b7a94a2696d6d6d6d7551686868",
-    "sourceMap": "35:4:69:5;;;;;36:18:36:39;37:26:37:29;:16::44:1;:48::56:0;;:8::58:1;38:42:38:45:0;:32::60:1;:67::68:0;:32::69:1;39:16:39:19:0;:23::27;:8::29:1;40:16:40:27;:31::33:0;:8::35:1;41:42:41:46:0;:53::54;:42::55:1;:::58;42:26:42:60:0;:51::59;:26::60:1;;;44::44:42:0;;:16::57:1;:61::69:0;;:8::71:1;45:26:45:42:0;;:16::57:1;:61::65:0;:68::72;;:61:::1;:8::74;46:26:46:42:0;;:16::59:1;:63::72:0;:8::74:1;48:30:48:33:0;:20::40:1;49:18:49:23:0;:26::40;;:18:::1;:43::48:0;:18:::1;50:12:50:15:0;:18::21;:12:::1;:23:52:9:0;51:12:51:20:1;;50:23:52:9;53:16:53:17:0;54:8:60:9;:15:54:16;:19::36;:15:::1;;;:38:60:9:0;55:43:55:44;:32::59:1;56:16:56:34;:38::39:0;:16:::1;:41:58:13:0;57:24:57:35;:42::44;:24::45:1;:::48;:52::60:0;;:24:::1;;:16::62;56:41:58:13;59:12:59:22;;54:38:60:9;;;:8;;62:27:62:30:0;;:16::47:1;:51::60:0;;:8::62:1;63:27:63:30:0;;:16::37:1;:41::46:0;;:49::52;;:41:::1;:55::66:0;;:41:::1;:16;:8::68;64:12:64:15:0;:18::19;:12:::1;:21:68:9:0;65:27:65:30;;:33::49;:27:::1;66:31:66:39:0;:20::56:1;:60::98:0;:85::97;;:60::98:1;;;:12::100;67:31:67:39:0;:20::46:1;:50::53:0;;:20:::1;:12::55;64:21:68:9;;35:44:69:5;;;;;;:4;75::106::0;;;;;76:18:76:39;77:26:77:29;:16::44:1;:48::56:0;;:8::58:1;78:42:78:45:0;:32::60:1;:67::68:0;:32::69:1;79:16:79:19:0;:23::27;:8::29:1;80:16:80:27;:31::33:0;:8::35:1;81:42:81:46:0;:53::54;:42::55:1;:::58;82:26:82:60:0;:51::59;:26::60:1;;;83:33:83:37:0;:40::44;:33:::1;85:26:85:42:0;;:16::57:1;:61::69:0;;:8::71:1;86:26:86:42:0;;:16::57:1;:61::77:0;:8::79:1;87:26:87:42:0;;:16::59:1;:63::72:0;;:8::74:1;89:16:89:17:0;90:8:98:9;:15:90:16;:19::36;:15:::1;;;:38:98:9:0;91:16:91:17;:21::37;;:16:::1;:39:96:13:0;92:47:92:48;:36::63:1;93:20:93:38;:42::43:0;:20:::1;:45:95:17:0;94:28:94:39;:46::48;:28::49:1;:::52;:56::64:0;;:28:::1;;:20::66;93:45:95:17;91:39:96:13;;97:12:97:22;90:38:98:9;;:8;;100:27:100:30:0;;:16::47:1;:51::89:0;:76::88;;:51::89:1;;;:8::91;101:27:101:30:0;;:16::37:1;:51::54:0;;:41::61:1;:64::75:0;;:41:::1;:16;:8::77;103:27:103:43:0;;:16::60:1;:64::73:0;;:8::75:1;104:27:104:43:0;;:16::58:1;:62::70:0;;:8::72:1;105:27:105:43:0;;:16::58:1;:62::78:0;:8::80:1;75:43:106:5;;;;;:4;110::141::0;;;;;111:27:111:38;;:41::52;;:27:::1;:8::54;;113:18:113:39:0;114:26:114:29;:16::44:1;:48::56:0;;:8::58:1;115:42:115:45:0;:32::60:1;:67::68:0;:32::69:1;116:16:116:19:0;:23::27;:8::29:1;117:16:117:27;:31::33:0;:8::35:1;118:53:118:54:0;:42::55:1;:::58;120:30:120:33:0;:20::40:1;121:18:121:23:0;:26::38;;:18:::1;:41::46:0;:18:::1;122:12:122:15:0;:18::21;:12:::1;:23:124:9:0;123:12:123:20:1;;122:23:124:9;125:16:125:17:0;126:8:132:9;:15:126:16;:19::36;:15:::1;;;:38:132:9:0;127:43:127:44;:32::59:1;128:16:128:34;:38::39:0;:16:::1;:41:130:13:0;129:24:129:35;:42::44;:24::45:1;:::48;:52::60:0;;:24:::1;;:16::62;128:41:130:13;131:12:131:22;;126:38:132:9;;;:8;;134:27:134:30:0;;:16::47:1;:51::85:0;:76::84;;:51::85:1;;;:8::87;135:27:135:30:0;;:16::37:1;:41::46:0;;:49::52;;:41:::1;:55::66:0;;:41:::1;:16;:8::68;136:12:136:15:0;:18::19;:12:::1;:21:140:9:0;137:27:137:30;;:33::49;:27:::1;138:31:138:39:0;:20::56:1;:60::98:0;:85::97;;:60::98:1;;;:12::100;139:31:139:39:0;:20::46:1;:50::53:0;;:20:::1;:12::55;136:21:140:9;;110:22:141:5;;;;;:4;146::174::0;;;;:46:146:58;;;;;147:18:147:39;148:26:148:29;:16::44:1;:48::56:0;;:8::58:1;149:42:149:45:0;:32::60:1;:67::68:0;:32::69:1;150:16:150:19:0;:23::27;:8::29:1;151:16:151:27;:31::33:0;:8::35:1;152:53:152:54:0;:42::55:1;155:24:155:29:0;;:32::40;;:24:::1;156:12:156:17:0;;:21::25;:12:::1;:27:158:9:0;157:22:157:29;:32::36;;:22:::1;:12::37;158:15:160:9:0;159:20:159:25;;:29::33;:12::35:1;158:15:160:9;161:29:161:45:0;;:47::54;:56::71;;:8::74:1;163:16:163:17:0;164:8:170:9;:15:164:16;:19::36;:15:::1;;;:38:170:9:0;165:43:165:44;:32::59:1;166:16:166:34;:38::39:0;:16:::1;:41:168:13:0;167:24:167:35;:42::44;:24::45:1;:::48;:52::60:0;;:24:::1;;:16::62;166:41:168:13;169:12:169:22;;164:38:170:9;;;:8;;172:27:172:30:0;;:16::47:1;:51::85:0;:76::84;;:51::85:1;;;:8::87;173:27:173:30:0;;:16::37:1;:51::54:0;;:41::61:1;:64::75:0;;:41:::1;:16;:8::77;146:60:174:5;;;;;;21:0:175:1;;",
+    "bytecode": "5879009c63c076c778ce53798878cf517f7c0145888201179d76537f770376a9147c7e0288ac7e5d79ce5579885d79cf0154537a7e885c7ac77888c30000657653799f766b6376c7557987637c8b7c6776ce57798876c49f6376cd78c78876d1008868688b686c9166557952799f695579c6765d7a9502102796760222029f637500685779cd567a885679d100885679cc7b5279945e7a94a2697600a063557954799376cd0376a9145a797e0288ac7e8876d1008876cc52799dc45579557993a1697567c45479577993a169686d6d6d6d6d6d7551675879519c63c076ce52798876cf517f7c0145888201179d76537f770376a9147c7e0288ac7e01547b7e5c79ce5479885c79cf78885c79c7527988c3529dc4529d5279cd0376a914567a7e0288ac7e885279d100885279cc537ac65a7a94a2695979cd7b885879d17b885779d2885679cc577ac6a1696d6d6d51675879529c63537a547a93b175c076c778ce537a8878cf517f7c0145888201179d537f77c300656ea0766b6376c75479888b686c91665479c6765a7a9502102796760222029f637500685679cd0376a914567a7e0288ac7e885579d100885579cc7670945c7a94a2697b527994a1697600a063547953799376cd0376a91458797e0288ac7e8876d1008876cc52799dc45479557993a1697567c45379567993a169686d6d6d6d755167587a539d597a825188c076c778ce54798878cf517f7c0145888201179d537f5479567a7e5579015287637653797e77675579014388685d7a7c587abbc300656ea0766b6376c75579888b686c9166c47ba1695479cd0376a914537a7e0288ac7e885379d100885379cc765579c65d7a94a269547ac6a1696d6d6d6d7551686868",
+    "sourceMap": "48:4:101:5;;;;;49:18:49:39;50:33:50:36;:23::53:1;51:26:51:29:0;:16::44:1;:48::56:0;;:8::58:1;52:42:52:45:0;:32::60:1;:67::68:0;:32::69:1;53:16:53:19:0;:23::27;:8::29:1;54:16:54:27;:31::33:0;:8::35:1;55:42:55:46:0;:53::54;:42::55:1;:::58;56:26:56:60:0;:51::59;:26::60:1;;;58::58:42:0;;:16::57:1;:61::69:0;;:8::71:1;59:26:59:42:0;;:16::57:1;:61::65:0;:68::72;;:61:::1;:8::74;60:26:60:42:0;;:16::59:1;:63::72:0;:8::74:1;64:16:64:32:0;65:22:65:23;66:16:66:17;67:8:78:9;:15:67:16;:19::20;;:15:::1;;;:22:78:9:0;68:26:68:27;:16::44:1;:48::54:0;;:16:::1;:56:70:13:0;69:16:69:38:1;;;70:19:76:13:0;71:34:71:35;:24::50:1;:54::62:0;;:16::64:1;72:20:72:21:0;:24::41;:20:::1;:43:75:17:0;73:39:73:40;:28::57:1;:71::72:0;:61::89:1;:20::91;74:39:74:40:0;:28::55:1;:59::61:0;:20::63:1;72:43:75:17;70:19:76:13;77:12:77:22;67:22:78:9;;:8;;80:16:80:19:0;;:22::29;;:16:::1;:8::31;82:30:82:33:0;;:20::40:1;83:18:83:23:0;:26::40;;:18:::1;:43::48:0;:18:::1;84:12:84:15:0;:18::21;:12:::1;:23:86:9:0;85:12:85:20:1;;84:23:86:9;88:27:88:30:0;;:16::47:1;:51::60:0;;:8::62:1;89:27:89:30:0;;:16::45:1;:49::51:0;:8::53:1;90:27:90:30:0;;:16::37:1;:41::46:0;:49::52;;:41:::1;:55::66:0;;:41:::1;:16;:8::68;91:12:91:15:0;:18::19;:12:::1;:21:97:9:0;92:27:92:30;;:33::34;;:27:::1;93:31:93:39:0;:20::56:1;:60::98:0;:85::97;;:60::98:1;;;:12::100;94:31:94:39:0;:20::54:1;:58::60:0;:12::62:1;95:31:95:39:0;:20::46:1;:50::53:0;;:12::55:1;96:20:96:37:0;:41::42;;:45::52;;:41:::1;:20;:12::54;91:21:97:9;97:15:100::0;99:20:99:37;:41::42;;:45::48;;:41:::1;:20;:12::50;97:15:100:9;48:44:101:5;;;;;;;;:4;108::133::0;;;;;109:18:109:39;110:26:110:29;:16::44:1;:48::56:0;;:8::58:1;111:42:111:45:0;:32::60:1;:67::68:0;:32::69:1;112:16:112:19:0;:23::27;:8::29:1;113:16:113:27;:31::33:0;:8::35:1;114:42:114:46:0;:53::54;:42::55:1;:::58;115:26:115:60:0;:51::59;:26::60:1;;;116:33:116:37:0;:40::44;:33:::1;118:26:118:42:0;;:16::57:1;:61::69:0;;:8::71:1;119:26:119:42:0;;:16::57:1;:61::77:0;:8::79:1;120:26:120:42:0;;:16::59:1;:63::72:0;;:8::74:1;122:16:122:32:0;:36::37;:8::39:1;123:16:123:33:0;:37::38;:8::40:1;125:27:125:30:0;;:16::47:1;:51::89:0;:76::88;;:51::89:1;;;:8::91;126:27:126:30:0;;:16::45:1;:49::51:0;:8::53:1;127:27:127:30:0;;:16::37:1;:51::54:0;;:41::61:1;:64::75:0;;:41:::1;:16;:8::77;129:27:129:43:0;;:16::60:1;:64::73:0;:8::75:1;130:27:130:43:0;;:16::58:1;:62::70:0;:8::72:1;131:27:131:43:0;;:16::58:1;:8::80;132:27:132:43:0;;:16::50:1;:64::80:0;;:54::87:1;:16;:8::89;108:43:133:5;;;;:4;137::177::0;;;;;138:27:138:38;;:41::52;;:27:::1;:8::54;;140:18:140:39:0;141:33:141:36;:23::53:1;142:26:142:29:0;:16::44:1;:48::56:0;;:8::58:1;143:42:143:45:0;:32::60:1;:67::68:0;:32::69:1;144:16:144:19:0;:23::27;:8::29:1;145:16:145:27;:31::33:0;:8::35:1;146:53:146:54:0;:42::55:1;:::58;149:16:149:32:0;150::150:17;151:8:154:9;:15:151:20;::::1;;;:22:154:9:0;152:30:152:31;:20::48:1;:52::58:0;;:12::60:1;153::153:22;151:22:154:9;;:8;;156:30:156:33:0;;:20::40:1;157:18:157:23:0;:26::38;;:18:::1;:41::46:0;:18:::1;158:12:158:15:0;:18::21;:12:::1;:23:160:9:0;159:12:159:20:1;;158:23:160:9;162:27:162:30:0;;:16::47:1;:51::85:0;:76::84;;:51::85:1;;;:8::87;163:27:163:30:0;;:16::45:1;:49::51:0;:8::53:1;164:32:164:35:0;;:21::42:1;165:16:165:22:0;:26::37;::::1;:40::51:0;;:26:::1;:16;:8::53;166:26:166:31:0;:34::37;;:26:::1;:16;:8::39;167:12:167:15:0;:18::19;:12:::1;:21:173:9:0;168:27:168:30;;:33::34;;:27:::1;169:31:169:39:0;:20::56:1;:60::98:0;:85::97;;:60::98:1;;;:12::100;170:31:170:39:0;:20::54:1;:58::60:0;:12::62:1;171:31:171:39:0;:20::46:1;:50::53:0;;:12::55:1;172:20:172:37:0;:41::42;;:45::46;;:41:::1;:20;:12::48;167:21:173:9;173:15:176::0;175:20:175:37;:41::42;;:45::48;;:41:::1;:20;:12::50;173:15:176:9;137:22:177:5;;;;;;:4;183::215::0;;;;:46:183:58;;;;;184:18:184:39;185:33:185:36;:23::53:1;186:26:186:29:0;:16::44:1;:48::56:0;;:8::58:1;187:42:187:45:0;:32::60:1;:67::68:0;:32::69:1;188:16:188:19:0;:23::27;:8::29:1;189:16:189:27;:31::33:0;:8::35:1;190:53:190:54:0;:42::55:1;193:24:193:29:0;;:32::40;;:24:::1;194:12:194:17:0;;:21::25;:12:::1;:27:196:9:0;195:22:195:29;:32::36;;:22:::1;:12::37;196:15:198:9:0;197:20:197:25;;:29::33;:12::35:1;196:15:198:9;199:29:199:45:0;;:47::54;:56::71;;:8::74:1;202:16:202:32:0;203::203:17;204:8:207:9;:15:204:20;::::1;;;:22:207:9:0;205:30:205:31;:20::48:1;:52::58:0;;:12::60:1;206::206:22;204:22:207:9;;:8;;208:16:208:33:0;:37::38;:16:::1;:8::40;210:27:210:30:0;;:16::47:1;:51::85:0;:76::84;;:51::85:1;;;:8::87;211:27:211:30:0;;:16::45:1;:49::51:0;:8::53:1;212:32:212:35:0;;:21::42:1;213:16:213:22:0;:36::39;;:26::46:1;:49::60:0;;:26:::1;:16;:8::62;214:36:214:39:0;;:26::46:1;:16;:8::48;183:60:215:5;;;;;;34:0:216:1;;",
     "logs": [],
     "requires": [
       {
-        "ip": 18,
-        "line": 37
+        "ip": 20,
+        "line": 51
       },
       {
-        "ip": 25,
-        "line": 39
+        "ip": 27,
+        "line": 53
       },
       {
-        "ip": 28,
-        "line": 40
+        "ip": 30,
+        "line": 54
       },
       {
-        "ip": 43,
-        "line": 44
+        "ip": 45,
+        "line": 58
       },
       {
-        "ip": 51,
-        "line": 45
+        "ip": 53,
+        "line": 59
       },
       {
-        "ip": 56,
-        "line": 46
+        "ip": 58,
+        "line": 60
       },
       {
-        "ip": 94,
-        "line": 57
+        "ip": 84,
+        "line": 71
       },
       {
-        "ip": 108,
-        "line": 62
+        "ip": 93,
+        "line": 73
       },
       {
-        "ip": 121,
-        "line": 63
+        "ip": 97,
+        "line": 74
       },
       {
-        "ip": 138,
-        "line": 66
-      },
-      {
-        "ip": 144,
-        "line": 67
-      },
-      {
-        "ip": 164,
-        "line": 77
-      },
-      {
-        "ip": 171,
-        "line": 79
-      },
-      {
-        "ip": 174,
+        "ip": 110,
         "line": 80
       },
       {
-        "ip": 192,
-        "line": 85
+        "ip": 132,
+        "line": 88
       },
       {
-        "ip": 197,
-        "line": 86
+        "ip": 137,
+        "line": 89
       },
       {
-        "ip": 203,
-        "line": 87
+        "ip": 149,
+        "line": 90
       },
       {
-        "ip": 231,
+        "ip": 167,
+        "line": 93
+      },
+      {
+        "ip": 171,
         "line": 94
       },
       {
-        "ip": 249,
-        "line": 100
+        "ip": 176,
+        "line": 95
+      },
+      {
+        "ip": 184,
+        "line": 96
+      },
+      {
+        "ip": 194,
+        "line": 99
+      },
+      {
+        "ip": 215,
+        "line": 110
+      },
+      {
+        "ip": 222,
+        "line": 112
+      },
+      {
+        "ip": 225,
+        "line": 113
+      },
+      {
+        "ip": 243,
+        "line": 118
+      },
+      {
+        "ip": 248,
+        "line": 119
+      },
+      {
+        "ip": 254,
+        "line": 120
+      },
+      {
+        "ip": 257,
+        "line": 122
       },
       {
         "ip": 260,
-        "line": 101
+        "line": 123
       },
       {
-        "ip": 266,
-        "line": 103
+        "ip": 270,
+        "line": 125
       },
       {
-        "ip": 272,
-        "line": 104
+        "ip": 275,
+        "line": 126
       },
       {
-        "ip": 277,
-        "line": 105
+        "ip": 286,
+        "line": 127
       },
       {
-        "ip": 294,
-        "line": 111
-      },
-      {
-        "ip": 301,
-        "line": 114
-      },
-      {
-        "ip": 308,
-        "line": 116
-      },
-      {
-        "ip": 311,
-        "line": 117
-      },
-      {
-        "ip": 352,
+        "ip": 291,
         "line": 129
       },
       {
-        "ip": 370,
-        "line": 134
+        "ip": 296,
+        "line": 130
       },
       {
-        "ip": 383,
-        "line": 135
+        "ip": 300,
+        "line": 131
       },
       {
-        "ip": 400,
+        "ip": 308,
+        "line": 132
+      },
+      {
+        "ip": 324,
         "line": 138
       },
       {
+        "ip": 333,
+        "line": 142
+      },
+      {
+        "ip": 340,
+        "line": 144
+      },
+      {
+        "ip": 343,
+        "line": 145
+      },
+      {
+        "ip": 359,
+        "line": 152
+      },
+      {
+        "ip": 390,
+        "line": 162
+      },
+      {
+        "ip": 395,
+        "line": 163
+      },
+      {
         "ip": 406,
-        "line": 139
+        "line": 165
       },
       {
-        "ip": 429,
-        "line": 148
+        "ip": 412,
+        "line": 166
       },
       {
-        "ip": 436,
-        "line": 150
+        "ip": 430,
+        "line": 169
+      },
+      {
+        "ip": 434,
+        "line": 170
       },
       {
         "ip": 439,
-        "line": 151
+        "line": 171
       },
       {
-        "ip": 461,
-        "line": 159
-      },
-      {
-        "ip": 468,
-        "line": 161
-      },
-      {
-        "ip": 491,
-        "line": 167
-      },
-      {
-        "ip": 509,
+        "ip": 447,
         "line": 172
       },
       {
-        "ip": 520,
-        "line": 173
+        "ip": 457,
+        "line": 175
+      },
+      {
+        "ip": 482,
+        "line": 186
+      },
+      {
+        "ip": 489,
+        "line": 188
+      },
+      {
+        "ip": 492,
+        "line": 189
+      },
+      {
+        "ip": 514,
+        "line": 197
+      },
+      {
+        "ip": 521,
+        "line": 199
+      },
+      {
+        "ip": 534,
+        "line": 205
+      },
+      {
+        "ip": 543,
+        "line": 208
+      },
+      {
+        "ip": 553,
+        "line": 210
+      },
+      {
+        "ip": 558,
+        "line": 211
+      },
+      {
+        "ip": 570,
+        "line": 213
+      },
+      {
+        "ip": 575,
+        "line": 214
       }
     ],
-    "sourceTags": "90:90:sc;91:94:lc;137:137:sc;225:225:sc;228:231:lc;348:348:sc;349:352:lc;399:399:sc;411:415:pv;487:487:sc;488:491:lc"
+    "sourceTags": "93:96:lc;177:177:sc;353:356:lc;440:440:sc;462:466:pv;528:531:lc"
   },
   "compiler": {
     "name": "cashc",

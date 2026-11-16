@@ -43,3 +43,48 @@ export const SEQUENCE_LOCKTIME = 0xfffffffe;
 
 /** nLockTime values below this are block heights. */
 export const LOCKTIME_THRESHOLD = 500_000_000;
+
+// ---------------------------------------------------------------- show policy
+// The contracts take any parameters; validateShow (and so every builder and
+// verifyGenesis) refuses a show outside these bounds. See SPEC.md section 6.
+
+/** Highest minerFeeCap the app accepts, in sats. */
+export const MAX_MINER_FEE_CAP = 2_000n;
+
+/** minerFeeCap may also be at most this share of the price, in basis points (20%). */
+export const MAX_MINER_FEE_CAP_BPS = 2_000n;
+
+/**
+ * Lowest minerFeeCap the app accepts: the largest single-coin Escrow
+ * transaction (a check-in, measured in test/limits.test.js) at 1 sat/byte,
+ * rounded up. Below it some paths could not pay their own miner fee, and
+ * settle and refund cannot take a fee coin from anyone else.
+ */
+export const MIN_MINER_FEE_CAP = 1_200n;
+
+/** Hand-back and no-show fees are at most this, in basis points (10%). */
+export const MAX_POSTED_FEE_BPS = 1_000n;
+
+/** Lowest price the app accepts: the smallest price whose 20% still fits MIN_MINER_FEE_CAP. */
+export const MIN_PRICE = (MIN_MINER_FEE_CAP * 10_000n) / MAX_MINER_FEE_CAP_BPS;
+
+// ---------------------------------------------------------------- relay limits
+
+/** BCHN refuses to relay a transaction larger than this (bytes). */
+export const MAX_STANDARD_TX_BYTES = 100_000;
+
+/** A data output (OP_RETURN + pushes) may be at most this long; libauth counts length + 1 against 223. */
+export const MAX_DATA_OUTPUT_BYTES = 222;
+
+/** buildBuy takes at most this many funding coins (BoxOffice.buy loops over every input). */
+export const MAX_BUY_FUNDING_COINS = 50;
+
+/**
+ * Most escrow coins in one settle or refund transaction. Size binds first: at
+ * the largest show parameters, 100 coins are about 85,200 bytes (settle with a
+ * no-show fee) and 88,500 bytes (refund), at about 36% of each input's
+ * operation-cost budget (test/limits.test.js). The builders also refuse any
+ * transaction over MAX_STANDARD_TX_BYTES.
+ */
+export const MAX_SETTLE_COINS = 100;
+export const MAX_REFUND_COINS = 100;

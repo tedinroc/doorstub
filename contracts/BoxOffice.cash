@@ -10,10 +10,13 @@ pragma cashscript ^0.14.0;
 // once at genesis and never change, so seat ids never repeat across shards.
 //
 // Constructor:
+//   category              the show's token category (32 bytes, wire order, as
+//                         OP_UTXOTOKENCATEGORY returns it); a shard of any other
+//                         category can never sell here
 //   price                 ticket price in satoshis (escrowed, not paid out)
 //   organiserPk           public key that may close sales
 //   escrowLockingBytecode the show's Escrow P2SH32 locking bytecode
-contract BoxOffice(int price, pubkey organiserPk, bytes escrowLockingBytecode) {
+contract BoxOffice(bytes32 category, int price, pubkey organiserPk, bytes escrowLockingBytecode) {
 
     // Sell one seat. No signature: anyone can run it, but every output that
     // matters is fixed, so the only freedom is who the buyer is.
@@ -25,10 +28,9 @@ contract BoxOffice(int price, pubkey organiserPk, bytes escrowLockingBytecode) {
     function buy(bytes20 buyerPkh) {
         require(this.activeInputIndex == 0);
 
-        bytes mintingCategory = tx.inputs[0].tokenCategory;
-        require(mintingCategory.length == 33);
-        bytes category, bytes capability = mintingCategory.split(32);
-        require(capability == 0x02);
+        // input 0 is a minting NFT of this show's own category
+        bytes mintingCategory = category + 0x02;
+        require(tx.inputs[0].tokenCategory == mintingCategory);
 
         bytes state, bytes rest = tx.inputs[0].nftCommitment.split(1);
         require(state == 0x01);
@@ -84,8 +86,8 @@ contract BoxOffice(int price, pubkey organiserPk, bytes escrowLockingBytecode) {
         require(checkSig(organiserSig, organiserPk));
 
         int idx = this.activeInputIndex;
-        bytes mintingCategory = tx.inputs[idx].tokenCategory;
-        bytes category = mintingCategory.split(32)[0];
+        bytes mintingCategory = category + 0x02;
+        require(tx.inputs[idx].tokenCategory == mintingCategory);
         bytes myBytecode = tx.inputs[idx].lockingBytecode;
 
         int j = 0;

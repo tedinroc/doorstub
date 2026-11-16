@@ -80,6 +80,9 @@ export const PROBE_PRICE = 10_000n;
 export const PROBE_FREE_COIN_SATS = 50_000n;
 export const PROBE_SHARD = 0;
 export const PROBE_SOLD_BEFORE = 41;
+export const PROBE_START_HEIGHT = 980_000;
+/** The made-up chain tip the probe's buys are built at (sales still open). */
+export const PROBE_SALE_HEIGHT = PROBE_START_HEIGHT - 1_000;
 
 /**
  * A fresh made-up show: random category, organiser keys whose private halves
@@ -93,11 +96,11 @@ export const makeProbeShow = () => {
     organiserPk,
     organiserPkh: hash160(organiserPk),
     organiserDataPk: freshPublicKey(),
-    startHeight: 980_000,
+    startHeight: PROBE_START_HEIGHT,
     graceBlocks: 144,
     handBackFeeBps: 0,
     noShowFeeBps: 0,
-    minerFeeCap: 5_000n,
+    minerFeeCap: 1_500n,
   });
   return { show, contracts: showContracts(show) };
 };
@@ -202,6 +205,7 @@ export const buildShape = (id, { probe, walletPkh, coins = [] }) => {
       boxOfficeUtxo: madeUpBoxOffice(probe),
       fundingUtxos: [{ txid: madeUpTxid(), vout: 1, output: { lockingBytecode: walletLock, valueSatoshis: PROBE_FREE_COIN_SATS } }],
       buyerPkh: walletPkh,
+      currentHeight: PROBE_SALE_HEIGHT,
       changeLockingBytecode: walletLock,
     });
     return finish(id, built, {
@@ -223,6 +227,7 @@ export const buildShape = (id, { probe, walletPkh, coins = [] }) => {
       boxOfficeUtxo: madeUpBoxOffice(probe),
       fundingUtxos: picked.map((c) => ({ txid: c.txid, vout: c.vout, output: { lockingBytecode: c.lockingBytecode, valueSatoshis: c.value } })),
       buyerPkh: walletPkh,
+      currentHeight: PROBE_SALE_HEIGHT,
       changeLockingBytecode: walletLock,
     });
     return finish(id, built, {

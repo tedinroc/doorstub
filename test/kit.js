@@ -23,7 +23,7 @@ import {
   signingDigest,
 } from '../src/tx/index.js';
 import { signDataMessage, signDigest, signP2pkhInput } from '../src/tx/sign.js';
-import { fakeCoin, freshKey, randomTxid } from './helpers.js';
+import { fakeCoin, freshKey, randomTxid, saleHeight } from './helpers.js';
 
 export const MODES = ['standard', 'consensus'];
 export const p2pkh = p2pkhLockingBytecode;
@@ -161,7 +161,7 @@ export const closeSalesUnlock = (ctx, key = ctx.organiser) => ({ transaction, so
 /** Inputs and outputs of an honest buy, ready to tamper with and re-assemble. */
 export const honestBuy = (ctx, { buyer = freshKey(), shard = ctx.shardUtxos[0], funding } = {}) => {
   const fundingCoin = funding ?? fakeCoin(buyer.pkh, 50_000);
-  const built = buildBuy({ show: ctx.show, boxOfficeUtxo: shard, fundingUtxos: [fundingCoin], buyerPkh: buyer.pkh });
+  const built = buildBuy({ show: ctx.show, boxOfficeUtxo: shard, fundingUtxos: [fundingCoin], buyerPkh: buyer.pkh, currentHeight: saleHeight(ctx.show) });
   return {
     buyer,
     built,

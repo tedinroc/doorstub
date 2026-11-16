@@ -19,7 +19,7 @@ import {
   sameBytes,
 } from '../src/tx/index.js';
 import { signDataMessage, signDigest } from '../src/tx/sign.js';
-import { assertValid, fakeCoin, freshKey, makeShow, signWallet, utxoAt } from './helpers.js';
+import { assertValid, fakeCoin, freshKey, makeShow, saleHeight, signWallet, utxoAt } from './helpers.js';
 
 /** Buy one seat on `shardUtxo` with a fresh buyer; returns the signed buy and its coins. */
 const buyOne = (ctx, shardUtxo, buyer = freshKey(), coinValue = 50_000) => {
@@ -28,6 +28,7 @@ const buyOne = (ctx, shardUtxo, buyer = freshKey(), coinValue = 50_000) => {
     boxOfficeUtxo: shardUtxo,
     fundingUtxos: [fakeCoin(buyer.pkh, coinValue)],
     buyerPkh: buyer.pkh,
+    currentHeight: saleHeight(ctx.show),
   });
   const signed = signWallet(built, buyer.privateKey);
   assertValid(assert, signed, 'buy');
@@ -85,6 +86,7 @@ test('buy: wallet pays with two coins and gets change', () => {
     boxOfficeUtxo: ctx.shardUtxos[0],
     fundingUtxos: [fakeCoin(buyer.pkh, 8_000), fakeCoin(buyer.pkh, 9_000, 3)],
     buyerPkh: buyer.pkh,
+    currentHeight: saleHeight(ctx.show),
   });
   assert.deepEqual(built.walletInputIndexes, [1, 2]);
   assert.equal(built.transaction.outputs.length, 4);

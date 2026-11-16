@@ -13,6 +13,13 @@ import {
   lockingBytecodeToCashAddress,
 } from '@bitauth/libauth';
 import { BoxOfficeArtifact, EscrowArtifact } from './artifacts.js';
+import {
+  MAX_MINER_FEE_CAP,
+  MAX_MINER_FEE_CAP_BPS,
+  MAX_POSTED_FEE_BPS,
+  MIN_MINER_FEE_CAP,
+  MIN_PRICE,
+} from './constants.js';
 import { DoorstubError, assertBytes, categoryToVmOrder } from './encoding.js';
 
 const encodeArgument = (value, type, name) => {
@@ -94,9 +101,13 @@ export const escrowContract = (show) =>
     BigInt(show.minerFeeCap),
   ]);
 
-/** BoxOffice for one show (every shard shares it; the shard number lives in the commitment). */
+/**
+ * BoxOffice for one show (every shard shares it; the shard number lives in the
+ * commitment). It commits to the show's category, so a shard of any other
+ * category can never sell here.
+ */
 export const boxOfficeContract = (show, escrowLockingBytecode) =>
-  instantiate(BoxOfficeArtifact, [BigInt(show.price), show.organiserPk, escrowLockingBytecode]);
+  instantiate(BoxOfficeArtifact, [categoryToVmOrder(show.category), BigInt(show.price), show.organiserPk, escrowLockingBytecode]);
 
 /** Both contracts of a show. */
 export const showContracts = (show) => {
@@ -106,6 +117,18 @@ export const showContracts = (show) => {
   return { escrow, boxOffice };
 };
 
+/**
+ * Check a show's posted parameters: types, and the app's policy bounds
+ * (SPEC.md section 6). Every builder and verifyGenesis call this, so a show
+ * outside the bounds can be neither built nor sold.
+ *
+ * - minerFeeCap: at least MIN_MINER_FEE_CAP (the largest single-coin Escrow
+ *   transaction at 1 sat/byte, so every path can pay its own fee), at most
+ *   MAX_MINER_FEE_CAP and at most MAX_MINER_FEE_CAP_BPS of the price.
+ * - handBackFeeBps and noShowFeeBps: at most MAX_POSTED_FEE_BPS (10%).
+ * - price: at least MIN_PRICE, which follows from the two cap bounds. Then
+ *   every honest output stays far above dust (SPEC.md section 6).
+ */
 export const validateShow = (show) => {
   assertBytes(show.category, 32, 'category');
   assertBytes(show.organiserPk, 33, 'organiserPk');
@@ -116,8 +139,19 @@ export const validateShow = (show) => {
     const value = BigInt(show[key]);
     if (value < 0n) throw new DoorstubError('bad-show', `${key} must not be negative`);
   }
-  if (BigInt(show.handBackFeeBps) > 10000n || BigInt(show.noShowFeeBps) > 10000n) {
-    throw new DoorstubError('bad-show', 'fees are in basis points (at most 10000)');
+  const price = BigInt(show.price);
+  const cap = BigInt(show.minerFeeCap);
+  if (BigInt(show.handBackFeeBps) > MAX_POSTED_FEE_BPS || BigInt(show.noShowFeeBps) > MAX_POSTED_FEE_BPS) {
+    throw new DoorstubError('bad-show', `posted fees are at most ${MAX_POSTED_FEE_BPS} bps (${Number(MAX_POSTED_FEE_BPS) / 100}%)`);
+  }
+  if (price < MIN_PRICE) {
+    throw new DoorstubError('bad-show', `price must be at least ${MIN_PRICE} sats (the miner-fee cap must fit within ${Number(MAX_MINER_FEE_CAP_BPS) / 100}% of it)`);
+  }
+  if (cap < MIN_MINER_FEE_CAP) {
+    throw new DoorstubError('bad-show', `minerFeeCap must be at least ${MIN_MINER_FEE_CAP} sats, or some Escrow paths cannot pay their own miner fee`);
+  }
+  if (cap > MAX_MINER_FEE_CAP || cap * 10000n > price * MAX_MINER_FEE_CAP_BPS) {
+    throw new DoorstubError('bad-show', `minerFeeCap must be at most ${MAX_MINER_FEE_CAP} sats and at most ${Number(MAX_MINER_FEE_CAP_BPS) / 100}% of the price`);
   }
   if (BigInt(show.startHeight) + BigInt(show.graceBlocks) >= 500_000_000n) {
     throw new DoorstubError('bad-show', 'startHeight + graceBlocks must be a block height (below 500,000,000)');

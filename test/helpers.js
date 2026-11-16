@@ -41,6 +41,9 @@ export const signWallet = (built, privateKey) => ({
   sourceOutputs: built.sourceOutputs,
 });
 
+/** A chain-tip height while sales are open (before the show starts). */
+export const saleHeight = (show) => Number(BigInt(show.startHeight)) - 1_000;
+
 /** Parameters of a sample show (category is set at genesis). */
 export const sampleShowParams = (organiser, dataKey, overrides = {}) => ({
   price: 10_000n,
@@ -51,7 +54,7 @@ export const sampleShowParams = (organiser, dataKey, overrides = {}) => ({
   graceBlocks: 144,
   handBackFeeBps: 0,
   noShowFeeBps: 0,
-  minerFeeCap: 5_000n,
+  minerFeeCap: 1_500n,
   ...overrides,
 });
 

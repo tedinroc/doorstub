@@ -18,7 +18,7 @@ import {
   evaluateTransaction,
 } from '../src/tx/index.js';
 import { signDataMessage } from '../src/tx/sign.js';
-import { fakeCoin, freshKey, makeShow, signWallet, utxoAt } from './helpers.js';
+import { fakeCoin, freshKey, makeShow, saleHeight, signWallet, utxoAt } from './helpers.js';
 
 const artifact = (name) => JSON.parse(readFileSync(new URL(`../contracts/${name}.json`, import.meta.url), 'utf8'));
 
@@ -45,7 +45,7 @@ test('redeem scripts, locking and unlocking bytecode match the CashScript SDK', 
 
   const sdkBoxOffice = new Contract(
     artifact('BoxOffice'),
-    [BigInt(show.price), show.organiserPk, contracts.escrow.lockingBytecode],
+    [categoryToVmOrder(show.category), BigInt(show.price), show.organiserPk, contracts.escrow.lockingBytecode],
     { provider, addressType: 'p2sh32' },
   );
   assert.equal(sdkBoxOffice.bytecode, binToHex(contracts.boxOffice.redeemScript));
@@ -80,6 +80,7 @@ test('the VM helper rejects a buy whose ticket names the wrong seat', () => {
     boxOfficeUtxo: ctx.shardUtxos[0],
     fundingUtxos: [fakeCoin(buyer.pkh, 50_000)],
     buyerPkh: buyer.pkh,
+    currentHeight: saleHeight(ctx.show),
   });
   const outputs = built.transaction.outputs.slice();
   const wrongSeat = encodeSeat({ shard: 0, sold: 2 });
@@ -98,7 +99,7 @@ test('the VM helper rejects settle before start + grace and a refund signed by t
   const ctx = makeShow(assert);
   const buyer = freshKey();
   const sale = signWallet(
-    buildBuy({ show: ctx.show, boxOfficeUtxo: ctx.shardUtxos[1], fundingUtxos: [fakeCoin(buyer.pkh, 50_000)], buyerPkh: buyer.pkh }),
+    buildBuy({ show: ctx.show, boxOfficeUtxo: ctx.shardUtxos[1], fundingUtxos: [fakeCoin(buyer.pkh, 50_000)], buyerPkh: buyer.pkh, currentHeight: saleHeight(ctx.show) }),
     buyer.privateKey,
   );
   const escrowCoin = utxoAt(sale.transaction, 2);
