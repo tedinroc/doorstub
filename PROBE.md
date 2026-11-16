@@ -24,15 +24,9 @@
 
 ## 怎麼打開頁面
 
-在 repo 資料夾裡：
+**首選：直接打開單一檔案，不需要伺服器。** 用 Chrome 打開 repo 裡的 `dist/doorstub-probe.html`（Finder 裡雙擊，或在終端機執行 `open -a "Google Chrome" dist/doorstub-probe.html`）。這個檔案已經用模擬錢包從 `file://` 跑過完整流程（A-free、B、C 通過，D 照預期被拒）。檔案不在或太舊時，先執行 `npm run probe:build` 重新產生。
 
-```
-npm run probe
-```
-
-然後用瀏覽器打開 **http://localhost:5180** （如果終端機顯示的是別的埠號，就用它顯示的網址）。
-
-備案：執行 `npm run probe:build`，會產生一個單一檔案 `dist/doorstub-probe.html`，直接雙擊用 Chrome 打開也可以用。
+備案：在 repo 資料夾執行 `npm run probe`，再打開 http://localhost:5180 。這個伺服器要一直開著，關掉終端機頁面就會進不去。
 
 ## 測試順序
 
