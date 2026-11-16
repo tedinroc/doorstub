@@ -210,6 +210,7 @@ export const LABELS = Object.freeze({
   settles2: 'Settles',
   refunds: 'Refunds',
   latest: 'latest',
+  refundProgress: 'Refund progress',
   stepHeld: 'Ticket held',
   stepNotice: 'Organiser refund notice',
   stepSent: 'Refund sent',

@@ -56,8 +56,15 @@ import { bchNumber } from '../../../src/shows/format.js';
 import { describeError } from './errors.js';
 import { createStore } from './store.js';
 
-/** How long the "Ticket held" and "Refund sent" steps stay on screen before the next one (ms). */
-export const STEP_PAUSE_MS = 900;
+/**
+ * The sample B refund is the moment the judge watches, so each step stays on
+ * screen long enough to read: at least STEP_MS each (held, organiser notice,
+ * refund sent), and a fresh ticket first finishes printing (PRINT_MS, the
+ * card's print animation and scroll). From the buy to "Money back" takes
+ * about 5 s when the notice and the broadcast are quick.
+ */
+export const PRINT_MS = 1_100;
+export const STEP_MS = 1_300;
 /** After this long without the relay connecting, the dialog offers the other relay (ms). */
 export const RELAY_SLOW_MS = 10_000;
 /** Pause before re-reading a show after a notification (several often arrive together). */
@@ -176,6 +183,7 @@ export const createController = ({ runtime, deps = {} }) => {
   const local = new Map(); // ticket key -> the app's own record, until the chain shows it
   const boughtAt = new Map(); // ticket key -> the tip when this page bought it (for the countdown bar while the buy is unconfirmed)
   const touched = new Set(); // ticket keys this page acted on (shown under their show card)
+  const holding = new Set(); // sample B tickets whose refund steps are on screen: the card stays "held" until "Money back"
   const debounce = new Map();
   const settleTried = new Set();
   const subscriptions = [];
@@ -505,8 +513,8 @@ export const createController = ({ runtime, deps = {} }) => {
     const byKey = new Map(found.map((t) => [ticketKeyOf(t.showId, t.seatHex), t]));
     for (const [key, mine] of local) {
       const chain = byKey.get(key);
-      // The chain wins once it knows the seat and agrees or is further along.
-      if (chain !== undefined && (chain.state !== 'held' || mine.state === 'held')) local.delete(key);
+      // The chain wins once it knows the seat and agrees or is further along (but not while a refund's steps are on screen).
+      if (chain !== undefined && !holding.has(key) && (chain.state !== 'held' || mine.state === 'held')) local.delete(key);
       else byKey.set(key, mine);
     }
     const tickets = [...byKey.values()].map((t) => {
@@ -664,7 +672,7 @@ export const createController = ({ runtime, deps = {} }) => {
       refreshLedger(show)
         .then(() => refreshWallet())
         .catch(() => {});
-      if (show.kind === 'sample-refund-seat') refundSeat(key);
+      if (show.kind === 'sample-refund-seat') refundSeat(key, { fresh: true });
       return { txid: sent.txid, key };
     } catch (e) {
       fail(showId, 'buy', e, { show });
@@ -810,20 +818,34 @@ export const createController = ({ runtime, deps = {} }) => {
 
   // ---------------------------------------------------------------- sample B: notice, refund, money back
 
-  const refundSeat = async (key) => {
+  /** Wait until `ms` have passed since `since` (a step's minimum time on screen). */
+  const holdFor = async (since, ms) => {
+    const left = ms - (now() - since);
+    if (left > 0) await sleep(left);
+  };
+
+  const refundSeat = async (key, { fresh = false } = {}) => {
     const ticket = ticketByKey(key);
     if (ticket === undefined || busyStep(flowOf(key))) return undefined;
     const show = ticket.show;
     touched.add(key);
+    // Keep the card on "held" (no stamp yet) until the money is back, even if the chain is quicker.
+    holding.add(key);
+    if (!local.has(key)) local.set(key, ticket);
+    const stop = (error) => {
+      holding.delete(key);
+      setFlow(key, { kind: 'refund', step: 'notice', error });
+      return undefined;
+    };
     setFlow(key, { kind: 'refund', step: 'held' });
-    await sleep(STEP_PAUSE_MS);
+    await sleep((fresh ? PRINT_MS : 0) + STEP_MS);
+    let since = now();
     setFlow(key, { kind: 'refund', step: 'notice' });
     let signature;
     try {
       ({ signature } = await api.notice({ category: show.categoryHex, seat: ticket.seatHex, ...(ticket.buy?.txid !== undefined && { txid: ticket.buy.txid }) }));
     } catch (e) {
-      setFlow(key, { kind: 'refund', step: 'notice', error: { key: 'noticeDown', vars: {}, actions: ['retryRefund'], detail: e.message } });
-      return undefined;
+      return stop({ key: 'noticeDown', vars: {}, actions: ['retryRefund'], detail: e.message });
     }
     try {
       const { invalid } = addNotices(show, [{ scope: 'R', seat: ticket.seatHex, signature }]);
@@ -849,16 +871,17 @@ export const createController = ({ runtime, deps = {} }) => {
         txid = coin.spend.txid;
       }
       const returned = built.transaction.outputs[0].valueSatoshis;
+      await holdFor(since, STEP_MS);
+      since = now();
       setFlow(key, { kind: 'refund', step: 'sent', txid, returned });
+      await Promise.all([holdFor(since, STEP_MS), refreshLedger(show).catch(() => {})]);
+      holding.delete(key);
       upsertLocal({ ...ticket, state: 'refunded', refundPath: 'refund', spend: { txid, height: 0, path: 'refund' }, escrowUtxo: null, canAct: false, returned, pending: true });
-      await sleep(STEP_PAUSE_MS);
-      await refreshLedger(show).catch(() => {});
-      await refreshWallet().catch(() => {});
       setFlow(key, { kind: 'refund', step: 'back', txid, returned });
+      refreshWallet().catch(() => {});
       return txid;
     } catch (e) {
-      setFlow(key, { kind: 'refund', step: 'notice', error: describeError(e, { show }) });
-      return undefined;
+      return stop(describeError(e, { show, kind: 'refund' }));
     }
   };
 

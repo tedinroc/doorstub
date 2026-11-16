@@ -191,7 +191,7 @@ export const FlowStatus = ({ flow, onAction, onCancel }) => {
 };
 
 export const RefundTrack = ({ step }) => (
-  <ol class="track" aria-label={LABELS.stepNotice}>
+  <ol class="track" aria-label={LABELS.refundProgress}>
     {refundTrack(step).map((s) => (
       <li key={s.id} class={`step${s.done ? ' done' : ''}${s.active ? ' active' : ''}`} style="list-style:none">
         <span class="dot" aria-hidden="true" />

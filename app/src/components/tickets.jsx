@@ -190,7 +190,16 @@ export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack
                 <p>{model.settleSmall}</p>
               </div>
             ) : null}
-            {model.autoRefund && (refundRunning || !held) ? <RefundTrack step={held ? flow?.step ?? 'held' : 'back'} /> : null}
+            {model.autoRefund && (refundRunning || !held) ? (
+              <>
+                <RefundTrack step={refundRunning && flow.error === undefined ? flow.step : held ? 'held' : 'back'} />
+                {refundRunning && flow.step === 'sent' && flow.txid ? (
+                  <div class="track-tx">
+                    <TxLink network={network} label={LABELS.refundTx} txid={flow.txid} />
+                  </div>
+                ) : null}
+              </>
+            ) : null}
             {flow !== undefined && (flow.step !== 'done' || flow.error !== undefined) && flow.kind !== 'refund' && flow.step !== 'door' ? (
               <FlowStatus flow={flow} onAction={onAction} onCancel={onCancel} />
             ) : null}

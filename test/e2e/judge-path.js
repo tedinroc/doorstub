@@ -343,13 +343,40 @@ try {
 
   // ---------------------------------------------------------------- sample B: the refund arrives with no second approval
   const approvals = wallet.log.length;
+  // Record when each refund step reaches the page (the store, not the poll), to check every step stays readable.
+  // (The store changes before the page renders, so `stamped` says whether the card showed a stamp up to that change.)
+  await page.evaluate((showId) => {
+    window.__refundSteps = [];
+    window.__doorstub.controller.store.subscribe((s) => {
+      for (const f of Object.values(s.flows)) {
+        if (f?.kind !== 'refund') continue;
+        const last = window.__refundSteps.at(-1);
+        if (last?.step !== f.step) window.__refundSteps.push({ step: f.step, at: performance.now(), stamped: document.querySelector(`[data-ticket^="${showId}:"] .stamp`) !== null });
+      }
+    });
+  }, showB.id);
   await click(page, `[data-buy="${showB.id}"]`);
   const keyB = await waitState(page, (s) => s.flows[showB.id]?.step === 'done' && s.flows[showB.id].ticketKey, 'buy B', 60_000);
   const buyB = (await state(page)).flows[showB.id].txid;
   const b = await checkBuyOnChain(showB, buyB, 'buy B');
-  await sleep(400);
-  await shot(page, '05-b-notice', { selector: `[data-ticket="${keyB}"]` });
+  // The judge sees the organiser's notice step on its own (screenshot at the phone size, while it is the active step).
+  await waitState(page, (s) => s.flows[keyB]?.step === 'notice' && s.flows[keyB], 'B notice step', 30_000);
+  await page.evaluate((sel) => document.querySelector(sel)?.scrollIntoView({ block: 'center', behavior: 'instant' }), `[data-ticket="${keyB}"]`);
+  ok((await domText(page, `[data-ticket="${keyB}"] .track .step.active`)) === 'Organiser refund notice', 'B: the "Organiser refund notice" step is the active one on its own');
+  ok((await page.$(`[data-ticket="${keyB}"] .stamp`)) === null, 'B: no REFUNDED stamp during the notice step');
+  await page.screenshot({ path: join(SCREENS, '05-b-notice-390.png') });
+  await waitState(page, (s) => s.flows[keyB]?.step === 'sent' && s.flows[keyB], 'B sent step', 30_000);
+  ok((await domText(page, `[data-ticket="${keyB}"] .track .step.active`)) === 'Refund sent', 'B: "Refund sent" is shown as the active step');
+  await page.screenshot({ path: join(SCREENS, '05b-b-sent-390.png') });
   await waitState(page, (s) => s.flows[keyB]?.step === 'back', 'B refund sequence', 60_000);
+  const steps = await page.evaluate(() => window.__refundSteps);
+  const at = Object.fromEntries(steps.map((x) => [x.step, x]));
+  const spans = { held: at.notice.at - at.held.at, notice: at.sent.at - at.notice.at, sent: at.back.at - at.sent.at };
+  log(`B refund steps: ${Object.entries(spans).map(([k, v]) => `${k} ${Math.round(v)} ms`).join(', ')}; held to money back ${Math.round(at.back.at - at.held.at)} ms`);
+  ok(['held', 'notice', 'sent', 'back'].every((k) => at[k] !== undefined), 'B: the four refund steps came in order');
+  ok(Object.values(spans).every((v) => v >= 1_150), `B: every step stays on screen at least about 1.2 s (${JSON.stringify(spans)})`);
+  ok(at.back.at - at.held.at <= 7_500, 'B: from "Ticket held" to "Money back" in under about 7 s');
+  ok(!at.held.stamped && !at.notice.stamped && !at.sent.stamped && !at.back.stamped, 'B: the REFUNDED stamp comes only with "Money back"');
   await page.waitForSelector(`[data-ticket="${keyB}"][data-state="refunded"]`, { timeout: 30_000 });
   const refundTxid = (await state(page)).flows[keyB].txid;
   ok(wallet.log.length === approvals + 1, 'B: the wallet was asked once (the buy), never for the refund');
