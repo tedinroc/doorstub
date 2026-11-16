@@ -92,18 +92,16 @@ export const FlowStatus = ({ flow, onAction, onCancel }) => {
           <span>{say(flow.error.key, flow.error.vars)}</span>
         </div>
         {flow.error.detail ? <div class="detail">{flow.error.detail}</div> : null}
-        {actions.length > 0 ? (
-          <div class="actions">
-            {actions.map((a, i) => (
-              <button type="button" key={a} class={i === 0 ? 'btn small' : 'btn quiet small'} onClick={() => onAction(a)}>
-                {ACTION_LABEL[a]}
-              </button>
-            ))}
-            <button type="button" class="linkish" onClick={() => onAction('dismiss')}>
-              {LABELS.close}
+        <div class="actions">
+          {actions.map((a, i) => (
+            <button type="button" key={a} class={i === 0 ? 'btn small' : 'btn quiet small'} onClick={() => onAction(a)}>
+              {ACTION_LABEL[a]}
             </button>
-          </div>
-        ) : null}
+          ))}
+          <button type="button" class="linkish" onClick={() => onAction('dismiss')}>
+            {LABELS.close}
+          </button>
+        </div>
       </div>
     );
   }
@@ -112,7 +110,7 @@ export const FlowStatus = ({ flow, onAction, onCancel }) => {
       <div class="flow" role="status">
         <div class="line">
           <span class="spin" aria-hidden="true" />
-          <span>{flow.retrying ? say('shardTaken') : flow.kind === 'buy' ? say('buyPreparing') : say('sending')}</span>
+          <span>{flow.retrying ? say(flow.retryReason ?? 'shardTaken') : flow.kind === 'buy' ? say('buyPreparing') : say('sending')}</span>
         </div>
       </div>
     );
@@ -122,7 +120,7 @@ export const FlowStatus = ({ flow, onAction, onCancel }) => {
       <div class="flow" role="status" data-flow="approve">
         {flow.retrying ? (
           <div class="line">
-            <span>{say('shardTaken')}</span>
+            <span>{say(flow.retryReason ?? 'shardTaken')}</span>
           </div>
         ) : null}
         <div class="line">

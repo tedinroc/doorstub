@@ -173,7 +173,7 @@ export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack
               </div>
             ) : null}
             {model.autoRefund && (refundRunning || !held) ? <RefundTrack step={held ? flow?.step ?? 'held' : 'back'} /> : null}
-            {flow !== undefined && flow.step !== 'done' && flow.kind !== 'refund' && flow.step !== 'door' ? (
+            {flow !== undefined && (flow.step !== 'done' || flow.error !== undefined) && flow.kind !== 'refund' && flow.step !== 'door' ? (
               <FlowStatus flow={flow} onAction={onAction} onCancel={onCancel} />
             ) : null}
             {refundRunning && flow.error !== undefined ? <FlowStatus flow={flow} onAction={onAction} onCancel={onCancel} /> : null}

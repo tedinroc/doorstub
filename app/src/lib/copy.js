@@ -48,6 +48,8 @@ export const SENTENCES = Object.freeze({
   sending: "Checking your wallet's signature, then sending the transaction.",
   buyHeld: 'Your {price} is held by contract coin {outpoint}.',
   shardTaken: 'Someone bought on the same box-office shard at the same moment. Please approve once more.',
+  coinsChanged: 'A coin from your wallet was spent elsewhere at the same moment. Please approve once more.',
+  coinSpent: "Another transaction spent this ticket's contract coin first, so the network refused this one. The card shows where the money went.",
   needMore: 'You need about {need} for this ticket; your wallet has {have} in plain BCH.',
   onlyTokens: 'Your wallet holds only token coins here. A ticket needs plain BCH to pay.',
   walletDeclined: 'Your wallet declined: “{reason}”. Nothing was sent.',

@@ -17,6 +17,8 @@ import { createApi } from '../../app/src/lib/api.js';
 import { say } from '../../app/src/lib/copy.js';
 import { memoryStorage } from '../../src/wallet/index.js';
 import { settleOpensAt } from '../../src/shows/index.js';
+import { checkSignatureFree, fetchShowLedger, liveEscrowUtxos } from '../../src/chain/index.js';
+import { buildSettle } from '../../src/tx/index.js';
 import { makeSimWallet } from '../support/sim-wallet.js';
 import { stubApi, stubErrorBody } from '../support/stub-worker.js';
 import { scratchDir } from '../simnet/support.js';
@@ -51,7 +53,7 @@ const apiOver = (stub, intercept = async () => {}) =>
     },
   });
 
-const setup = async (t, { walletOptions = {}, behaviour = {}, intercept } = {}) => {
+const setup = async (t, { walletOptions = {}, behaviour = {}, intercept, deps = {} } = {}) => {
   const simnet = await startSimnet({ port: 0, seed: 'app-controller', height: 977_600 });
   t.after(() => simnet.close());
   const scratch = scratchDir('app-controller');
@@ -71,6 +73,7 @@ const setup = async (t, { walletOptions = {}, behaviour = {}, intercept } = {}) 
       api: apiOver(stub, intercept === undefined ? undefined : (path, body) => intercept(path, body, { simnet })),
       sleep: async () => {},
       dappIcon: 'https://doorstub.pages.dev/icon.png',
+      ...deps,
     },
   });
   t.after(async () => {
@@ -291,6 +294,32 @@ test('walk in: the door claim is reserved before the check-in is sent; a failed 
   assert.equal(say(flow.doorError.key, flow.doorError.vars), 'The door already gave the event link for this check-in to another page, so it cannot give it here.');
   const pageAsks = stub.calls.filter((c) => c.endpoint === 'door' && c.txid === sent2.txid && c.claim !== 'ee'.repeat(32));
   assert.equal(pageAsks.length, 1, 'a 409 is not retried');
+});
+
+test('a hand-back that loses the race to a settle says another transaction spent the coin, and the card shows the settle', async (t) => {
+  const { controller, wallet, state } = await setup(t, { deps: { keeper: false } });
+  await controller.start();
+  const showA = controller.onSale().find((s) => s.kind === 'sample-settle');
+  await controller.pool.request('simnet.fund', { address: wallet.addressAt('receive', 0).address, sats: 1_000_000, mine: true });
+  await controller.connect();
+  await waitFor(() => state().wallet.state === 'connected' && state().wallet.balance !== null, 'wallet ready');
+  const bought = await controller.buy(showA.id);
+  assert.ok(bought?.key, JSON.stringify(state().flows[showA.id]?.error));
+  const tip = state().chain.tip;
+  await controller.pool.request('simnet.mine', { blocks: settleOpensAt(showA) - 1 - tip });
+  await waitFor(() => state().chain.tip === settleOpensAt(showA) - 1, 'the tip passed start + grace');
+  // Anyone (here the test, through the same servers) pushes the settle just before the holder's hand-back goes out.
+  const coins = liveEscrowUtxos(await fetchShowLedger(controller.pool, showA, { contracts: showA.contracts }));
+  assert.equal(coins.length, 1);
+  await controller.pool.broadcastChecked(checkSignatureFree(buildSettle({ show: showA, escrowUtxos: coins, contracts: showA.contracts })));
+  await controller.handBack(bought.key);
+  const flow = state().flows[bought.key];
+  assert.equal(flow.error?.key, 'coinSpent', JSON.stringify(flow));
+  assert.deepEqual(flow.error.actions, []);
+  const ticket = state().tickets.find((x) => `${x.showId}:${x.seatHex}` === bought.key);
+  assert.equal(ticket.state, 'refunded');
+  assert.equal(ticket.refundPath, 'settle');
+  assert.equal(wallet.log.length, 2, 'the buy and the hand-back were signed; nothing else');
 });
 
 test('reopening the connect dialog shows the same link while it waits for a wallet; the other relay makes a new one', async () => {

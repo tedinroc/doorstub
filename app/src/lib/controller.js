@@ -502,7 +502,24 @@ export const createController = ({ runtime, deps = {} }) => {
       setFlow(key, null);
       return;
     }
-    setFlow(key, { ...(flowOf(key) ?? {}), kind, error: describeError(e, context) });
+    setFlow(key, { ...(flowOf(key) ?? {}), kind, error: describeError(e, { ...context, kind }) });
+  };
+
+  /**
+   * A hand-back or walk-in the network refused as a conflict: read the show's
+   * ledger. When the ticket's coin was spent by another transaction (a settle
+   * or refund that got there first), refresh the tickets so the card shows
+   * what happened, and say so. Returns true when it handled the error.
+   */
+  const coinSpentFirst = async (key, kind, ticket, e) => {
+    if (!(e instanceof BroadcastError && e.conflict)) return false;
+    const ledger = await refreshLedger(ticket.show).catch(() => null);
+    const coin = ledger?.bySeat.get(ticket.seatHex);
+    if (coin?.spend === null || coin?.spend === undefined) return false;
+    local.delete(key);
+    await refreshTickets().catch(() => {});
+    setFlow(key, { kind, step: 'done', error: { key: 'coinSpent', vars: {}, actions: [], detail: e.message } });
+    return true;
   };
 
   // ---------------------------------------------------------------- buy
@@ -539,7 +556,7 @@ export const createController = ({ runtime, deps = {} }) => {
    * Buy a ticket for a show. Without a wallet, opens the connect dialog and
    * buys once the wallet is ready.
    */
-  const buy = async (showId, { retrying = false, avoid = new Set() } = {}) => {
+  const buy = async (showId, { retrying = false, avoid = new Set(), reason } = {}) => {
     const show = showById(showId);
     if (show === undefined) return;
     if (session?.wallet == null || get().wallet.state !== 'connected') {
@@ -548,7 +565,7 @@ export const createController = ({ runtime, deps = {} }) => {
       return;
     }
     if (!retrying && busyStep(flowOf(showId))) return;
-    setFlow(showId, { kind: 'buy', step: 'preparing', retrying });
+    setFlow(showId, { kind: 'buy', step: 'preparing', retrying, ...(reason !== undefined && { retryReason: reason }) });
     try {
       const height = (await pool.tip()).height;
       if (!salesOpen(show, height)) {
@@ -573,9 +590,13 @@ export const createController = ({ runtime, deps = {} }) => {
         sent = await signCheckSend(showId, 'buy', show, built);
       } catch (e) {
         if (e instanceof BroadcastError && e.conflict && !retrying) {
-          avoid.add(outpointKey(shard.txid, shard.vout));
+          // Which input lost the race? Read the wallet's coins and the open shards again, then ask once more.
+          const shardKey = outpointKey(shard.txid, shard.vout);
           setFlow(showId, { kind: 'buy', step: 'preparing', retrying: true });
-          return buy(showId, { retrying: true, avoid });
+          await rescan();
+          const shardOpen = (await openShards(pool, show)).some((u) => outpointKey(u.txid, u.vout) === shardKey);
+          if (!shardOpen) avoid.add(shardKey);
+          return buy(showId, { retrying: true, avoid, reason: shardOpen ? 'coinsChanged' : 'shardTaken' });
         }
         throw e;
       }
@@ -617,6 +638,7 @@ export const createController = ({ runtime, deps = {} }) => {
         .catch(() => {});
       return sent;
     } catch (e) {
+      if (await coinSpentFirst(key, 'handBack', ticket, e)) return undefined;
       fail(key, 'handBack', e, { show });
       return undefined;
     }
@@ -709,6 +731,7 @@ export const createController = ({ runtime, deps = {} }) => {
       await askDoor(key, show, sent.txid);
       return sent;
     } catch (e) {
+      if (await coinSpentFirst(key, 'walkIn', ticket, e)) return undefined;
       fail(key, 'walkIn', e, { show });
       return undefined;
     }

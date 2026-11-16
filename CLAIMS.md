@@ -158,7 +158,9 @@ Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js
 | `Approve in {wallet}. It shows: “{prompt}”` | `{prompt}` is the exact `userPrompt` sent with the request (section 7). |
 | `Checking your wallet's signature, then sending the transaction.` | `checkSignedReply`, then `broadcastChecked`. |
 | `Your {price} is held by contract coin {outpoint}.` | C1; `{outpoint}` is the buy's Escrow output. |
-| `Someone bought on the same box-office shard at the same moment. Please approve once more.` | Section 4, limit 12; the app rebuilds on another shard. |
+| `Someone bought on the same box-office shard at the same moment. Please approve once more.` | Section 4, limit 12; shown when the network refused the buy as a conflict and the shard it used is no longer open on chain; the app reads the wallet's coins again and rebuilds on another shard. |
+| `A coin from your wallet was spent elsewhere at the same moment. Please approve once more.` | Shown when the network refused the buy as a conflict while its shard is still open on chain, so the conflicting input was one of the wallet's coins; the app reads the wallet's coins again before it rebuilds. |
+| `Another transaction spent this ticket's contract coin first, so the network refused this one. The card shows where the money went.` | Shown when a hand-back or walk-in is refused as a conflict and the show's ledger (`src/chain/ledger.js`) shows the ticket's escrow coin already spent (a settle or refund pushed by anyone, section 4 limit 2); the card then shows that spend from the chain. |
 | `You need about {need} for this ticket; your wallet has {have} in plain BCH.` | `{need}` is the price, the two token outputs and the network fee; `{have}` is the wallet's plain coins. |
 | `Your wallet holds only token coins here. A ticket needs plain BCH to pay.` | `buildBuy` takes only coins without tokens. |
 | `Your wallet declined: “{reason}”. Nothing was sent.` | `{reason}` is the wallet's own words. |

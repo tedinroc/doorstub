@@ -157,6 +157,11 @@ test('every stuck state has a plain sentence and a next step', () => {
     [Object.assign(new Error('no open box-office shard'), { code: 'no-open-shard' }), 'salesClosed', ['nextInstance'], null],
     [Object.assign(new Error('outputs differ'), { name: 'CheckError' }), 'replyFailed', ['retry'], null],
   ];
+  // A conflict is a shard taken only on a buy; on a hand-back or walk-in the network's words are shown (the controller then reads the ledger).
+  const conflict = Object.assign(new BroadcastError('conflict', 'txn-mempool-conflict'), { conflict: true });
+  assert.equal(describeError(conflict, { show, kind: 'buy' }).key, 'shardTaken');
+  assert.equal(describeError(conflict, { show, kind: 'handBack' }).key, 'refused');
+  assert.equal(describeError(conflict, { show, kind: 'walkIn' }).key, 'refused');
   for (const [error, key, actions, sentence] of cases) {
     const d = describeError(error, { show });
     assert.equal(d.key, key, `${error.message} -> ${d.key}`);
