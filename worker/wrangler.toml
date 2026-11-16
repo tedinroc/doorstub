@@ -1,0 +1,13 @@
+# The cron-only keeper Worker. No public URL (workers_dev = false, no routes).
+# Deploying is the organiser's job (never an agent's): see worker/RUNTIME.md.
+# Secrets (wrangler secret put): STUDIO_DATA_KEY. Local values go in worker/.dev.vars (gitignored).
+name = "doorstub-keeper"
+main = "cron.js"
+compatibility_date = "2024-11-11"
+workers_dev = false
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+SHOWS_URL = "https://doorstub.pages.dev/shows.json"

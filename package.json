@@ -21,7 +21,10 @@
     "app:sim": "node scripts/app-sim.js",
     "app:build": "vite build app && node scripts/check-app-dist.js",
     "app:build:simnet": "vite build app --mode simnet",
-    "e2e": "node test/e2e/judge-path.js"
+    "e2e": "node test/e2e/judge-path.js",
+    "worker:dev": "node worker/node/cli.js",
+    "keeper": "node worker/node/keeper-cli.js",
+    "worker:workerd-check": "node worker/scripts/workerd-check.js"
   },
   "dependencies": {
     "@bitauth/libauth": "3.1.0-next.8",
