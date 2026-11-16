@@ -18,16 +18,43 @@ export const cashonizeLink = (uri) => `https://cashonize.com/?uri=${encodeURICom
  * Start a new pairing. Returns { uri, qrUri, manager, close() }.
  * Events: onStatus(statusCode, error), onWalletReady(info), onDisconnect(reason, message).
  */
+/**
+ * @wizardconnect/dapp 0.2.7 waits only 30 s after the relay connects for the
+ * wallet's key exchange, then stops without ever sending dapp_ready. A wallet
+ * that joins later (a pasted link in Paytaca, a slow QR scan) then waits for
+ * the dapp forever ("waiting for dApp"), while the dapp waits for the wallet.
+ * Once the key exchange completes late, re-run the library's own "connected"
+ * handler, which sends dapp_ready straight away. At most one nudge per
+ * LATE_JOIN_NUDGE_MS; nothing changes for a wallet that joins in time.
+ */
+export const LIBRARY_KEY_EXCHANGE_WAIT_MS = 30_000;
+const LATE_JOIN_NUDGE_MS = 10_000;
+
 export const startPairing = ({ onStatus = () => {}, onWalletReady = () => {}, onDisconnect = () => {} } = {}) => {
   const manager = new DappConnectionManager(DAPP_NAME, undefined, { session: false });
+  let client = null;
+  let connectedAt = 0;
+  let nudgedAt = 0;
+  let ready = false;
   const relay = initiateDappRelay(
     (payload) => {
+      if (payload.client) client = payload.client;
+      if (payload.status.status === 'connected') connectedAt = Date.now();
       manager.updateConnection(payload.client, payload.status);
       onStatus(payload.status.status, payload.status.error);
     },
     { explicitRelayUrls: RELAY_URLS },
   );
+  const lateJoin = setInterval(() => {
+    if (ready || !client || connectedAt === 0) return;
+    if (typeof client.isKeyExchangeComplete !== 'function' || !client.isKeyExchangeComplete()) return;
+    const now = Date.now();
+    if (now - connectedAt < LIBRARY_KEY_EXCHANGE_WAIT_MS || now - nudgedAt < LATE_JOIN_NUDGE_MS) return;
+    nudgedAt = now;
+    manager.updateConnection(client, { status: 'connected' });
+  }, 1000);
   manager.on('walletready', () => {
+    ready = true;
     try {
       onWalletReady(walletInfo(manager));
     } catch (e) {
@@ -40,6 +67,7 @@ export const startPairing = ({ onStatus = () => {}, onWalletReady = () => {}, on
   const close = async () => {
     if (closed) return;
     closed = true;
+    clearInterval(lateJoin);
     try {
       await manager.sendDisconnect('Doorstub probe closed');
     } catch {
