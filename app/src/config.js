@@ -11,7 +11,7 @@ export const BLAZE = Object.freeze({
   /** Link to the public source repository. */
   sourceUrl: 'https://github.com/tedinroc/doorstub',
   /** EMBER2026 CashTokens donation address (token-aware cashaddr, bitcoincash:z...). */
-  donationAddress: 'bitcoincash:zpl0qvaudan6nazjrfktmnypw97gdx4pfvrl9lvx7p',
+  donationAddress: 'bitcoincash:zrz5jxjyqf2cduzsjylsl6uax9hpllew5u9gnaldck',
 });
 
 /** Block explorer for transaction links (checked to show CashTokens outputs, commitments included). */
