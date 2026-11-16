@@ -9,8 +9,8 @@ import { DEFAULT_ORIGIN, NETWORKS, SHOW_KINDS, paramsFromShow, showFromParams } 
 export const BLOCK_SECONDS = 600;
 
 /**
- * How many blocks after its call ends a real show's sales end on chain (its
- * startHeight): a base plus a share of the blocks until the call ends. Blocks
+ * How many blocks after its call ends a real show's startHeight comes (where
+ * the app and the builders stop selling; BCH cannot stop a sale on chain): a base plus a share of the blocks until the call ends. Blocks
  * can come early, and the further ahead the call, the earlier they can come:
  * in mainnet headers of the last 200 days, 144 blocks once took 12 hours. With
  * this margin, the block came before the call ended in about 2 to 3% of
