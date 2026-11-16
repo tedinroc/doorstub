@@ -71,7 +71,7 @@ export const ConnectDialog = ({ open, wallet, onClose, onOtherRelay }) => {
             <div class="kicker">
               <span>Doorstub · WizardConnect</span>
             </div>
-            <h2 class="display" id="connect-title">
+            <h2 class="display" id="connect-title" tabIndex={-1} autofocus>
               {LABELS.connect}
             </h2>
             <p class="intro">{say('connectIntro')}</p>

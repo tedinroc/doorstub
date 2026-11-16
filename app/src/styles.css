@@ -160,6 +160,8 @@ button { font: inherit; color: inherit; }
 .wallet-chip .name { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 9em; display: none; }
 .wallet-chip .bal { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .wallet-chip .count { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--paper); border-radius: 999px; padding: 5px 6px 5px 10px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+.wallet-chip .count .short { display: none; }
+@media (max-width: 400px) { .wallet-chip .count .long { display: none; } .wallet-chip .count .short { display: inline; } }
 .wallet-chip .count .n { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-size: 12px; }
 .wallet-chip.pulse { animation: chipPulse 0.9s var(--ease-out); }
 @keyframes chipPulse { 0% { transform: scale(1); } 35% { transform: scale(1.08); box-shadow: 0 0 0 6px color-mix(in srgb, var(--gold) 45%, transparent); } 100% { transform: scale(1); box-shadow: 0 0 0 0 transparent; } }
@@ -442,30 +444,40 @@ button { font: inherit; color: inherit; }
 
 /* ------------------------------------------------------------ how it works */
 
-.how { display: grid; gap: 14px; }
-.how .start { display: grid; gap: 14px; align-items: stretch; }
-.how .box { position: relative; background: var(--face); border: 1px solid var(--rule); border-radius: var(--radius); padding: 16px; }
-.how .box h3 { margin: 0 0 6px; font-size: 22px; line-height: 1; }
-.how .box p { margin: 0; color: var(--ink-soft); font-size: 14.5px; }
-.how .box .tag { font: 800 10.5px/1 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 8px; display: block; }
+.how { display: grid; gap: 26px; position: relative; }
+.how .box { position: relative; background: var(--face); border: 1px solid var(--rule); border-radius: var(--radius); padding: 15px 16px 16px; }
+.how .box h3 { margin: 0 0 6px; font-size: 22px; line-height: 1; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+.how .box p { margin: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.45; }
+.how .box .tag { font: 800 10px/1 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 8px; display: block; }
+.how .box .to { font: 700 11px/1 var(--font-mono); letter-spacing: 0.06em; padding: 4px 8px; border-radius: 999px; background: color-mix(in srgb, var(--tone, var(--ink)) 13%, transparent); color: var(--tone, var(--ink)); text-transform: uppercase; }
 .how .coin-box { background: var(--night); color: var(--on-night); border-color: var(--night); }
 .how .coin-box p { color: color-mix(in srgb, var(--on-night) 75%, transparent); }
 .how .coin-box .tag { color: var(--gold); }
-.how .arrow { display: grid; place-items: center; color: var(--ink-faint); font-size: 20px; line-height: 1; }
-.how .outs { display: grid; gap: 14px; }
-.how .out { border-top: 6px solid var(--tone, var(--rule)); }
+.how .coin-box .coin-mark { width: 22px; height: 22px; margin: 0; }
+/* the arrows between the steps (down on a phone) */
+.how .buy::after, .how .coin-box::after {
+  content: ''; position: absolute; left: 50%; bottom: -21px; width: 2px; height: 16px; transform: translateX(-50%);
+  background: repeating-linear-gradient(var(--ink-faint) 0 3px, transparent 3px 6px);
+}
+.how .buy::before, .how .coin-box::before {
+  content: ''; position: absolute; left: 50%; bottom: -24px; transform: translateX(-50%);
+  border: 5px solid transparent; border-top: 6px solid var(--ink-faint); border-bottom: 0;
+}
+.how .outs { display: grid; gap: 12px; }
+.how .out { border-left: 5px solid var(--tone, var(--rule)); }
 .how .out.green { --tone: var(--green); }
 .how .out.blue { --tone: var(--blue); }
 .how .out.red { --tone: var(--red); }
-.how .out .who { margin-top: 10px; font-size: 13px; font-weight: 650; color: var(--tone); }
-@media (min-width: 860px) {
-  .how .start { grid-template-columns: 1fr 44px 1.2fr; }
-  .how .arrow.right { transform: none; }
-  .how .outs { grid-template-columns: repeat(3, 1fr); }
+@media (min-width: 960px) {
+  .how { grid-template-columns: 0.9fr 1fr 1.55fr; align-items: center; gap: 0 46px; }
+  .how .buy::after, .how .coin-box::after { left: auto; right: -38px; top: 50%; bottom: auto; width: 28px; height: 2px; transform: none; background: repeating-linear-gradient(90deg, var(--ink-faint) 0 3px, transparent 3px 6px); }
+  .how .buy::before, .how .coin-box::before { left: auto; right: -42px; top: 50%; bottom: auto; transform: translateY(-50%); border: 5px solid transparent; border-left: 6px solid var(--ink-faint); border-right: 0; }
+  .how .coin-box { padding: 20px 18px; }
+  .how .coin-box h3 { font-size: 30px; }
+  .how .outs { position: relative; }
+  .how .outs::before { content: ''; position: absolute; left: -24px; top: 16%; bottom: 16%; border-left: 2px dashed var(--ink-faint); }
+  .how .out::before { content: ''; position: absolute; left: -29px; top: 50%; width: 24px; border-top: 2px dashed var(--ink-faint); }
 }
-@media (max-width: 859px) { .how .arrow.right { transform: rotate(90deg); } }
-.how .forks { height: 34px; position: relative; }
-.how .forks svg { width: 100%; height: 100%; display: block; color: var(--ink-faint); }
 
 /* ------------------------------------------------------------ proof strip */
 
@@ -500,6 +512,7 @@ button { font: inherit; color: inherit; }
 .verify .what { font-size: 13px; font-weight: 650; }
 .verify .val { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); word-break: break-all; }
 .verify .val a { color: var(--ink-soft); }
+.verify .val.text { font-family: var(--font-body); font-size: 13.5px; word-break: normal; }
 .show-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 6px; }
 .show-tabs button { border: 1px solid var(--rule); background: var(--face-2); border-radius: 999px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
 .show-tabs button[aria-pressed='true'] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -519,6 +532,7 @@ dialog.sheet[open] { animation: pop 0.35s var(--ease-out); }
 .sheet .ticket { --cut: 0; }
 .sheet .face { padding: 18px; }
 .sheet h2 { margin: 6px 0 4px; font-size: 32px; line-height: 0.95; }
+.sheet h2:focus { outline: none; }
 .sheet .intro { margin: 0; color: var(--ink-soft); font-size: 14.5px; }
 .sheet .qr { margin: 14px auto 0; width: min(270px, 70vw); aspect-ratio: 1; background: var(--qr-bg); border-radius: 12px; padding: 10px; display: grid; place-items: center; box-shadow: inset 0 0 0 1px var(--rule); }
 .sheet .qr svg { width: 100%; height: 100%; display: block; }

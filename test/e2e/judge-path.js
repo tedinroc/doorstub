@@ -208,7 +208,9 @@ try {
   }
 
   // A phone opening the connect dialog: Open Selene is the main button, the QR is one tap away.
-  const phone = await browser.newPage();
+  // A fresh context: the first page's remembered pairing would skip the dialog.
+  const phoneContext = await browser.createBrowserContext();
+  const phone = await phoneContext.newPage();
   await phone.emulate({ viewport: { width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
   await phone.goto(url, { waitUntil: 'domcontentloaded' });
   await phone.waitForSelector('[data-connect]', { timeout: 30_000 });
@@ -217,6 +219,7 @@ try {
   await sleep(500);
   await phone.screenshot({ path: join(SCREENS, '02-connect-phone-390.png') });
   await phone.close();
+  await phoneContext.close();
 
   // Dark mode.
   await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'dark' }]);

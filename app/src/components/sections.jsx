@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { formatBch } from '../../../src/shows/format.js';
 import { BLAZE, CONTRACT_FILES, EXPLORER, WIZARDCONNECT_SOURCE } from '../config.js';
+import { TEST_HOOKS } from '../env.js';
 import { LABELS, PRIOR_ART, SENTENCES, say } from '../lib/copy.js';
 import { num, proofModel, shortBch, showCardModel } from '../lib/view.js';
 import { usePrevious } from '../hooks.js';
@@ -63,14 +64,15 @@ export const Header = ({ state, ticketCount, onConnect, onOpenTickets }) => {
           <span class={`chain-dot${chain === 'connected' ? ' on' : chain === 'down' ? ' down' : ''}`} aria-hidden="true" />
           <span class="tip">{tip === null ? '' : `${LABELS.block} ${num(tip)}`}</span>
         </span>
-        {state.network !== 'mainnet' ? <span class="net-pill">SIMNET</span> : null}
+        {TEST_HOOKS && state.network !== 'mainnet' ? <span class="net-pill">SIMNET</span> : null}
         <span class="spacer" />
         {connected ? (
           <button type="button" class="wallet-chip" data-wallet-chip onClick={onOpenTickets} aria-label={`${LABELS.myTickets}: ${ticketCount}`}>
             <span class="name">{w.name}</span>
             <span class="bal">{w.balance === null ? '…' : shortBch(w.balance)}</span>
             <span class="count">
-              <span class="word">{LABELS.myTickets}</span>
+              <span class="word long">{LABELS.myTickets}</span>
+              <span class="word short">{LABELS.tickets}</span>
               <span class="n">{ticketCount}</span>
             </span>
           </button>
@@ -148,6 +150,7 @@ export const ProofStrip = ({ state }) => {
   );
 };
 
+/** One diagram: a buy puts the money in an escrow coin; three ways out, and who each one pays. */
 export const HowItWorks = ({ cap }) => (
   <section class="section" id="how">
     <div class="wrap">
@@ -156,44 +159,41 @@ export const HowItWorks = ({ cap }) => (
         <span class="perf" aria-hidden="true" />
       </div>
       <div class="how">
-        <div class="start">
-          <div class="box">
-            <span class="tag">1 · {LABELS.buyTx}</span>
-            <h3 class="display">{LABELS.getTicket}</h3>
-            <p>{say('howBuy')}</p>
-          </div>
-          <div class="arrow right" aria-hidden="true">
-            →
-          </div>
-          <div class="box coin-box">
-            <span class="tag">2 · {LABELS.coinLink}</span>
-            <h3 class="display">Escrow</h3>
-            <p>{say('ticketNft')}</p>
-          </div>
+        <div class="box buy">
+          <span class="tag">1 · {LABELS.buyTx}</span>
+          <h3 class="display">{LABELS.getTicket}</h3>
+          <p>{say('ticketNft')}</p>
         </div>
-        <div class="forks" aria-hidden="true">
-          <svg viewBox="0 0 300 34" preserveAspectRatio="none">
-            <path d="M150 0v12M50 34V20q0-8 8-8h184q8 0 8 8v14M150 12v22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
-          </svg>
+        <div class="box coin-box">
+          <span class="tag">2 · {LABELS.coinLink}</span>
+          <h3 class="display">
+            <span class="coin-mark" aria-hidden="true" />
+            Escrow
+          </h3>
+          <p>{say('howBuy')}</p>
         </div>
         <div class="outs">
           <div class="box out green">
-            <span class="tag">3a · {LABELS.walkIn}</span>
-            <h3 class="display">{LABELS.stateWalkedIn}</h3>
+            <span class="tag">3 · {LABELS.walkIn}</span>
+            <h3 class="display">
+              {LABELS.stateWalkedIn} <span class="to">→ {LABELS.toOrganiser}</span>
+            </h3>
             <p>{say('howWalkIn')}</p>
           </div>
           <div class="box out blue">
-            <span class="tag">3b · {LABELS.handBack} / {LABELS.settleTx}</span>
+            <span class="tag">3 · {LABELS.handBack} / {LABELS.settleTx}</span>
             <h3 class="display">
-              {LABELS.stateHandedBack} / {LABELS.stateRefunded}
+              {LABELS.stateHandedBack} / {LABELS.stateRefunded} <span class="to">→ {LABELS.toBuyer}</span>
             </h3>
             <p>
               {say('ticketHandBack')} {say('howSettle')}
             </p>
           </div>
           <div class="box out red">
-            <span class="tag">3c · {LABELS.refundTx}</span>
-            <h3 class="display">{LABELS.stateRefunded}</h3>
+            <span class="tag">3 · {LABELS.refundTx}</span>
+            <h3 class="display">
+              {LABELS.stateRefunded} <span class="to">→ {LABELS.toBuyer}</span>
+            </h3>
             <p>
               {say('howRefund', { cap: num(cap) })} {say('howOnlyBuyer')}
             </p>
@@ -268,7 +268,7 @@ export const CheckIt = ({ state, shows }) => {
                       <div class="what">
                         {LABELS.genesis} · {LABELS.verified}
                       </div>
-                      <div class="val">
+                      <div class="val text">
                         {say('checkGenesis', { txid: `${show.genesisTxid.slice(0, 10)}…`, height: num(show.genesis.height) })}{' '}
                         <TxLink network={state.network} txid={show.genesisTxid} />
                       </div>
@@ -279,7 +279,7 @@ export const CheckIt = ({ state, shows }) => {
                   <span class="ok" aria-hidden="true" />
                   <div>
                     <div class="what">{LABELS.postedFees}</div>
-                    <div class="val">{model.feesLine}</div>
+                    <div class="val text">{model.feesLine}</div>
                   </div>
                 </div>
                 <div class="row">

@@ -56,7 +56,7 @@ import { describeError } from './errors.js';
 import { createStore } from './store.js';
 
 /** How long the "Ticket held" and "Refund sent" steps stay on screen before the next one (ms). */
-export const STEP_PAUSE_MS = 700;
+export const STEP_PAUSE_MS = 900;
 /** After this long without the relay connecting, the dialog offers the other relay (ms). */
 export const RELAY_SLOW_MS = 10_000;
 /** Pause before re-reading a show after a notification (several often arrive together). */
