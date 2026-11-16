@@ -1,0 +1,16 @@
+{
+  "method": "blockchain.transaction.get",
+  "params": [
+    "0000000000000000000000000000000000000000000000000000000000000000"
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "message": {
+    "error": {
+      "code": 2,
+      "message": "daemon error: DaemonError({'code': -5, 'message': 'No such mempool or blockchain transaction. Use gettransaction for wallet transactions.'})"
+    },
+    "id": 10,
+    "jsonrpc": "2.0"
+  }
+}

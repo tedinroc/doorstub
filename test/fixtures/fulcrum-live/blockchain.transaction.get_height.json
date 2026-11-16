@@ -1,0 +1,13 @@
+{
+  "method": "blockchain.transaction.get_height",
+  "params": [
+    "256e288fad44029430ac99ed4a48b9c328f8ac6d6bef87ae06e269b27c09cdc9"
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "message": {
+    "id": 673,
+    "jsonrpc": "2.0",
+    "result": 977579
+  }
+}

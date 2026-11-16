@@ -1,0 +1,30 @@
+{
+  "method": "blockchain.scripthash.listunspent",
+  "params": [
+    "804eac4d277c86661c7a96b8b4b64dec7d1ba1fdadbf6e85563431ae1d595d41",
+    "include_tokens"
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "note": "mempool entries plus two confirmed",
+  "message": {
+    "id": 715,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "height": 0,
+        "token_data": {
+          "amount": "0",
+          "category": "436a8d86876b160fca2ba7f4532e9546dc64c9ba1497a9c1e0ff6043a773d61f",
+          "nft": {
+            "capability": "none",
+            "commitment": ""
+          }
+        },
+        "tx_hash": "005cbb39161a416007f3f5dd63bab9aca6a944ab3e492cfe2437eacfcd4a7af2",
+        "tx_pos": 0,
+        "value": 1000
+      }
+    ]
+  }
+}

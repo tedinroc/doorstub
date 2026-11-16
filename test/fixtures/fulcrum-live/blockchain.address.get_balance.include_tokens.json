@@ -1,0 +1,17 @@
+{
+  "method": "blockchain.address.get_balance",
+  "params": [
+    "bitcoincash:zqvjj2ntsmx8607m0h0qkq9q54ftne8y9vfawd29k8",
+    "include_tokens"
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "message": {
+    "id": 707,
+    "jsonrpc": "2.0",
+    "result": {
+      "confirmed": 90093,
+      "unconfirmed": 0
+    }
+  }
+}

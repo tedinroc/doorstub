@@ -1,0 +1,27 @@
+{
+  "method": "blockchain.address.listunspent",
+  "params": [
+    "bitcoincash:zqvjj2ntsmx8607m0h0qkq9q54ftne8y9vfawd29k8"
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "note": "no server.version sent: protocol 1.4, token coins excluded by default",
+  "message": {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "height": 977544,
+        "tx_hash": "ff98a94a22817e129f2c2d31678d702672f017d1b1609259a4c4d835b5843b7e",
+        "tx_pos": 9,
+        "value": 40479
+      },
+      {
+        "height": 977548,
+        "tx_hash": "8e7a6804a6d8b4433428dbd6513adc0cee075564ea970090bb7ce3177a51a29c",
+        "tx_pos": 1,
+        "value": 33363
+      }
+    ]
+  }
+}

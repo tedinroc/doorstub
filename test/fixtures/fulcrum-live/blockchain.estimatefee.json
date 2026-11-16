@@ -1,0 +1,13 @@
+{
+  "method": "blockchain.estimatefee",
+  "params": [
+    2
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "message": {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": 0.00001
+  }
+}

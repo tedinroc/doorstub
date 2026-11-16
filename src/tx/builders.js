@@ -146,6 +146,14 @@ export const feeOnCoin = (value, bps) => {
  * Returns an UNSIGNED template; the organiser's wallet signs and broadcasts it.
  * The first funding coin must be output 0 of its transaction (CashTokens rule):
  * its txid becomes the category.
+ *
+ * `identityLockingBytecode` (optional) puts a plain 1,000-sat output to the
+ * organiser at index 0, before the shards. BCMR wallets follow output 0 from
+ * the category's parent transaction to find the token's metadata, and read it
+ * from the transaction whose output 0 is still unspent (the authhead). Without
+ * this output, output 0 is shard 0, which every buy on that shard spends, so
+ * the metadata would move with each sale and any buyer could publish their own.
+ * `shardVouts` in the result lists where the shards are.
  */
 export const buildGenesis = ({
   show: showWithoutCategory,
@@ -153,6 +161,7 @@ export const buildGenesis = ({
   fundingUtxos,
   changeLockingBytecode,
   dataOutput,
+  identityLockingBytecode,
   feeRate = DEFAULT_FEE_RATE,
 }) => {
   if (!Array.isArray(fundingUtxos) || fundingUtxos.length === 0) fail('no-funding', 'genesis needs a funding coin');
@@ -163,6 +172,11 @@ export const buildGenesis = ({
   const contracts = showContracts(show);
 
   const outputs = [];
+  if (identityLockingBytecode !== undefined) {
+    assertBytes(identityLockingBytecode, undefined, 'identityLockingBytecode');
+    outputs.push({ lockingBytecode: identityLockingBytecode, valueSatoshis: TOKEN_OUTPUT_SATS });
+  }
+  const firstShardVout = outputs.length;
   for (let shard = 0; shard < shards; shard += 1) {
     outputs.push({
       lockingBytecode: contracts.boxOffice.lockingBytecode,
@@ -200,6 +214,7 @@ export const buildGenesis = ({
     walletInputIndexes,
     fee: built.fee,
     change: built.change,
+    shardVouts: Array.from({ length: shards }, (_, i) => firstShardVout + i),
   };
 };
 

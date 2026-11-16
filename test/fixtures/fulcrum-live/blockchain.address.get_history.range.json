@@ -1,0 +1,42 @@
+{
+  "method": "blockchain.address.get_history",
+  "params": [
+    "bitcoincash:zqvjj2ntsmx8607m0h0qkq9q54ftne8y9vfawd29k8",
+    977559,
+    977578
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "note": "protocol 1.5 from_height/to_height",
+  "trimmedFrom": 12,
+  "message": {
+    "id": 709,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "height": 977560,
+        "tx_hash": "000000000011afa6fa12586b6346ac41d40239aa9365c5ee13f9e0908716ec47"
+      },
+      {
+        "height": 977560,
+        "tx_hash": "00000000001b51dcb0b526c65c1562aebba32cd8c0cf27d1ba005ee274e5d6b4"
+      },
+      {
+        "height": 977560,
+        "tx_hash": "00000000001c3e738fbb2bba51ae4eb5747a15c97e48863b6dc657893f6b3479"
+      },
+      {
+        "height": 977563,
+        "tx_hash": "000000000033d753da76f2c3179e1334a8e7239ccb19abc45d114a469a89d240"
+      },
+      {
+        "height": 977565,
+        "tx_hash": "0000000000140d37c0b3d34d2d1e41b7ff41a520b41549acad769e48a0bc3cf3"
+      },
+      {
+        "height": 977571,
+        "tx_hash": "00000000005184dc523cd96429dad97f27f722e40de6c83e38f829dd7ce8ea03"
+      }
+    ]
+  }
+}

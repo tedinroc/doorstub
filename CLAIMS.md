@@ -82,9 +82,14 @@ What Doorstub adds on Bitcoin Cash, stated modestly: one escrow coin per ticket 
 
 ## 6. Sample shows
 
-The sample show card must say: "Sample show. Nobody will check in, so every ticket refunds after it starts (about a day later, after 144 blocks)."
+The studio writes these card texts into `shows.json` (`studio/lib/plan.js`, `CARDS`); the app adds the start block and the local time:
 
-**Open question before the app is built:** a "Walk in" button on a sample show would pay the sample organiser (us) the ticket price, which breaks "no tap may pay us for a show that does not happen". Either the sample show's check-in is labelled with who gets paid and how much, or the sample organiser refunds by notice afterwards, or "Walk in" is shown only on a show that really takes place.
+- Sample show A (`sample-settle`): "Sample show. Nobody checks in at a sample show, so every ticket refunds itself after it starts." True because nobody holds the organiser's door for a sample: no check-in can happen without the holder's own wallet, and `settle` opens at `startHeight + graceBlocks + 1` (C3). The samples start every 36 blocks with `graceBlocks` 2, so settling opens three blocks (about half an hour) after the start, and the refund follows once the keeper or the page sends it.
+- Sample show B (`sample-refund-seat`): "Sample show. Its organiser refunds every seat right after it is sold, so you can watch a refund arrive without doing anything." True while the refund-notice signer and the keeper run: the worker signs an `'R'` notice for each sold seat of this show only and anyone can push the refund (C5, C6). *(Signer and keeper not built yet.)*
+
+**Walk in on samples:** a "Walk in" button on a sample show would pay the sample organiser (us) the ticket price, which breaks "no tap may pay us for a show that does not happen". The samples therefore offer only "Hand it back"; "Walk in" is shown only on a show that really takes place.
+
+**Wallet metadata (BCMR).** Each show's token carries a BCMR registry (`studio/lib/bcmr.js`): name "Doorstub ticket: <show title>", the headline (section 1) and the show's card text as its description, C1 as the ticket description, and "Escrow marker for one ticket. It stays in the show's contract with the ticket's money." for the marker. Wallets that parse BCMR NFT fields show the box office letter, the seat number and the buyer key hash.
 
 ## 7. Wallet prompts
 

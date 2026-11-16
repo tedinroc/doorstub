@@ -1,0 +1,40 @@
+{
+  "method": "blockchain.scripthash.get_history",
+  "params": [
+    "804eac4d277c86661c7a96b8b4b64dec7d1ba1fdadbf6e85563431ae1d595d41"
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "note": "tail of the history, mempool entries last",
+  "message": {
+    "id": 714,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "height": 977577,
+        "tx_hash": "c755a031fd2be32c0ab640b7d00dc2a11a2c73d91adf07926f4b421c06d33605"
+      },
+      {
+        "height": 977578,
+        "tx_hash": "0647c0d6526b624661cc064a30471d83203b50909ce4fd2c7db02e9720bb6ec2"
+      },
+      {
+        "height": 977578,
+        "tx_hash": "0dc99a99a2032974607eb17a9a93671200bd3528c99918a19f7292ac4391a851"
+      },
+      {
+        "height": 977578,
+        "tx_hash": "3a550dcb7bdbf8165c54b98a2fd0a36574c753aa3dbcef91a4563fb99512ebb3"
+      },
+      {
+        "height": 977579,
+        "tx_hash": "256e288fad44029430ac99ed4a48b9c328f8ac6d6bef87ae06e269b27c09cdc9"
+      },
+      {
+        "fee": 999,
+        "height": 0,
+        "tx_hash": "005cbb39161a416007f3f5dd63bab9aca6a944ab3e492cfe2437eacfcd4a7af2"
+      }
+    ]
+  }
+}

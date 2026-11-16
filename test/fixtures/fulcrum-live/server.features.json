@@ -1,0 +1,35 @@
+{
+  "method": "server.features",
+  "params": [],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "message": {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": {
+      "cashtokens": true,
+      "dsproof": true,
+      "genesis_hash": "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
+      "hash_function": "sha256",
+      "hosts": {
+        "blackie.c3-soft.com": {
+          "ssl_port": 50002,
+          "tcp_port": 50001,
+          "ws_port": 50003,
+          "wss_port": 50004
+        }
+      },
+      "protocol_max": "1.6",
+      "protocol_min": "1.4",
+      "pruning": null,
+      "rpa": {
+        "history_block_limit": 60,
+        "max_history": 250000,
+        "prefix_bits": 16,
+        "prefix_bits_min": 8,
+        "starting_height": 825000
+      },
+      "server_version": "Fulcrum 2.1.4"
+    }
+  }
+}

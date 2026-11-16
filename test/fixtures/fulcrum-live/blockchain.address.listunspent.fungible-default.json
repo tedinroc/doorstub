@@ -1,0 +1,72 @@
+{
+  "method": "blockchain.address.listunspent",
+  "params": [
+    "bitcoincash:zqvjj2ntsmx8607m0h0qkq9q54ftne8y9vfawd29k8"
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "note": "same address, no token filter: Fulcrum defaults to exclude_tokens",
+  "trimmedFrom": 25,
+  "message": {
+    "id": 706,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "height": 976647,
+        "token_data": {
+          "amount": "4349763656",
+          "category": "53bd86e3f123918d2d7040449f88f7ed1bbddc309b66f2ac67cd429278f5ea58"
+        },
+        "tx_hash": "8e89ed125d3a22e159812e3139c6d1f1330f59b9e3d8922abb0a451187e065d3",
+        "tx_pos": 1,
+        "value": 675
+      },
+      {
+        "height": 976662,
+        "token_data": {
+          "amount": "1346634008",
+          "category": "53bd86e3f123918d2d7040449f88f7ed1bbddc309b66f2ac67cd429278f5ea58"
+        },
+        "tx_hash": "d3a34613333eec5ca76a6a5cf5883b137696f7241295b5a08ea818e3ba02b08d",
+        "tx_pos": 1,
+        "value": 675
+      },
+      {
+        "height": 977543,
+        "token_data": {
+          "amount": "4806871064",
+          "category": "53bd86e3f123918d2d7040449f88f7ed1bbddc309b66f2ac67cd429278f5ea58"
+        },
+        "tx_hash": "2e5d8d91c7e2d081b1ed6bfcf913148fde706ffb1599b9a0a9c5102d0b13bb93",
+        "tx_pos": 3,
+        "value": 675
+      },
+      {
+        "height": 977544,
+        "token_data": {
+          "amount": "8",
+          "category": "2469acc5afa4b10cb5b5c04afb89c3a3ffd61c5da9c01e26d00951cae2a02544"
+        },
+        "tx_hash": "ff98a94a22817e129f2c2d31678d702672f017d1b1609259a4c4d835b5843b7e",
+        "tx_pos": 8,
+        "value": 651
+      },
+      {
+        "height": 977544,
+        "tx_hash": "ff98a94a22817e129f2c2d31678d702672f017d1b1609259a4c4d835b5843b7e",
+        "tx_pos": 9,
+        "value": 40479
+      },
+      {
+        "height": 977546,
+        "token_data": {
+          "amount": "19845492055",
+          "category": "53bd86e3f123918d2d7040449f88f7ed1bbddc309b66f2ac67cd429278f5ea58"
+        },
+        "tx_hash": "f5401575b78a3424453f79d98900cb662b573f4d5e95c5515e9fbb989ed823f0",
+        "tx_pos": 3,
+        "value": 675
+      }
+    ]
+  }
+}

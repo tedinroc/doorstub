@@ -1,0 +1,13 @@
+{
+  "method": "blockchain.block.header",
+  "params": [
+    977578
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "message": {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": "00a0ed200aa21bcf1ee9e14f4a6f6425b5e3f74e841793f283c7d801000000000000000088689066225b91422b5536d906701a63c1cd7fd69fafef606c52b6673686e13fe4a5fa6a21340218910814a8"
+  }
+}
