@@ -3,6 +3,7 @@
 import { binToHex, hexToBin } from '@bitauth/libauth';
 import {
   blocksUntil,
+  callEndsAt,
   estimateTimeOf,
   formatBch,
   formatUsd,
@@ -114,7 +115,16 @@ export const showCardModel = (show, { tip, usd = null, ledger, now = Date.now(),
   const start = whenText(show.startHeight, tip, { now, locale, timeZone });
   const settle = whenText(settleOpensAt(show), tip, { now, locale, timeZone });
   const call = callOf(show, { now, timeZone });
-  const real = show.kind === 'real';
+  // A real show sells and lets you walk in until its call ends (the reader's clock); its startHeight, hours later,
+  // is only the on-chain backstop. So the Door row names the end of the call and never contradicts the Call row.
+  const end = show.kind === 'real' ? callEndsAt(show) : null;
+  const real = end !== null;
+  const until = real ? { time: clockText(new Date(end), { timeZone }), eta: etaMinutes(Math.ceil((end - now) / 60_000)) } : null;
+  let startLine;
+  if (!real) startLine = say('showStarts', { start: start.block, time: start.time, eta: start.eta });
+  else if (now >= end) startLine = null; // the stub says sales and walk-in closed
+  else if (salesOpen(show, tip)) startLine = say('realUntil', until);
+  else startLine = `${say('showSalesEnded', { start: start.block })} ${say('walkInUntil', until)}`;
   return {
     id: show.id,
     kind: show.kind,
@@ -126,14 +136,14 @@ export const showCardModel = (show, { tip, usd = null, ledger, now = Date.now(),
     sample: isSample(show),
     priceBch: formatBch(show.price),
     priceUsd: formatUsd(show.price, usd),
-    // A real show's startHeight is the end of sales and walk-in (about the end of the call plus 6 blocks).
     startLabel: real ? LABELS.door : LABELS.starts,
-    startLine: say(real ? 'realUntil' : 'showStarts', { start: start.block, time: start.time, eta: start.eta }),
+    startLine,
     callLine: call === null ? null : say('callAt', { time: call.time, eta: call.eta, minutes: call.minutes }),
     settleLine: say('showSettles', { settle: settle.block, time: settle.time, eta: settle.eta }),
     feesLine: say('showFees', { handBack: bpsText(show.handBackFeeBps), noShow: bpsText(show.noShowFeeBps), cap: num(show.minerFeeCap) }),
     phase: showPhase(show, tip),
-    onSale: salesOpen(show, tip),
+    onSale: salesOpen(show, tip, { now }),
+    endedLine: real && now >= end ? say('callSalesEnded') : say('showSalesEnded', { start: start.block }),
     startBlock: start.block,
     startEta: start.eta,
     startTime: start.time,
@@ -195,10 +205,13 @@ export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, r
   const escrowTxid = escrow ? (typeof escrow.txid === 'string' ? escrow.txid : binToHex(escrow.txid)) : null;
   const lines = [];
   const value = ticket.value ?? escrow?.output?.valueSatoshis ?? null;
+  // A real show's Walk in closes when its call ends (the reader's clock); the ticket then refunds by the settle.
+  const callOver = show.kind === 'real' && callOf(show, { now, timeZone })?.phase === 'over';
   if (state === 'held') {
     if (escrowTxid !== null) lines.push(say('buyHeld', { price: formatBch(show.price), outpoint: `${shortTxid(escrowTxid)}:${escrow.vout}` }));
     else lines.push(say('ticketMoney'));
     if (ticket.canAct === false && ticket.ticketUtxo !== null && ticket.ticketUtxo !== undefined) lines.push(say('movedAway'));
+    else if (callOver) lines.push(say('callOverHeld'));
   } else if (state === 'handedBack') {
     if (returned !== null) lines.push(say('handBackDone', { amount: amountText(returned) }));
     // Why more came back than the price: the ticket's and the marker's 1,000 sats each. Only when no posted fee was taken.
@@ -248,7 +261,7 @@ export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, r
     escrowOutpoint: escrowTxid === null ? null : { txid: escrowTxid, vout: escrow.vout },
     ticketTxid: ticket.ticketUtxo ? (typeof ticket.ticketUtxo.txid === 'string' ? ticket.ticketUtxo.txid : binToHex(ticket.ticketUtxo.txid)) : buyTxid,
     canHandBack: canAct && show.kind !== 'proof',
-    canWalkIn: canAct && show.kind === 'real',
+    canWalkIn: canAct && show.kind === 'real' && !callOver,
     autoRefund: show.kind === 'sample-refund-seat',
     settleLine: held && show.kind !== 'sample-refund-seat' && settleWhen !== null
       ? say('showSettles', { settle: settleWhen.block, time: settleWhen.time, eta: settleWhen.eta })

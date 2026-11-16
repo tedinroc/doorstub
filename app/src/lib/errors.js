@@ -67,6 +67,7 @@ export const describeError = (error, context = {}) => {
   if (name === 'TransportError' || code === 'all-down') return { key: 'chainDown', vars: {}, actions: ['retry'] };
 
   if (name === 'DoorstubError') {
+    if (code === 'call-ended') return { key: 'callSalesEnded', vars: {}, actions: [] };
     if (code === 'sales-ended' || code === 'sales-cancelled') {
       return { key: 'showSalesEnded', vars: { start: Number(context.show?.startHeight ?? 0).toLocaleString('en-US') }, actions: ['nextInstance'] };
     }

@@ -27,6 +27,7 @@ import {
 } from '../../../src/chain/index.js';
 import {
   addNotices,
+  callEnded,
   parseShowsFile,
   promptForBuilt,
   salesOpen,
@@ -338,7 +339,7 @@ export const createController = ({ runtime, deps = {} }) => {
     set((s) => ({ bootError: null, chain: { ...s.chain, tip: s.chain.tip ?? height } }));
 
     // The shows a visitor can buy first, then the rest (proof strip, older tickets).
-    const first = showsOnSale(file.shows, height);
+    const first = showsOnSale(file.shows, height, { now: now() });
     const rest = file.shows.filter((s) => !first.includes(s));
     const one = await verifyShows(pool, first, { cache });
     addVerified(one.verified);
@@ -691,7 +692,8 @@ export const createController = ({ runtime, deps = {} }) => {
     setFlow(showId, { kind: 'buy', step: 'preparing', retrying, ...(reason !== undefined && { retryReason: reason }) });
     try {
       const height = (await pool.tip()).height;
-      if (!salesOpen(show, height)) {
+      if (!salesOpen(show, height, { now: now() })) {
+        if (!show.cancelled && show.kind === 'real' && callEnded(show, now())) throw new DoorstubError('call-ended', 'the call is over');
         throw new DoorstubError(show.cancelled ? 'sales-cancelled' : 'sales-ended', 'sales ended');
       }
       const scan = lastScan !== null && retrying ? lastScan : await rescan();
@@ -1010,7 +1012,7 @@ export const createController = ({ runtime, deps = {} }) => {
       setFlow(key, null);
     },
     touched: () => new Set(touched),
-    onSale: () => (tip() === null ? [] : showsOnSale(get().shows, tip())),
+    onSale: () => (tip() === null ? [] : showsOnSale(get().shows, tip(), { now: now() })),
     close,
     get pool() {
       return pool;

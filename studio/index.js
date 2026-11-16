@@ -1,6 +1,6 @@
 // Doorstub studio: the organiser's CLI as a library (see studio/README.md).
 export { keygen, addRealDataKey, loadSecrets, publicView, DEFAULT_SECRETS_PATH } from './lib/keys.js';
-export { makePlan, checkPlan, resolveHeight, payeePkhOf, startHeightAfterCall, callTiming, CARDS, SAMPLE_DEFAULTS, BLOCKS_AFTER_CALL } from './lib/plan.js';
+export { makePlan, checkPlan, resolveHeight, payeePkhOf, startHeightAfterCall, callTiming, CARDS, SAMPLE_DEFAULTS, REAL_SALES_MARGIN, REAL_GRACE_BLOCKS, salesMarginBlocks } from './lib/plan.js';
 export { writePlan } from './lib/plan-file.js';
 export { genesis } from './lib/genesis.js';
 export { close, openShards } from './lib/close.js';

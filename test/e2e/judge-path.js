@@ -414,7 +414,7 @@ try {
     ok(m.buy <= fold, `"Get a ticket" inside the first phone screen at ${width}x${height} (ends by ${fold} px)`);
   }
   // A real show's card: its start block reads as the end of sales and walk-in; a sample keeps "Starts".
-  ok((await domText(page, `[data-show="${real.id}"] [data-fact="start"]`)).startsWith('DoorBuy and walk in until block'), 'the real show\'s start row reads "Buy and walk in until block ..."');
+  ok((await domText(page, `[data-show="${real.id}"] [data-fact="start"]`)).startsWith('DoorBuy and walk in until the call ends,'), 'the real show\'s Door row reads "Buy and walk in until the call ends, ..."');
   ok((await domText(page, `[data-show="${showA.id}"] [data-fact="start"]`)).startsWith('StartsBlock'), 'a sample show\'s start row reads "Starts"');
   // The required BLAZE banner links the source repository; Check it yourself links the contracts and the one-page architecture.
   ok((await page.$eval('.blaze a[href="https://github.com/tedinroc/doorstub"]', (el) => el.textContent)) === 'Source code', 'the banner links the source repository');

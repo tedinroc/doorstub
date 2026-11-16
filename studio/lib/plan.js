@@ -7,8 +7,26 @@ import { EVENT_FIELDS, readEventFields } from '../../src/shows/event.js';
 import { DEFAULT_ORIGIN, NETWORKS, SHOW_KINDS, paramsFromShow, showFromParams } from './shows-json.js';
 
 export const BLOCK_SECONDS = 600;
-/** A real show's sales end (its startHeight) about this many blocks after its call ends, so a late arrival can still buy and walk in. */
-export const BLOCKS_AFTER_CALL = 6;
+
+/**
+ * How many blocks after its call ends a real show's sales end on chain (its
+ * startHeight): a base plus a share of the blocks until the call ends. Blocks
+ * can come early, and the further ahead the call, the earlier they can come:
+ * in mainnet headers of the last 200 days, 144 blocks once took 12 hours. With
+ * this margin, the block came before the call ended in about 2 to 3% of
+ * replays planned 1 to 8 days ahead; with a flat 6 blocks it was about 30%.
+ * The page itself stops selling and offering Walk in when the call ends (the
+ * reader's clock), so the longer margin sells nothing after the call.
+ */
+export const REAL_SALES_MARGIN = Object.freeze({ base: 24, share: 0.05 });
+export const salesMarginBlocks = (blocksUntilCallEnds) => REAL_SALES_MARGIN.base + Math.ceil(blocksUntilCallEnds * REAL_SALES_MARGIN.share);
+
+/**
+ * A real show's default grace: settling opens about a day after its sales end,
+ * so even a chain that runs hours early cannot settle a ticket while its call
+ * is still on (0 of the replays above). The samples keep 2.
+ */
+export const REAL_GRACE_BLOCKS = 144;
 
 /** Card texts (exact public wording; see CLAIMS.md section 6). */
 export const CARDS = {
@@ -51,32 +69,37 @@ export const payeePkhOf = (address) => {
 const estimate = (now, tip, height) => new Date(now.getTime() + (height - tip) * BLOCK_SECONDS * 1000).toISOString();
 
 /**
- * The startHeight of a real show from its call: the block about
- * `blocksAfterCall` blocks after the call ends, counted from the tip at ten
- * minutes a block. An estimate: blocks come when they come, so plan close to
- * the day (the studio recomputes it every time you plan).
+ * The startHeight of a real show from its call: the block when the call ends,
+ * counted from the tip at ten minutes a block, plus `salesMarginBlocks` of
+ * that (or `blocksAfterCall`, when given). An estimate: blocks come when they
+ * come, so plan close to the day (the studio recomputes it every time you plan).
  */
-export const startHeightAfterCall = ({ eventAt, durationMin, tip, now = new Date(), blocksAfterCall = BLOCKS_AFTER_CALL }) => {
+export const startHeightAfterCall = ({ eventAt, durationMin, tip, now = new Date(), blocksAfterCall }) => {
   const { eventAtMs } = readEventFields({ eventAt, durationMin, seatPrefix: 'S' }, 'real');
-  if (!Number.isInteger(blocksAfterCall) || blocksAfterCall < 0) throw new Error('blocksAfterCall must be a whole number of blocks');
+  if (blocksAfterCall !== undefined && (!Number.isInteger(blocksAfterCall) || blocksAfterCall < 0)) throw new Error('blocksAfterCall must be a whole number of blocks');
   const callEnds = eventAtMs + durationMin * 60_000;
   if (callEnds <= now.getTime()) throw new Error(`the call at ${eventAt} is over`);
-  return tip + Math.ceil((callEnds - now.getTime()) / (BLOCK_SECONDS * 1000)) + blocksAfterCall;
+  const blocks = Math.ceil((callEnds - now.getTime()) / (BLOCK_SECONDS * 1000));
+  return tip + blocks + (blocksAfterCall ?? salesMarginBlocks(blocks));
 };
 
 /**
- * For a planned real show: its call and the estimated end of sales, and how
- * many minutes after the call ends sales close (negative: before it ends).
+ * For a planned real show: its call, the estimated end of sales on chain and
+ * the opening of settle, and how many minutes after the call ends each comes
+ * (negative: before it ends).
  */
 export const callTiming = (entry) => {
   const callEnds = Date.parse(entry.eventAt) + entry.durationMin * 60_000;
   const salesEnd = Date.parse(entry.startsAtEstimate);
+  const settleBlocks = entry.params.graceBlocks + 1;
   return {
     eventAt: entry.eventAt,
     callEndsAt: new Date(callEnds).toISOString(),
     salesEndBlock: entry.params.startHeight,
     salesEndEstimate: entry.startsAtEstimate,
     minutesAfterCall: Math.round((salesEnd - callEnds) / 60_000),
+    settleBlock: entry.params.startHeight + settleBlocks,
+    settleMinutesAfterCall: Math.round((salesEnd - callEnds) / 60_000) + settleBlocks * (BLOCK_SECONDS / 60),
   };
 };
 
@@ -100,7 +123,8 @@ const checkedParams = (params, where) => {
  * @param {string|number} [o.firstStart] first sample-settle start height (absolute or "+N"); required when count > 0
  * @param {Array} [o.schedule] extra shows: { id, kind: 'real'|'sample-settle'|'sample-refund-seat', title, subtitle, card, startHeight, price, ... };
  *   a real show also names eventAt (ISO UTC), durationMin and seatPrefix (src/shows/event.js), and may leave out
- *   startHeight: it is then `blocksAfterCall` (default 6) blocks after the call ends, from the tip and `now`
+ *   startHeight: it is then `salesMarginBlocks` (or `blocksAfterCall`) blocks after the call ends, from the tip and `now`;
+ *   a real show's graceBlocks defaults to REAL_GRACE_BLOCKS, not the samples' `graceBlocks`
  */
 export const makePlan = ({
   network,
@@ -205,7 +229,7 @@ export const makePlan = ({
         ...(kind === 'real' ? realBase() : base),
         price: Number(item.price ?? price),
         startHeight,
-        graceBlocks: Number(item.graceBlocks ?? graceBlocks),
+        graceBlocks: Number(item.graceBlocks ?? (kind === 'real' ? REAL_GRACE_BLOCKS : graceBlocks)),
         handBackFeeBps: Number(item.handBackFeeBps ?? handBackFeeBps),
         noShowFeeBps: Number(item.noShowFeeBps ?? noShowFeeBps),
         minerFeeCap: Number(item.minerFeeCap ?? minerFeeCap),

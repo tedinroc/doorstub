@@ -17,7 +17,7 @@ export const App = ({ controller, dev }) => {
   const now = useNow(20_000);
   const [drawer, setDrawer] = useState(false);
   const tip = state.chain.tip;
-  const onSale = tip === null ? [] : showsOnSale(state.shows, tip);
+  const onSale = tip === null ? [] : showsOnSale(state.shows, tip, { now });
   const nextA = tip === null ? null : nextOpenInstance(state.shows, tip);
   const touched = controller.touched();
   const cap = state.shows[0]?.minerFeeCap ?? 1500n;

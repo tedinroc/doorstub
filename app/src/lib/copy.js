@@ -19,7 +19,9 @@ export const SENTENCES = Object.freeze({
 
   // Show cards
   showStarts: 'Block {start}, about {time} ({eta}).',
-  realUntil: 'Buy and walk in until block {start}, about {time} ({eta}).',
+  realUntil: 'Buy and walk in until the call ends, {time} ({eta}).',
+  walkInUntil: 'Walk in until the call ends, {time} ({eta}).',
+  callSalesEnded: 'Sales and walk-in for this show closed when its call ended.',
   callAt: '{time} ({eta}), for {minutes} minutes.',
   usdAbout: 'about {usd}',
   soldLine: '{sold} sold on {shards} box-office shards',
@@ -83,6 +85,7 @@ export const SENTENCES = Object.freeze({
   callStarts: 'The call starts {time} ({eta}).',
   callOn: 'The call is on now.',
   callTime: 'The call starts {time}, for {minutes} minutes.',
+  callOverHeld: 'The call is over, so Walk in is closed.',
   checkInFinal: 'Check-in is final. Once you check in, the organiser has the money.',
   doorAsking: 'Your check-in is on chain. Asking the door for your event link.',
   doorAnswered: 'The door answered with your event link.',

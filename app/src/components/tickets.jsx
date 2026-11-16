@@ -54,7 +54,7 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
               </div>
               {model.onSale === false ? (
                 <p class="ended" data-sales-ended={model.id}>
-                  {say('showSalesEnded', { start: model.startBlock })}
+                  {model.endedLine}
                 </p>
               ) : (
                 <button type="button" class="btn cta" onClick={onBuy} disabled={working} data-buy={model.id}>
@@ -73,10 +73,12 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
                 <dd>{model.callLine}</dd>
               </div>
             ) : null}
-            <div data-fact="start">
-              <dt>{model.startLabel}</dt>
-              <dd>{model.startLine}</dd>
-            </div>
+            {model.startLine ? (
+              <div data-fact="start">
+                <dt>{model.startLabel}</dt>
+                <dd>{model.startLine}</dd>
+              </div>
+            ) : null}
             {model.kind !== 'sample-refund-seat' ? (
               <div>
                 <dt>{LABELS.refundsLabel}</dt>

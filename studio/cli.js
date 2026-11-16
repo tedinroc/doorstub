@@ -7,7 +7,7 @@ import { close } from './lib/close.js';
 import { genesis } from './lib/genesis.js';
 import { DEFAULT_SECRETS_PATH, addRealDataKey, keygen, loadSecrets, publicView } from './lib/keys.js';
 import { openNetwork } from './lib/net.js';
-import { SAMPLE_DEFAULTS, callTiming, makePlan } from './lib/plan.js';
+import { REAL_GRACE_BLOCKS, SAMPLE_DEFAULTS, callTiming, makePlan } from './lib/plan.js';
 import { writePlan } from './lib/plan-file.js';
 import { DEFAULT_ORIGIN } from './lib/shows-json.js';
 import { status } from './lib/status.js';
@@ -22,7 +22,8 @@ const HELP = `Doorstub studio (organiser CLI)
                       [--hand-back-fee-bps 0] [--no-show-fee-bps 0] [--refund-seat-start <height|+blocks>] [--no-refund-seat]
                       [--schedule shows.json-like list of extra shows] [--tip <height>] [--out studio/plan.json]
                       a real show names eventAt (ISO UTC), durationMin and seatPrefix; without startHeight its
-                      sales end 6 blocks after the call ends, estimated from the tip now (plan again on the day)
+                      sales end 24 blocks plus 5% of the blocks until then after the call ends, estimated from
+                      the tip now (plan again on the day); its grace is ${REAL_GRACE_BLOCKS} blocks unless the schedule sets one
   genesis           build (and with --broadcast send) every planned show's prep and genesis;
                       writes app/public/shows.json and app/public/bcmr/<category>.json after sending
                       [--plan studio/plan.json] [--shows app/public/shows.json] [--broadcast] [--mine (simnet)]
@@ -125,8 +126,9 @@ const commands = {
       console.log(`  ${s.id}  ${s.kind}  start ${s.params.startHeight} (about ${s.startsAtEstimate})  ${s.shards} shards  ${s.params.price} sats`);
       if (s.kind !== 'real') continue;
       const timing = callTiming(s);
-      console.log(`    call ${timing.eventAt} for ${s.durationMin} min (ends ${timing.callEndsAt}); seats ${s.seatPrefix}-<box office>-<seat>; sales end at block ${timing.salesEndBlock}, about ${timing.minutesAfterCall} min after the call ends`);
+      console.log(`    call ${timing.eventAt} for ${s.durationMin} min (ends ${timing.callEndsAt}); seats ${s.seatPrefix}-<box office>-<seat>; sales end at block ${timing.salesEndBlock}, about ${timing.minutesAfterCall} min after the call ends; settling opens at block ${timing.settleBlock}, about ${timing.settleMinutesAfterCall} min after it ends`);
       if (timing.minutesAfterCall < 0) console.log(`    WARNING: sales would end before the call ends; drop startHeight from the schedule so the studio computes it, or raise it`);
+      if (timing.settleMinutesAfterCall < 12 * 60) console.log(`    WARNING: settling could open while the call is still on if blocks come early; raise graceBlocks (default ${REAL_GRACE_BLOCKS})`);
     }
   },
   genesis: async () => {

@@ -17,7 +17,7 @@ Works with your own wallet over WizardConnect. Doorstub never holds your money o
 3. Then, depending on the show:
    - **Sample show A.** Nobody checks in at a sample show, so every ticket refunds itself after it starts. Until then you can **Hand it back**.
    - **Sample show B.** Its organiser refunds every seat right after it is sold, so you can watch a refund arrive without doing anything.
-   - **The screenings** (planned, not created yet): "Doorstub screening 1" and "Doorstub screening 2", online calls on 24 and 28 Nov at 13:00 UTC, each a 12-minute film on how Doorstub works, then Q&A in the chat, about 25 minutes in all. The card shows the time in your own time zone. **Walk in** pays the organiser and shows the room link; your ticket stays in your wallet as a keepsake stub.
+   - **The screenings** (planned, not created yet): "Doorstub screening 1" and "Doorstub screening 2", online calls on 24 and 28 Nov at 13:00 UTC, each a 12-minute film on how Doorstub works, then Q&A in the chat, about 25 minutes in all. The card shows the time in your own time zone. You can buy and walk in until the call ends. **Walk in** pays the organiser and shows the room link; your ticket stays in your wallet as a keepsake stub. A ticket nobody walks in with refunds by the settle, which opens about a day after sales end on chain.
 4. The "On mainnet" strip counts every buy, hand-back, check-in, settle and refund at the shows' contract addresses, read live from the chain. "Check it yourself" recomputes both contract addresses in your browser and checks each show's genesis on chain.
 
 Prices are in BCH. A refund returns the same BCH, minus a network fee of at most 1,500 sats on the sample shows and any fee the organiser posted on the show page.

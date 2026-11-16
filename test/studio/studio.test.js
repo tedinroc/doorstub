@@ -38,6 +38,8 @@ import {
   buildRegistry,
   nftParseBytecode,
   startHeightAfterCall,
+  salesMarginBlocks,
+  REAL_GRACE_BLOCKS,
   close,
   confirmBroadcast,
   genesis,
@@ -179,22 +181,31 @@ test('plan: the default catalogue, its card texts, and the policy and payee chec
   assert.notEqual(view.realDataPk, view.dataPk);
   assert.equal(withReal.studio.realDataPk, view.realDataPk);
 
-  // The planned screenings: no startHeight in the file, so it is the end of the call plus 6 blocks from the tip and the clock.
+  // The planned screenings: no startHeight in the file, so it is the end of the call plus a margin that grows with the
+  // wait (24 blocks plus 5% of the blocks until then: blocks can come early), and settling opens a day after that.
   const screenings = makePlan({ network: 'mainnet', tip: 977_577, now, studio: view, payee, count: 0, refundSeatStart: null, schedule: SCREENINGS });
   assert.deepEqual(screenings.shows.map((s) => [s.id, s.seatPrefix, s.subtitle, s.durationMin, s.eventAt]), [
     ['screening-1', 'S', 'Online, 25 minutes', 25, '2026-11-24T13:00:00Z'],
     ['screening-2', 'T', 'Online, 25 minutes', 25, '2026-11-28T13:00:00Z'],
   ]);
-  // 24 Nov 13:25 UTC is 11,937 minutes after 16 Nov 06:28: 1,194 blocks (rounded up), then 6 more.
-  assert.equal(screenings.shows[0].params.startHeight, 977_577 + 1_194 + 6);
-  assert.equal(startHeightAfterCall({ ...SCREENINGS[0], tip: 977_577, now }), 978_777);
-  assert.equal(startHeightAfterCall({ ...SCREENINGS[0], tip: 977_600, now: new Date('2026-11-16T10:18:00Z') }), 978_777, 'the same height from a later tip and clock');
+  // 24 Nov 13:25 UTC is 11,937 minutes after 16 Nov 06:28: 1,194 blocks (rounded up), then 24 + ceil(1,194 / 20) = 84 more.
+  assert.equal(salesMarginBlocks(1_194), 84);
+  assert.equal(screenings.shows[0].params.startHeight, 977_577 + 1_194 + 84);
+  assert.equal(startHeightAfterCall({ ...SCREENINGS[0], tip: 977_577, now }), 978_855);
+  const later = startHeightAfterCall({ ...SCREENINGS[0], tip: 977_600, now: new Date('2026-11-16T10:18:00Z') });
+  assert.ok(Math.abs(later - 978_855) <= 1, `about the same height from a later tip and clock (${later})`);
+  assert.equal(startHeightAfterCall({ ...SCREENINGS[0], tip: 977_577, now, blocksAfterCall: 6 }), 977_577 + 1_194 + 6, 'a fixed margin when the entry names one');
   for (const s of screenings.shows) {
     const callEnds = Date.parse(s.eventAt) + s.durationMin * 60_000;
+    const blocks = Math.ceil((callEnds - now.getTime()) / 600_000);
+    assert.equal(s.params.startHeight, 977_577 + blocks + salesMarginBlocks(blocks), `${s.id}: sales end on chain the margin after the call`);
     const salesEnd = Date.parse(s.startsAtEstimate);
-    assert.ok(salesEnd - callEnds >= 60 * 60_000 && salesEnd - callEnds < 70 * 60_000, `${s.id}: sales end about an hour after the call (${(salesEnd - callEnds) / 60_000} min)`);
+    assert.ok(salesEnd - callEnds >= 10 * 60_000 * salesMarginBlocks(blocks), `${s.id}: sales end ${(salesEnd - callEnds) / 60_000} min after the call`);
+    assert.equal(s.params.graceBlocks, REAL_GRACE_BLOCKS, `${s.id}: settling opens about a day after sales end`);
     assert.equal(s.params.organiserDataPk, view.realDataPk);
   }
+  assert.equal(REAL_GRACE_BLOCKS, 144);
+  assert.equal(makePlan({ network: 'mainnet', tip: 977_577, now, studio: view, payee, count: 0, refundSeatStart: null, schedule: [{ ...SCREENINGS[0], graceBlocks: 10 }] }).shows[0].params.graceBlocks, 10, 'a schedule entry can set its own grace');
   assert.doesNotThrow(() => checkPlan(JSON.parse(JSON.stringify(screenings)), view));
   const swapped = JSON.parse(JSON.stringify(screenings));
   swapped.shows[0].params.organiserDataPk = view.dataPk;
@@ -510,13 +521,14 @@ test('CLI: help, keygen refuses to overwrite, plan writes a file from a given ti
   assert.match(bad.stderr, /--payee/);
   assert.match(first.stdout, /Real-show data key: {2}0[23][0-9a-f]{64} {2}\(organiserDataPk of real shows; never give it to the worker\)/);
 
-  // A screening schedule (a call two days from now): the plan prints the call and when sales end after it.
+  // A screening schedule (a call two days from now): the plan prints the call and when sales end after it
+  // (289 blocks until the call ends, then 24 + 15 more) and when settling opens (145 blocks after that).
   const schedulePath = join(scratch.dir, 'screenings.json');
   const eventAt = new Date(Math.floor(Date.now() / 60_000) * 60_000 + 2 * 86_400_000).toISOString().replace('.000Z', 'Z');
   writeFileSync(schedulePath, JSON.stringify([{ ...SCREENINGS[0], eventAt }]));
   const real = run('plan', '--secrets', secrets, '--tip', '977577', '--payee', p2pkhAddress(freshKey()), '--schedule', schedulePath, '--no-refund-seat', '--out', out);
   assert.equal(real.status, 0, real.stderr);
-  assert.match(real.stdout, new RegExp(`call ${eventAt} for 25 min .*seats S-<box office>-<seat>; sales end at block \\d+, about (6\\d|70) min after the call ends`));
+  assert.match(real.stdout, new RegExp(`call ${eventAt} for 25 min .*seats S-<box office>-<seat>; sales end at block \\d+, about 39\\d min after the call ends; settling opens at block \\d+, about 18[45]\\d min after it ends`));
   assert.doesNotMatch(real.stdout, /WARNING/);
   const realPlan = JSON.parse(readFileSync(out, 'utf8'));
   assert.deepEqual(realPlan.shows.map((s) => [s.id, s.seatPrefix]), [['screening-1', 'S']]);

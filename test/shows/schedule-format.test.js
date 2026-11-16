@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   blocksUntil,
+  callEnded,
+  callEndsAt,
   estimateTimeOf,
   formatBch,
   formatSats,
@@ -34,6 +36,24 @@ test('nextOpenInstance: the soonest sample-settle whose sales are open (tip < st
   assert.equal(nextOpenInstance(shows, 978_200), null);
   assert.equal(nextOpenInstance([sample('c', 978_028, { cancelled: true })], 978_000), null);
   assert.deepEqual(showsOnSale(shows, 978_000).map((s) => s.id), ['a1', 'b']);
+});
+
+test('a real show sells until its call ends by the page\'s clock, and until its start block whatever the clock says', () => {
+  const eventAtMs = Date.parse('2026-11-24T13:00:00Z');
+  const real = { id: 's1', kind: 'real', startHeight: 978_855, graceBlocks: 144, cancelled: false, eventAtMs, durationMin: 25 };
+  const end = eventAtMs + 25 * 60_000;
+  assert.equal(callEndsAt(real), end);
+  assert.equal(callEndsAt(sample('a', 1_000)), null, 'a sample has no call');
+  assert.equal(callEnded(real, end - 1), false);
+  assert.equal(callEnded(real, end), true);
+  assert.equal(salesOpen(real, 978_700, { now: end - 60_000 }), true, 'during the call');
+  assert.equal(salesOpen(real, 978_700, { now: end }), false, 'the call is over');
+  assert.equal(salesOpen(real, 978_700), true, 'without a clock only the block counts (the worker, the studio)');
+  assert.equal(salesOpen(real, 978_855, { now: eventAtMs }), false, 'blocks came early: the start block ends sales during the call');
+  assert.equal(salesOpen(sample('a', 1_000), 999, { now: end + 1e9 }), true, 'a sample ignores the clock');
+  const shows = [sample('a1', 978_900), real];
+  assert.deepEqual(showsOnSale(shows, 978_700, { now: end - 1 }).map((s) => s.id), ['a1', 's1']);
+  assert.deepEqual(showsOnSale(shows, 978_700, { now: end }).map((s) => s.id), ['a1']);
 });
 
 test('phases: on sale, started, settling (settle can be mined from start + grace + 1), cancelled', () => {
