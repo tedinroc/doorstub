@@ -6,8 +6,8 @@
 // build refuses it (scripts/check-app-dist.js) unless
 // DOORSTUB_ALLOW_PLACEHOLDERS=1 is set.
 export const BLAZE = Object.freeze({
-  /** Link to the short presentation (deck or video). To fill in before deploying. */
-  presentationUrl: '',
+  /** Link to the short presentation (deck or video). */
+  presentationUrl: 'https://doorstub.pages.dev/deck.pdf',
   /** Link to the public source repository. */
   sourceUrl: 'https://github.com/tedinroc/doorstub',
   /** EMBER2026 CashTokens donation address (token-aware cashaddr, bitcoincash:z...). */

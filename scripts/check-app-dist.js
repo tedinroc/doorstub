@@ -90,7 +90,7 @@ for (const [key, [rule, what]] of Object.entries(blazeRules)) {
 
 const assets = readdirSync(join(dist, 'assets'));
 if (!assets.some((f) => /^wizardconnect-.*\.js$/.test(f))) problems.push('WizardConnect (LGPL) is not in its own assets/wizardconnect-*.js file');
-for (const f of ['_headers', 'shows.json', 'icon.png', 'bcmr/icon.png', 'favicon.svg', 'licenses.txt', 'fonts/barlow-condensed-800.woff2', 'fonts/OFL.txt']) {
+for (const f of ['_headers', 'shows.json', 'icon.png', 'bcmr/icon.png', 'favicon.svg', 'licenses.txt', 'fonts/barlow-condensed-800.woff2', 'fonts/OFL.txt', 'deck.pdf']) {
   if (!existsSync(join(dist, f))) problems.push(`app/dist/${f} is missing`);
 }
 

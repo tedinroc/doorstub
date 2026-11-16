@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920">
+<title>Doorstub</title>
+<!--
+  Doorstub: the short presentation for BCH BLAZE 2026, laid out on the seven
+  slides of the official "Widget Factory" template (title, name and one-liner,
+  story, benefits, BCH usage, vision, thank you). Build: npm run deck.
+
+  Pictures (img/): icon.svg is the mark scripts/make-icons.js draws for
+  app/public/icon.png (the same paths, as a vector). walked-in.png and
+  refunded.png are plain crops, nothing retouched, of two screenshots that
+  `npm run e2e` takes of the real site in its simnet test build
+  (.cache/e2e/screens), both from the 2x phone screens: 08-walked-in-390.png at
+  x 50 to 730, y 150 to 490, and 10-a2-refunded-390.png at x 50 to 730, y 150
+  to 850 (the whole A-0-2 REFUNDED card). site-dark-blur.jpg is
+  15-dark-1440.png, blurred and darkened until nothing on it reads.
+  Everything else (glow, sparks, rings, frames, ember marks) is drawn here.
+
+  Print notes: Chrome turns a gradient with transparency into a bitmap in the
+  PDF, and a blurred shadow into a large one, so the glows are a few gradient
+  layers, the sparks are solid shapes and nothing has a blurred shadow.
+-->
+<style>
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 800; src: url('../app/public/fonts/barlow-condensed-800.woff2') format('woff2'); }
+@font-face { font-family: 'Inter Display'; font-style: normal; font-weight: 400; src: url('fonts/inter-display-400.woff2') format('woff2'); }
+@font-face { font-family: 'Inter Display'; font-style: normal; font-weight: 500; src: url('fonts/inter-display-500.woff2') format('woff2'); }
+@font-face { font-family: 'Inter Display'; font-style: normal; font-weight: 600; src: url('fonts/inter-display-600.woff2') format('woff2'); }
+@font-face { font-family: 'Inter Display'; font-style: normal; font-weight: 700; src: url('fonts/inter-display-700.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400; src: url('fonts/jetbrains-mono-400.woff2') format('woff2'); }
+
+@page { size: 1920px 1080px; margin: 0; }
+
+:root {
+  /* Doorstub's dark theme (app/src/styles.css) */
+  --night: #0b0907;
+  --ink: #f4ebdc;
+  --ink-soft: #c5b6a2;
+  --ink-faint: #a29482;
+  --paper: #f3ece0;
+  --face: #fffaf1;
+  --vermilion: #cf3b20;
+  --ember: #e5502f;
+  --gold: #f2c14e;
+  --green: #3fd6a6;
+  /* the template's dark red, pulled toward Doorstub's vermilion */
+  --wine: #8c2216;
+  --wine-2: #a12a17;
+  --display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --body: 'Inter Display', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'JetBrains Mono', Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--night); }
+body { -webkit-print-color-adjust: exact; print-color-adjust: exact; -webkit-font-smoothing: antialiased; }
+
+.slide {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: var(--night);
+  color: var(--ink);
+  font-family: var(--body);
+  font-weight: 500;
+  break-after: page;
+  page-break-after: always;
+}
+.slide:last-child { break-after: auto; page-break-after: auto; }
+.slide > * { position: absolute; }
+
+a { color: inherit; text-decoration: none; }
+.mono { font-family: var(--mono); font-weight: 400; font-size: 0.9em; letter-spacing: -0.01em; font-feature-settings: 'calt' 0, 'liga' 0; }
+.chip { padding: 0 0.32em; border-radius: 0.24em; background: rgba(244, 235, 220, 0.09); color: #fff; }
+.red { color: var(--ember); }
+
+/* ---------------------------------------------------------------- the ember glow along the bottom */
+.glow {
+  inset: 0;
+  background:
+    radial-gradient(60% 62% at 0% 0%, rgba(70, 24, 14, 0.50) 0%, rgba(70, 24, 14, 0) 100%),
+    radial-gradient(34% 32% at 14% 112%, rgba(255, 106, 77, 0.50) 0%, rgba(255, 106, 77, 0) 100%),
+    radial-gradient(30% 28% at 86% 110%, rgba(242, 160, 70, 0.30) 0%, rgba(242, 160, 70, 0) 100%),
+    radial-gradient(76% 56% at 50% 124%, rgba(229, 80, 47, 0.66) 0%, rgba(176, 46, 24, 0.42) 36%, rgba(94, 20, 13, 0.16) 66%, rgba(94, 20, 13, 0) 100%);
+}
+.glow.soft { opacity: 0.6; }
+
+/* sparks: solid specks (the script scatters them; none lands on text) */
+.sparks { inset: 0; }
+.sparks i { position: absolute; display: block; border-radius: 50%; }
+
+/* rings: the brand's guilloche from og.png, faint */
+.rings { left: 0; top: 0; width: 1920px; height: 1080px; }
+
+/* a small ember drawn in CSS, where the template has its flame logo */
+.ember-mark { width: 60px; height: 60px; }
+.ember-mark::before, .ember-mark::after {
+  content: '';
+  position: absolute;
+  border-radius: 50% 0 50% 50%;
+  transform: rotate(-45deg);
+}
+.ember-mark::before {
+  inset: 6px;
+  background: radial-gradient(circle at 62% 38%, #ffd88a 0%, #ff8a4d 38%, #e5502f 66%, #a3260f 100%);
+}
+.ember-mark::after {
+  left: 21px; top: 27px; width: 18px; height: 18px;
+  background: radial-gradient(circle at 60% 40%, #fff6dc 0%, #ffd27a 70%);
+}
+.halo { border-radius: 50%; background: radial-gradient(closest-side, rgba(255, 106, 77, 0.42) 0%, rgba(255, 106, 77, 0) 100%); }
+.corner-halo { right: 54px; bottom: 24px; width: 160px; height: 160px; }
+.corner-mark { right: 104px; bottom: 74px; }
+
+/* the dark-red title bar of the Story and Benefits slides */
+.bar {
+  left: 0;
+  top: 84px;
+  height: 128px;
+  min-width: 1040px;
+  padding: 0 64px 0 120px;
+  display: flex;
+  align-items: center;
+  background: linear-gradient(90deg, #7a1d12 0%, var(--wine) 40%, var(--wine-2) 100%);
+}
+.bar h2 {
+  margin: 0;
+  padding-top: 4px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 92px;
+  line-height: 1;
+  color: #fff;
+}
+
+/* the dark-red picture frame */
+.frame {
+  padding: 16px;
+  background: #120d0b;
+  border: 6px solid var(--wine);
+  outline: 1px solid rgba(255, 140, 100, 0.22);
+}
+.frame img { display: block; }
+.caption {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  line-height: 1.2;
+}
+
+/* ================================================================ 1. Title */
+.s1 .badge {
+  left: 96px; top: 0;
+  width: 132px; height: 156px;
+  background: linear-gradient(180deg, #741a11 0%, var(--wine) 100%);
+}
+.s1 .badge .ember-mark { position: absolute; left: 36px; top: 46px; }
+.s1 .badge .halo { position: absolute; left: 6px; top: 16px; width: 120px; height: 120px; }
+.s1 .name {
+  left: 112px; top: 318px;
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 240px;
+  line-height: 0.86;
+  color: #fff;
+}
+.s1 .who {
+  left: 120px; top: 562px;
+  margin: 0;
+  font-size: 60px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.s1 .rule { left: 122px; top: 676px; width: 120px; height: 8px; background: var(--ember); }
+.s1 .art-halo { right: -80px; top: -90px; width: 1160px; height: 1160px; background: radial-gradient(closest-side, rgba(229, 80, 47, 0.30) 0%, rgba(229, 80, 47, 0.10) 55%, rgba(229, 80, 47, 0) 100%); }
+.s1 .art {
+  right: 120px; top: 112px;
+  width: 760px; height: 760px;
+  padding: 20px;
+  background: linear-gradient(160deg, #fffaf1 0%, #efe6d6 100%);
+  outline: 1px solid rgba(255, 255, 255, 0.4);
+}
+.s1 .art svg { display: block; width: 720px; height: 720px; }
+.s1 .links {
+  left: 120px; bottom: 112px;
+  display: flex;
+  gap: 72px;
+  font-size: 40px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.s1 .links a { display: flex; align-items: center; gap: 22px; }
+.s1 .links .ico {
+  flex: none;
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: var(--wine);
+  display: grid;
+  place-items: center;
+}
+.s1 .links .ico svg { width: 34px; height: 34px; }
+.s1 .links .soft { color: var(--ink-soft); font-weight: 500; }
+
+/* ================================================================ 2. Doorstub! */
+.s2 .center {
+  left: 160px; right: 160px; top: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding-bottom: 40px;
+}
+.s2 h1 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 240px;
+  line-height: 0.9;
+  color: #fff;
+}
+.s2 .one {
+  margin: 44px 0 0;
+  font-size: 100px;
+  font-weight: 400;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.s2 .sub {
+  margin: 52px 0 0;
+  max-width: 1360px;
+  font-size: 46px;
+  font-weight: 500;
+  line-height: 1.32;
+  color: var(--ink-soft);
+  text-wrap: balance;
+}
+.s2 .small {
+  margin: 22px 0 0;
+  font-size: 34px;
+  font-weight: 400;
+  line-height: 1.3;
+  color: var(--ink-faint);
+}
+.s2 .site {
+  margin: 58px 0 0;
+  font-size: 46px;
+  font-weight: 600;
+  color: var(--green);
+  text-decoration: underline;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 12px;
+}
+
+/* ================================================================ 3. The Story of Doorstub */
+.s3 .text { left: 120px; top: 318px; width: 860px; }
+.s3 .text p { margin: 0; }
+.s3 .bio {
+  font-size: 42px;
+  font-weight: 600;
+  line-height: 1.32;
+  color: var(--ink);
+}
+.s3 .bet {
+  margin-top: 50px !important;
+  padding: 6px 0 6px 40px;
+  border-left: 8px solid var(--ember);
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.012em;
+  color: #fff;
+}
+.s3 .film {
+  margin-top: 50px !important;
+  font-size: 38px;
+  font-weight: 500;
+  line-height: 1.36;
+  color: var(--ink);
+}
+.s3 .pic-halo { right: -40px; top: 220px; width: 1040px; height: 680px; }
+.s3 .pic { right: 120px; top: 352px; }
+.s3 .pic img { width: 720px; height: 360px; }
+.s3 .pic .caption { margin-top: 22px; }
+
+/* ================================================================ 4. Benefits of Doorstub */
+.s4 ul {
+  left: 120px; top: 290px;
+  width: 900px;
+  margin: 0; padding: 0;
+  list-style: none;
+}
+.s4 li {
+  position: relative;
+  padding-left: 52px;
+  font-size: 39px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink);
+}
+.s4 li + li { margin-top: 34px; }
+.s4 li::before, .s6 li::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0.5em;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--ember);
+  outline: 5px solid rgba(229, 80, 47, 0.22);
+}
+.s4 .pic-halo { right: -60px; top: 140px; width: 1000px; height: 900px; }
+.s4 .pic { right: 120px; top: 244px; }
+.s4 .pic img { width: 600px; height: 618px; }
+.s4 .pic .caption { margin-top: 20px; }
+.halo.wide { background: radial-gradient(closest-side, rgba(229, 80, 47, 0.24) 0%, rgba(229, 80, 47, 0.08) 60%, rgba(229, 80, 47, 0) 100%); }
+
+/* ================================================================ 5. BCH Usage */
+.s5 .center {
+  left: 80px; right: 80px; top: 50px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.s5 h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 108px;
+  line-height: 1;
+  color: #fff;
+}
+.s5 .lines { margin-top: 22px; max-width: 1640px; }
+.s5 .lines p {
+  margin: 0;
+  font-size: 39px;
+  font-weight: 500;
+  line-height: 1.32;
+  color: var(--ink);
+  text-wrap: balance;
+}
+.s5 .lines p + p { margin-top: 10px; color: var(--ink-soft); }
+.s5 .card-halo { left: 80px; right: 80px; top: 340px; height: 760px; }
+/* 31 px code, never re-wrapped: the longest line (83 characters at 0.6 em)
+   plus the gutter is about 1700 px, inside the 1760 px the slide gives it. */
+.s5 .card {
+  margin-top: 28px;
+  padding: 20px 0;
+  background: var(--face);
+  border-radius: 16px;
+  outline: 1px solid rgba(255, 255, 255, 0.5);
+  text-align: left;
+}
+.s5 .code {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 31px;
+  line-height: 41px;
+  color: #1d1813;
+  white-space: pre;
+  font-feature-settings: 'calt' 0, 'liga' 0;
+  font-variant-ligatures: none;
+}
+.s5 .ln { display: block; padding: 0 48px 0 0; }
+.s5 .ln.hot { background: #f6dccf; box-shadow: inset 7px 0 0 var(--vermilion); }
+.s5 .n {
+  display: inline-block;
+  width: 112px;
+  padding-right: 34px;
+  text-align: right;
+  color: #ad9f8c;
+  user-select: none;
+}
+.s5 .k { color: #b3301a; }
+.s5 .t { color: #0a7a5a; }
+.s5 .v { color: #2a52c0; }
+.s5 .caption { margin-top: 16px; }
+.s5 .caption .mono { font-size: 1em; }
+
+/* ================================================================ 6. The Vision for Doorstub */
+.s6 .bg { inset: -40px; background: #0b0907 url('img/site-dark-blur.jpg') center / cover no-repeat; }
+.s6 .head { left: 120px; top: 0; bottom: 0; width: 680px; display: flex; flex-direction: column; justify-content: center; padding-bottom: 30px; }
+.s6 .head h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 132px;
+  line-height: 0.96;
+  color: #fff;
+  /* keeps the space at the line break as a glyph, so the PDF's text reads "Vision for" */
+  white-space: pre-wrap;
+}
+.s6 .head .rule { width: 150px; height: 36px; margin-top: 46px; background: var(--wine); }
+.s6 .panel {
+  left: 840px; right: 120px; top: 176px; bottom: 216px;
+  padding: 0 76px;
+  display: flex;
+  align-items: center;
+  background: rgba(14, 11, 9, 0.74);
+  outline: 1px solid rgba(244, 235, 220, 0.12);
+}
+.s6 ul { margin: 0; padding: 0; list-style: none; }
+.s6 li {
+  position: relative;
+  padding-left: 52px;
+  font-size: 46px;
+  font-weight: 600;
+  line-height: 1.28;
+  color: #fff;
+}
+.s6 li + li { margin-top: 48px; }
+.s6 li::before { top: 0.46em; width: 18px; height: 18px; }
+.s6 li.plan::before { background: transparent; border: 3px solid var(--gold); outline: none; }
+.s6 .label { color: var(--gold); }
+
+/* ================================================================ 7. THANK YOU! */
+.s7 { background: #000; }
+.s7 .glow { opacity: 0.32; }
+.s7 .center {
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding-bottom: 20px;
+}
+.s7 h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 300px;
+  line-height: 0.9;
+  color: #fff;
+}
+.s7 .mark { margin-top: 70px; width: 92px; height: 92px; }
+.s7 .links { margin: 34px 0 0; font-size: 42px; font-weight: 500; color: var(--ink-soft); }
+.s7 .links .dot { padding: 0 18px; color: var(--ink-faint); }
+.s7 .credit { margin: 20px 0 0; font-size: 34px; font-weight: 400; color: var(--ink-faint); }
+</style>
+</head>
+<body>
+
+<!-- 1. Title -->
+<section class="slide s1" data-slide="1">
+  <div class="glow"></div>
+  <svg class="rings" viewBox="0 0 1920 1080" aria-hidden="true"><g fill="none" stroke="#e5502f" stroke-opacity="0.075" stroke-width="2" data-arcs="-120,-160,80,30,26,se"></g></svg>
+  <div class="halo art-halo"></div>
+  <div class="sparks" data-seed="11" data-n="44"></div>
+  <div class="badge"><div class="halo"></div><div class="ember-mark"></div></div>
+  <h1 class="name">Doorstub</h1>
+  <p class="who">Ted Chen (solo)</p>
+  <div class="rule"></div>
+  <div class="art">
+    <!-- the paper of og.png (rings from the top right) under the mark of icon.png -->
+    <svg viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" fill="#f3ece0"/>
+      <g fill="none" stroke="#cf3b20" stroke-opacity="0.09" stroke-width="0.07" data-arcs="33.4,-1.6,1.4,0.82,44,sw"></g>
+      <g transform="translate(16 16) rotate(-8) translate(-16 -16)">
+        <path d="M4 8.5a2.5 2.5 0 0 1 2.5-2.5h19a2.5 2.5 0 0 1 2.5 2.5v4.2a3.4 3.4 0 0 0 0 6.6v4.2a2.5 2.5 0 0 1-2.5 2.5h-19A2.5 2.5 0 0 1 4 23.5v-4.2a3.4 3.4 0 0 0 0-6.6z" fill="#cf3b20"/>
+        <path d="M21 7.6v16.8" stroke="#f3ece0" stroke-width="1.4" stroke-dasharray="1.8 1.9" stroke-linecap="round"/>
+        <path d="M8.2 12.4h8.4M8.2 16h6M8.2 19.6h7.6" stroke="#f3ece0" stroke-width="1.8" stroke-linecap="round"/>
+      </g>
+    </svg>
+  </div>
+  <div class="links">
+    <a href="https://doorstub.pages.dev">
+      <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9.2"/><path d="M2.8 12h18.4M12 2.8c2.6 2.7 3.9 5.8 3.9 9.2s-1.3 6.5-3.9 9.2M12 2.8C9.4 5.5 8.1 8.6 8.1 12s1.3 6.5 3.9 9.2"/></svg></span>
+      <span><span class="soft">Live on BCH mainnet:</span> doorstub.pages.dev</span>
+    </a>
+    <a href="https://github.com/tedinroc/doorstub">
+      <span class="ico"><svg viewBox="0 0 16 16" fill="#fff" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></span>
+      <span>github.com/tedinroc/doorstub</span>
+    </a>
+  </div>
+</section>
+
+<!-- 2. Name and one-liner -->
+<section class="slide s2" data-slide="2">
+  <div class="glow"></div>
+  <div class="sparks" data-seed="22" data-n="50"></div>
+  <div class="center">
+    <h1>Door<span class="red">stub</span>!</h1>
+    <p class="one">Tickets that refund themselves.</p>
+    <p class="sub">The organiser gets paid when you walk in. Otherwise your BCH comes back after the show.</p>
+    <p class="small">Minus network fees and any fee listed on the show page.</p>
+    <a class="site" href="https://doorstub.pages.dev">doorstub.pages.dev</a>
+  </div>
+</section>
+
+<!-- 3. The Story of Doorstub -->
+<section class="slide s3" data-slide="3">
+  <div class="glow soft"></div>
+  <div class="halo wide pic-halo"></div>
+  <div class="sparks" data-seed="33" data-n="30"></div>
+  <div class="bar"><h2>The Story of Doorstub</h2></div>
+  <div class="text">
+    <p class="bio">When Bitcoin Cash forked in 2017, I was a miner. Later I helped promote BCH in Taiwan.</p>
+    <p class="bet">I think more people will book if no-shows get their BCH back.</p>
+    <p class="film">I'm showing a 12-minute film about Doorstub online on 24 and 28 Nov, 13:00 UTC. The tickets are Doorstub tickets.</p>
+  </div>
+  <div class="pic">
+    <div class="frame"><img src="img/walked-in.png" alt="A Doorstub screening ticket, seat S-1-1, stamped WALKED IN"></div>
+    <p class="caption">From a test build</p>
+  </div>
+  <div class="halo corner-halo"></div>
+  <div class="ember-mark corner-mark"></div>
+</section>
+
+<!-- 4. Benefits of Doorstub -->
+<section class="slide s4" data-slide="4">
+  <div class="glow soft"></div>
+  <div class="halo wide pic-halo"></div>
+  <div class="sparks" data-seed="44" data-n="30"></div>
+  <div class="bar"><h2>Benefits of Doorstub</h2></div>
+  <ul>
+    <li>Can't go? Hand the ticket back for your BCH.</li>
+    <li>Unused tickets refund after the show to the address that bought them.</li>
+    <li>Anyone can send that refund without a key, and my keeper bot does.</li>
+    <li>I tested signing with Selene, Paytaca and Cashonize.</li>
+    <li><span class="mono chip">npm test</span> runs 143 attack tests, and libauth's 2026 BCH VM rejects every one.</li>
+  </ul>
+  <div class="halo corner-halo"></div>
+  <div class="pic">
+    <div class="frame"><img src="img/refunded.png" alt="A Doorstub ticket, seat A-0-2, stamped REFUNDED: refunded by the settle after the show to the address that bought it"></div>
+    <p class="caption">From a test build</p>
+  </div>
+  <div class="ember-mark corner-mark"></div>
+</section>
+
+<!-- 5. BCH Usage -->
+<section class="slide s5" data-slide="5">
+  <div class="glow soft"></div>
+  <div class="halo wide card-halo"></div>
+  <div class="sparks" data-seed="55" data-n="26"></div>
+  <div class="center">
+    <h2>BCH <span class="red">Usage</span></h2>
+    <div class="lines">
+      <p>Your ticket is a CashTokens NFT. The money sits in its own UTXO at the show's Escrow contract.</p>
+      <p>Only <span class="mono chip">checkIn</span> pays the organiser the ticket price. It needs your signature: line 120 below requires the ticket input to sit at your own address.</p>
+    </div>
+    <div class="card">
+<pre class="code" data-source="contracts/Escrow.cash" data-from="120"><span class="ln hot"><span class="n">120</span><span class="k">require</span>(tx.inputs[ticketInputIndex].lockingBytecode == buyerLock);</span><span class="ln"><span class="n">121</span></span><span class="ln"><span class="n">122</span><span class="k">require</span>(tx.inputs.length == <span class="v">2</span>);</span><span class="ln"><span class="n">123</span><span class="k">require</span>(tx.outputs.length == <span class="v">2</span>);</span><span class="ln"><span class="n">124</span></span><span class="ln hot"><span class="n">125</span><span class="k">require</span>(tx.outputs[idx].lockingBytecode == <span class="k">new</span> <span class="t">LockingBytecodeP2PKH</span>(organiserPkh));</span><span class="ln"><span class="n">126</span><span class="k">require</span>(tx.outputs[idx].tokenCategory == <span class="v">0x</span>);</span><span class="ln"><span class="n">127</span><span class="k">require</span>(tx.outputs[idx].value &gt;= tx.inputs[idx].value - minerFeeCap);</span><span class="ln"><span class="n">128</span></span><span class="ln"><span class="n">129</span><span class="k">require</span>(tx.outputs[ticketInputIndex].lockingBytecode == buyerLock);</span><span class="ln"><span class="n">130</span><span class="k">require</span>(tx.outputs[ticketInputIndex].tokenCategory == category);</span><span class="ln"><span class="n">131</span><span class="k">require</span>(tx.outputs[ticketInputIndex].nftCommitment == ticketCommitment);</span></pre>
+    </div>
+    <p class="caption"><span class="mono">contracts/Escrow.cash</span>, lines 120 to 131</p>
+  </div>
+</section>
+
+<!-- 6. The Vision for Doorstub -->
+<section class="slide s6" data-slide="6">
+  <div class="bg"></div>
+  <div class="glow soft"></div>
+  <div class="sparks" data-seed="66" data-n="26"></div>
+  <div class="head">
+    <h2>The Vision for Doorstub</h2>
+    <div class="rule"></div>
+  </div>
+  <div class="panel">
+    <ul>
+      <li>It's for paid online events where people book and don't show.</li>
+      <li>Doorstub's door hands out call links only after it reads a check-in.</li>
+      <li class="plan"><span class="label">Planned:</span> organisers pay per show for the keeper bot and the door.</li>
+    </ul>
+  </div>
+  <div class="halo corner-halo"></div>
+  <div class="ember-mark corner-mark"></div>
+</section>
+
+<!-- 7. THANK YOU! -->
+<section class="slide s7" data-slide="7">
+  <div class="glow"></div>
+  <div class="center">
+    <h2>THANK YOU!</h2>
+    <img class="mark" src="img/icon.svg" alt="">
+    <p class="links"><a href="https://doorstub.pages.dev">doorstub.pages.dev</a><span class="dot">·</span><a href="https://github.com/tedinroc/doorstub">github.com/tedinroc/doorstub</a></p>
+    <p class="credit">AI coding assistance (Claude)</p>
+  </div>
+</section>
+
+<script>
+// Deterministic decoration: the same sparks and rings on every build.
+(() => {
+  const rng = (seed) => () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
+  // Rings: only the quarter of each circle that falls on the page (cx, cy, first radius, step, count, quarter).
+  for (const g of document.querySelectorAll('[data-arcs]')) {
+    const [cx, cy, r0, step, count] = g.dataset.arcs.split(',').slice(0, 5).map(Number);
+    const quarter = g.dataset.arcs.split(',')[5];
+    let d = '';
+    for (let i = 0; i < count; i += 1) {
+      const r = +(r0 + i * step).toFixed(3);
+      d += quarter === 'se'
+        ? `M${cx + r} ${cy}A${r} ${r} 0 0 1 ${cx} ${cy + r}`
+        : `M${cx - r} ${cy}A${r} ${r} 0 0 0 ${cx} ${cy + r}`;
+    }
+    g.innerHTML = `<path d="${d}"/>`;
+  }
+
+  // Sparks: solid specks in the glow, kept off every text box, picture and panel.
+  const tones = ['#ffcf7a', '#ffb15e', '#ff8a4d', '#ff6a4d', '#ffe3a6'];
+  for (const box of document.querySelectorAll('.sparks')) {
+    const slide = box.closest('.slide');
+    const s0 = slide.getBoundingClientRect();
+    const keep = [...slide.querySelectorAll('h1, h2, p, li, a, .frame, .card, .panel, .art, .badge, .bar, .ember-mark, .rule')].map((el) => {
+      const r = el.getBoundingClientRect();
+      return { l: r.left - s0.left - 28, t: r.top - s0.top - 28, r: r.right - s0.left + 28, b: r.bottom - s0.top + 28 };
+    });
+    const r = rng(Number(box.dataset.seed));
+    const n = Number(box.dataset.n);
+    let placed = 0;
+    for (let tries = 0; placed < n && tries < n * 40; tries += 1) {
+      const h = 2 + r() * r() * 5;
+      const w = h * (1.4 + r() * 3.2);
+      const x = r() * 1920;
+      const y = 1080 - Math.pow(r(), 1.6) * 520;
+      const tone = tones[Math.floor(r() * tones.length)];
+      const angle = -64 + r() * 46;
+      const alpha = 0.3 + r() * 0.65;
+      if (keep.some((k) => x + w > k.l && x - w < k.r && y + w > k.t && y - w < k.b)) continue;
+      const s = document.createElement('i');
+      s.style.cssText = `left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;width:${w.toFixed(1)}px;height:${h.toFixed(1)}px;background:${tone};opacity:${alpha.toFixed(2)};transform:rotate(${angle.toFixed(1)}deg)`;
+      box.appendChild(s);
+      placed += 1;
+    }
+  }
+})();
+</script>
+</body>
+</html>
