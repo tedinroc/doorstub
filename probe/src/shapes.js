@@ -147,21 +147,39 @@ const madeUpBoxOffice = ({ show, contracts }) => ({
   },
 });
 
+/** Candidate coins combined into pairs and triples (the largest that are still useful). */
+const POOL = 40;
+
 /**
- * Pick plain coins (largest first) until they cover price + both token
- * outputs + a fee margin. Returns null when the coins are not enough.
+ * Pick the smallest set of plain coins (at most 3) that covers `need`: the
+ * least real value the wallet is asked to sign for. A coin larger than the
+ * smallest single coin that covers the need can never be part of the best
+ * set, so only smaller coins are combined (the 40 largest of them, which
+ * keeps the search small). Ties go to fewer coins. Returns the coins largest
+ * first, or null when nothing covers the need.
  */
 export const pickCoins = (coins, need) => {
-  const sorted = coins.filter((c) => c.token === undefined).sort((a, b) => (a.value > b.value ? -1 : a.value < b.value ? 1 : 0));
-  const picked = [];
-  let total = 0n;
-  for (const coin of sorted) {
-    if (picked.length >= 3) break;
-    picked.push(coin);
-    total += coin.value;
-    if (total >= need) return picked;
+  const byValue = (a, b) => (a.value < b.value ? -1 : a.value > b.value ? 1 : 0);
+  const plain = coins.filter((c) => c.token === undefined).sort(byValue);
+  const single = plain.find((c) => c.value >= need);
+  const pool = (single === undefined ? plain : plain.filter((c) => c !== single && c.value <= single.value)).slice(-POOL);
+  let best = single === undefined ? null : [single];
+  let bestTotal = single === undefined ? null : single.value;
+  const consider = (set) => {
+    const total = set.reduce((a, c) => a + c.value, 0n);
+    if (total < need) return;
+    if (best === null || total < bestTotal || (total === bestTotal && set.length < best.length)) {
+      best = set;
+      bestTotal = total;
+    }
+  };
+  for (let i = 0; i < pool.length; i += 1) {
+    for (let j = i + 1; j < pool.length; j += 1) {
+      consider([pool[i], pool[j]]);
+      for (let k = j + 1; k < pool.length; k += 1) consider([pool[i], pool[j], pool[k]]);
+    }
   }
-  return null;
+  return best === null ? null : best.slice().sort(byValue).reverse();
 };
 
 /** What A-real needs from the wallet: price + ticket + escrow marker sats + a fee margin. */

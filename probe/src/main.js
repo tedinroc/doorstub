@@ -7,6 +7,7 @@ import { toSignRequest } from './wire.js';
 import { checkReply, refusal } from './check.js';
 import { cashonizeLink, requestSignature, scanAddresses, startPairing } from './connect.js';
 import { scanCoins } from './fulcrum.js';
+import { redactRun, redactRuns } from './records.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, attrs = {}, ...children) => {
@@ -47,7 +48,8 @@ const state = {
   probe: null,
   coins: null,
   busy: null, // { id, controller }
-  runs: store.get(RESULTS_KEY, []),
+  // Runs saved by an older page may still hold an A-real signature: drop it on load.
+  runs: redactRuns(store.get(RESULTS_KEY, [])),
   last: {}, // shape id -> last result for the current wallet
 };
 
@@ -287,6 +289,8 @@ const runShape = async (id) => {
     }
   }
   result.elapsedMs = Date.now() - started;
+  // A-real signs real coins: keep only the verdict and the checks, never the signed transaction.
+  result = redactRun({ ...result, shape: id });
   if (state.busy?.controller === controller) state.busy = null;
   state.last[id] = result;
   record(shape, request, result);
@@ -297,7 +301,7 @@ const runShape = async (id) => {
 // ---------------------------------------------------------------- results
 
 const record = (shape, request, result) => {
-  state.runs.push({
+  state.runs.push(redactRun({
     at: new Date().toISOString(),
     shape: shape.id,
     verdict: result.verdict,
@@ -324,7 +328,7 @@ const record = (shape, request, result) => {
       notes: shape.notes,
     },
     signedHex: result.signedHex ?? null,
-  });
+  }));
   store.set(RESULTS_KEY, state.runs);
   renderRuns();
 };
@@ -337,7 +341,7 @@ const exportJson = () =>
       exportedAt: new Date().toISOString(),
       userAgent: navigator.userAgent,
       summary: state.runs.map((r) => `${r.wallet?.name ?? '?'} | ${r.notes} | ${r.shape} | ${r.verdict}${r.walletError ? ` | ${r.walletError}` : ''}`),
-      runs: state.runs,
+      runs: redactRuns(state.runs),
     },
     null,
     2,
@@ -433,6 +437,8 @@ window.addEventListener('beforeunload', () => {
   state.pairing?.close();
 });
 
+// Rewrite saved runs that held an A-real signature, so it leaves this browser too.
+if (state.runs.some((run) => run.signedHexRedacted)) store.set(RESULTS_KEY, state.runs);
 renderShapes();
 renderRuns();
 renderShow();

@@ -6,7 +6,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { decodeTransaction, encodeTransaction, hexToBin, binToHex } from '@bitauth/libauth';
-import { SHAPES, USER_PROMPT, buildShape, makeProbeShow, madeUpTxid, A_REAL_NEED } from '../src/shapes.js';
+import { SHAPES, USER_PROMPT, buildShape, makeProbeShow, madeUpTxid, pickCoins, A_REAL_NEED } from '../src/shapes.js';
+import { redactRun, redactRuns } from '../src/records.js';
 import { toSignRequest } from '../src/wire.js';
 import { checkReply, refusal } from '../src/check.js';
 import { makeSimWallet } from './sim-wallet.js';
@@ -197,4 +198,43 @@ test('probe source has no broadcast path', () => {
     assert.doesNotMatch(text, /blockchain\.transaction\.broadcast/, file);
     assert.doesNotMatch(text, /broadcast\s*:\s*(true|!0)/, file);
   }
+});
+
+test('A-real picks the smallest coin set that covers the need, not the largest coins (F2)', () => {
+  const c = (value, extra = {}) => ({ txid: madeUpTxid(), vout: 0, value: BigInt(value), path: 'receive', index: 0, ...extra });
+  const need = A_REAL_NEED; // 14,000
+  const values = (picked) => picked.map((x) => Number(x.value));
+  assert.deepEqual(values(pickCoins([c(15_000), c(2_000_000), c(20_000)], need)), [15_000], 'smallest single coin, never the 2,000,000');
+  assert.deepEqual(values(pickCoins([c(7_000), c(7_100), c(14_500)], need)), [7_100, 7_000], 'a pair worth less than any single coin');
+  assert.deepEqual(values(pickCoins([c(500), c(600), c(700), c(50_000)], need)), [50_000], 'dust next to one big coin');
+  assert.deepEqual(values(pickCoins([c(5_000), c(5_000), c(4_000), c(3_000)], need)), [5_000, 5_000, 4_000], 'three coins at exactly the need');
+  assert.deepEqual(values(pickCoins([c(5_000), c(5_000), c(4_000), c(9_000)], need)), [9_000, 5_000], 'same total: fewer coins win');
+  assert.equal(pickCoins([c(5_000), c(4_000), c(3_000), c(1_000)], need), null, 'nothing covers it with at most 3 coins');
+  assert.equal(pickCoins([c(50_000, { token: {} })], need), null, 'token coins are never used');
+});
+
+test('A-real never stores or exports the signed transaction; other shapes keep theirs (F2)', () => {
+  const ctx = setup({ sighash: 0xc2 });
+  const { result } = run(ctx, 'A-real', { coins: scannedCoins(ctx.wallet) });
+  assert.equal(result.verdict, 'FAIL', 'a NONE|ANYONECANPAY wallet fails the sighash check');
+  assert.equal(typeof result.signedHex, 'string', 'the raw check result holds the signed transaction');
+  const kept = redactRun({ ...result, shape: 'A-real' });
+  assert.equal(kept.signedHex, null);
+  assert.equal(kept.signedHexRedacted, true);
+  assert.equal(kept.verdict, 'FAIL');
+  assert.deepEqual(kept.checks, result.checks, 'the checks stay for the analysis');
+  const b = run(setup(), 'B').result;
+  assert.equal(redactRun({ ...b, shape: 'B' }).signedHex, b.signedHex, 'made-up coins only: kept');
+  // Runs saved by an older page are cleaned when loaded.
+  const saved = [{ shape: 'A-real', signedHex: 'ab'.repeat(200) }, { shape: 'C', signedHex: 'cd' }];
+  assert.deepEqual(redactRuns(saved).map((r) => r.signedHex), [null, 'cd']);
+  assert.deepEqual(redactRuns(null), []);
+});
+
+test('the page redacts A-real when recording, loading and exporting (F2)', () => {
+  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  assert.match(main, /runs: redactRuns\(store\.get\(RESULTS_KEY/, 'on load');
+  assert.match(main, /state\.runs\.push\(redactRun\(/, 'on record');
+  assert.match(main, /runs: redactRuns\(state\.runs\)/, 'on export');
+  assert.match(main, /result = redactRun\(\{ \.\.\.result, shape: id \}\)/, 'in memory');
 });
