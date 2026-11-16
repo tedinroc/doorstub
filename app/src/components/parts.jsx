@@ -199,13 +199,22 @@ export const FlowStatus = ({ flow, onAction, onCancel }) => {
   return null;
 };
 
-export const RefundTrack = ({ step }) => (
-  <ol class="track" aria-label={LABELS.refundProgress}>
-    {refundTrack(step).map((s) => (
-      <li key={s.id} class={`step${s.done ? ' done' : ''}${s.active ? ' active' : ''}`} style="list-style:none">
-        <span class="dot" aria-hidden="true" />
-        <span>{s.label}</span>
-      </li>
-    ))}
-  </ol>
-);
+export const RefundTrack = ({ step }) => {
+  const steps = refundTrack(step);
+  const now = steps.find((s) => s.active) ?? (step === 'back' ? steps.at(-1) : null);
+  return (
+    <>
+      <ol class="track" aria-label={LABELS.refundProgress}>
+        {steps.map((s) => (
+          <li key={s.id} class={`step${s.done ? ' done' : ''}${s.active ? ' active' : ''}`} style="list-style:none" aria-current={s.active ? 'step' : undefined}>
+            <span class="dot" aria-hidden="true" />
+            <span>{s.label}</span>
+          </li>
+        ))}
+      </ol>
+      <p class="sr-only" aria-live="polite">
+        {now ? now.label : ''}
+      </p>
+    </>
+  );
+};
