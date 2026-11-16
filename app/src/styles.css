@@ -1,5 +1,15 @@
 /* Doorstub: a box office printed on warm paper. */
 
+/* The display face ships with the site (OFL, app/public/fonts/OFL.txt), so the
+   headline looks the same on every system. */
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('/fonts/barlow-condensed-800.woff2') format('woff2');
+}
+
 :root {
   color-scheme: light dark;
   --paper: #f3ece0;
@@ -8,7 +18,7 @@
   --face-2: #f8eedd;
   --ink: #1d1813;
   --ink-soft: #594d42;
-  --ink-faint: #85776a;
+  --ink-faint: #6e6155;
   --rule: #d6c7ae;
   --accent: #cf3b20;
   --accent-press: #b3301a;
@@ -32,7 +42,8 @@
   --radius-s: 9px;
   --gutter: 16px;
   --max: 1200px;
-  --font-display: 'Avenir Next Condensed', 'AvenirNextCondensed-Bold', 'Bahnschrift', 'Roboto Condensed', 'Arial Narrow', sans-serif-condensed, system-ui, sans-serif;
+  --font-display: 'Barlow Condensed', 'Avenir Next Condensed', 'AvenirNextCondensed-Bold', 'Bahnschrift', 'Roboto Condensed', 'Arial Narrow', sans-serif-condensed, system-ui, sans-serif;
+  --letter-ink: #fff8ef;
   --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Roboto Mono', monospace;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -47,7 +58,7 @@
     --face-2: #2b241e;
     --ink: #f4ebdc;
     --ink-soft: #c5b6a2;
-    --ink-faint: #918371;
+    --ink-faint: #a29482;
     --rule: #42382e;
     --accent: #ff6a4d;
     --accent-press: #ff836b;
@@ -67,7 +78,12 @@
     --on-night: #f4ebdc;
     --shadow-ticket: 0 1px 0 rgba(0, 0, 0, 0.5), 0 22px 44px -24px rgba(0, 0, 0, 0.9);
     --shadow-pop: 0 30px 90px -30px rgba(0, 0, 0, 0.95);
+    /* the bright dark-mode bands carry dark letters (6:1 or better on the tiles) */
+    --letter-ink: #120d09;
   }
+  .kind-a { --pill-tone: #ff7a5e; }
+  .kind-b { --pill-tone: #8f93ff; }
+  .kind-real { --pill-tone: #3fd6a6; }
 }
 
 * { box-sizing: border-box; }
@@ -89,6 +105,8 @@ a:hover { color: var(--accent); }
 button { font: inherit; color: inherit; }
 
 :focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; border-radius: 6px; }
+/* on the dark night surfaces the ring is gold (8:1) */
+.blaze :focus-visible, .proof :focus-visible, .coin-box :focus-visible { outline-color: var(--gold); }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -120,6 +138,14 @@ button { font: inherit; color: inherit; }
 .blaze .chip-btn { border: 1px solid color-mix(in srgb, var(--on-night) 35%, transparent); background: transparent; color: var(--on-night); border-radius: 999px; padding: 1px 9px; font-size: 11.5px; cursor: pointer; }
 .blaze .chip-btn:hover { border-color: var(--gold); color: var(--gold); }
 @media (min-width: 1000px) { .blaze .line { flex-basis: auto; margin-left: auto; } }
+/* On a phone the banner stays short, so "Get a ticket" fits the first screen of a small phone. */
+@media (max-width: 480px) {
+  .blaze { font-size: 11.5px; line-height: 1.25; }
+  .blaze .wrap { gap: 1px 10px; padding-top: 5px; padding-bottom: 5px; }
+  .blaze-mark { font-size: 12.5px; }
+  .blaze .donate code, .blaze .chip-btn { font-size: 10.5px; }
+  .blaze .line { font-size: 10.5px; line-height: 1.25; }
+}
 
 /* ------------------------------------------------------------ header */
 
@@ -158,14 +184,15 @@ button { font: inherit; color: inherit; }
 }
 .wallet-chip:hover { border-color: var(--ink-faint); }
 .wallet-chip .name { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 9em; display: none; }
-.wallet-chip .bal { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.wallet-chip .bal { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; min-width: 0; }
 .wallet-chip .count { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--paper); border-radius: 999px; padding: 5px 6px 5px 10px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
 .wallet-chip .count .short { display: none; }
 @media (max-width: 400px) { .wallet-chip .count .long { display: none; } .wallet-chip .count .short { display: inline; } }
 .wallet-chip .count .n { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-size: 12px; }
 .wallet-chip.pulse { animation: chipPulse 0.9s var(--ease-out); }
 @keyframes chipPulse { 0% { transform: scale(1); } 35% { transform: scale(1.08); box-shadow: 0 0 0 6px color-mix(in srgb, var(--gold) 45%, transparent); } 100% { transform: scale(1); box-shadow: 0 0 0 0 transparent; } }
-@media (max-width: 420px) { .wallet-chip { padding-left: 10px; } .wallet-chip .bal { max-width: 7.2em; } }
+/* Under 400 px the unit goes (the number stays whole, never cut to "0.018…"). */
+@media (max-width: 400px) { .wallet-chip { padding-left: 10px; gap: 6px; } .wallet-chip .bal .unit { display: none; } }
 @media (min-width: 860px) { .wallet-chip .name { display: inline; } }
 
 /* ------------------------------------------------------------ buttons */
@@ -196,12 +223,12 @@ button { font: inherit; color: inherit; }
 
 /* ------------------------------------------------------------ hero */
 
-.hero { padding: 14px 0 14px; position: relative; }
-.hero h1 { margin: 0; font-size: min(12vw, 7rem); line-height: 0.86; letter-spacing: -0.004em; }
+.hero { padding: 10px 0 10px; position: relative; }
+.hero h1 { margin: 0; font-size: min(11.2vw, 7rem); line-height: 0.86; letter-spacing: -0.004em; }
 .hero h1 .row { display: block; }
 .hero h1 .dot { color: var(--accent); }
 .hero h1 .refund { color: var(--accent); white-space: nowrap; }
-.hero-foot { margin-top: 10px; display: grid; gap: 8px; }
+.hero-foot { margin-top: 8px; display: grid; gap: 8px; }
 .hero .sub { margin: 0; font-size: clamp(1.08rem, 4.7vw, 1.6rem); line-height: 1.27; max-width: 34ch; font-weight: 560; letter-spacing: -0.005em; }
 .hero .fine { margin: 0; color: var(--ink-soft); font-size: 12.5px; line-height: 1.45; max-width: 66ch; display: none; }
 .fine-after { margin: 18px 2px 0; color: var(--ink-soft); font-size: 12.5px; line-height: 1.45; }
@@ -254,30 +281,45 @@ button { font: inherit; color: inherit; }
 
 .kicker { display: flex; align-items: center; gap: 8px; font: 700 10.5px/1 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); min-width: 0; }
 .kicker .serial { margin-left: auto; letter-spacing: 0.06em; color: var(--ink-faint); white-space: nowrap; }
-.pill { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; border: 1.5px solid var(--band); color: var(--band); font: 800 10px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; }
+.pill { --tone: var(--pill-tone, var(--band)); display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; border: 1.5px solid var(--tone); color: var(--tone); font: 800 10px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
+.pill.ended-pill { --tone: var(--ink-soft); margin-left: auto; }
 
 /* ------------------------------------------------------------ show cards (box office) */
 
 .shows { display: grid; gap: 22px; }
 @media (min-width: 1000px) {
-  .shows.n2 { grid-template-columns: 1fr 1fr; align-items: start; }
-  .shows.n3 { grid-template-columns: repeat(3, 1fr); align-items: start; gap: 20px; }
+  .shows.n2, .shows.n4 { grid-template-columns: 1fr 1fr; }
+  .shows.n3 { grid-template-columns: repeat(3, 1fr); column-gap: 20px; }
 }
 
-.show-col { display: grid; gap: 0; min-width: 0; container-type: inline-size; }
+.show-col { display: grid; gap: 0; min-width: 0; container-type: inline-size; align-content: start; }
+
+/* On desktop the cards of a row share their rows (band, face, stub, status, facts, your tickets),
+   so the price stubs and the perforations line up from card to card. */
+@supports (grid-template-rows: subgrid) {
+  @media (min-width: 1000px) {
+    .shows.n2, .shows.n3, .shows.n4 { row-gap: 0; }
+    /* (a subgrid cannot be a size container; these cards are narrow here, so the wide stub layout never applies) */
+    .shows.n2 > .show-col, .shows.n3 > .show-col, .shows.n4 > .show-col { container-type: normal; grid-row: span 6; grid-template-rows: subgrid; row-gap: 0; padding-bottom: 26px; }
+    .shows .show-col > .ticket-shadow { grid-row: span 5; display: grid; grid-template-rows: subgrid; row-gap: 0; }
+    .shows .show-col > .ticket-shadow > .ticket.show { grid-row: span 5; grid-template-rows: subgrid; row-gap: 0; }
+    .shows .show-col > .col-mine { grid-row: 6; }
+  }
+}
 
 .show { grid-template-areas: 'band' 'face' 'stub' 'status' 'facts'; }
 .show > .band { grid-area: band; }
 .show > .face { grid-area: face; padding-bottom: 14px; }
 .show > .stub { grid-area: stub; border-radius: 0; padding-bottom: 12px; }
 .show > .status { grid-area: status; background: var(--face-2); padding: 0 18px 4px; min-width: 0; }
+.show > .status:empty { padding: 0; }
 .show > .status .flow { margin-top: 2px; }
 .show > .facts { grid-area: facts; background: var(--face-2); border-radius: 0 0 var(--radius) var(--radius); padding: 12px 18px 16px; margin: 0; border-top: 1px solid color-mix(in srgb, var(--rule) 70%, transparent); }
 
 .show .title-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
 .show .letter {
   flex: none; width: 46px; height: 46px; border-radius: 10px; display: grid; place-items: center;
-  background: var(--band); color: #fff8ef; font-family: var(--font-display); font-stretch: condensed; font-weight: 800; font-size: 34px; line-height: 1;
+  background: var(--band); color: var(--letter-ink); font-family: var(--font-display); font-stretch: condensed; font-weight: 800; font-size: 34px; line-height: 1;
   box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.18);
 }
 .show .titles { min-width: 0; }
@@ -319,6 +361,7 @@ button { font: inherit; color: inherit; }
   .ticket.wide > .face { padding: 18px 20px 4px; }
   .ticket.wide > .facts { background: transparent; border-top: 0; padding: 14px 20px 18px; border-radius: 0 0 0 var(--radius); }
   .ticket.wide > .status { background: transparent; padding: 0 20px 18px; }
+  .ticket.wide > .status:empty { padding: 0; }
   .ticket.wide .buy-row { flex-direction: column; align-items: stretch; gap: 14px; margin-top: 8px; }
   .ticket.wide .price { font-size: 44px; }
   .ticket.wide .cta, .ticket.wide .ended { max-width: none; width: 100%; }
@@ -340,6 +383,18 @@ button { font: inherit; color: inherit; }
 .flow .detail { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-faint); word-break: break-word; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
+/* an empty wallet: where to send BCH (the buy continues when it arrives) */
+.fund { display: grid; gap: 10px; padding: 12px; border-radius: 10px; background: var(--face); border: 1px dashed var(--rule); font-size: 13.5px; line-height: 1.4; }
+.fund p { margin: 0; }
+.fund-row { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; align-items: center; }
+.fund-qr { width: 92px; aspect-ratio: 1; background: var(--qr-bg); border-radius: 8px; padding: 4px; box-shadow: inset 0 0 0 1px var(--rule); }
+.fund-qr .qr-svg, .fund-qr svg { width: 100%; height: 100%; display: block; }
+.fund-address { display: grid; gap: 8px; justify-items: start; min-width: 0; }
+.fund-address code { font: 11.5px/1.4 var(--font-mono); overflow-wrap: anywhere; color: var(--ink); min-width: 0; }
+.fund-address .btn { min-height: 32px; padding: 0 12px; font-size: 13px; }
+.fund .fund-wait { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--ink-soft); }
+.fund-wait .spin { flex: none; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink-faint); border-right-color: transparent; animation: spin 0.9s linear infinite; }
+
 /* ------------------------------------------------------------ the printed ticket */
 
 .slot {
@@ -357,6 +412,7 @@ button { font: inherit; color: inherit; }
 }
 
 .mine > .face { padding-top: 14px; }
+@container (max-width: 380px) { .mine .kicker .admit-word { display: none; } }
 .mine .kicker .show-name { font: 650 12.5px/1.2 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .mine .seat-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 12px; min-height: 64px; }
 .mine .seat-label { font: 700 10px/1 var(--font-mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 4px; }
@@ -395,6 +451,8 @@ button { font: inherit; color: inherit; }
 .countdown .bar { height: 6px; border-radius: 999px; background: var(--paper-deep); overflow: hidden; }
 .countdown .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--band)); border-radius: inherit; transition: width 0.6s var(--ease-out); }
 .countdown p { margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--ink-soft); }
+.countdown.call p:first-of-type { font-size: 13.5px; color: var(--ink); }
+.countdown .cd-small { font-size: 11.5px; color: var(--ink-faint); }
 
 /* ------------------------------------------------------------ stamps */
 
@@ -424,8 +482,8 @@ button { font: inherit; color: inherit; }
 
 /* ------------------------------------------------------------ the sample B refund track */
 
-.track { margin: 14px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; position: relative; }
-.track .step { position: relative; display: grid; justify-items: center; gap: 7px; text-align: center; font-size: 12px; line-height: 1.25; color: var(--ink-faint); padding: 0 2px; }
+.track { margin: 14px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; position: relative; align-items: start; }
+.track .step { position: relative; display: grid; justify-items: center; align-content: start; gap: 7px; text-align: center; font-size: 12px; line-height: 1.25; color: var(--ink-faint); padding: 0 2px; }
 .track .step::before { content: ''; position: absolute; top: 10px; left: -50%; width: 100%; height: 3px; background: var(--rule); z-index: 0; }
 .track .step:first-child::before { display: none; }
 .track .step.done::before, .track .step.active::before { background: var(--green); transition: background 0.4s; }
@@ -435,6 +493,8 @@ button { font: inherit; color: inherit; }
 .track .step.done .dot::after { content: ''; width: 8px; height: 4px; border: 2.5px solid var(--face); border-top: 0; border-right: 0; transform: rotate(-45deg) translate(1px, -1px); }
 .track .step.active { color: var(--ink); font-weight: 650; }
 .track .step.active .dot { border-color: var(--green); animation: ping 1.2s infinite; }
+.track-tx { margin-top: 10px; text-align: center; font: 12px/1.3 var(--font-mono); animation: rise 0.35s var(--ease-out); }
+.track-tx a, .track-tx span { color: var(--ink-soft); }
 @keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 55%, transparent); } 80%, 100% { box-shadow: 0 0 0 9px transparent; } }
 
 /* ------------------------------------------------------------ coin flight */
@@ -489,9 +549,11 @@ button { font: inherit; color: inherit; }
 .proof .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .proof .head h2 { margin: 0; font-size: 28px; line-height: 1; }
 .proof .head p { margin: 0; font-size: 13px; opacity: 0.75; flex-basis: 100%; }
-.proof .counts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 16px; }
+.proof .counts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px 10px; margin-top: 14px; }
+.proof .counts > .count { grid-column: span 2; }
+.proof .counts > .count:nth-child(n + 4) { grid-column: span 3; }
 .proof .count { border-top: 1px solid color-mix(in srgb, var(--on-night) 22%, transparent); padding-top: 10px; min-width: 0; }
-.proof .count .n { font-family: var(--font-display); font-stretch: condensed; font-weight: 800; font-size: 44px; line-height: 0.9; }
+.proof .count .n { font-family: var(--font-display); font-stretch: condensed; font-weight: 800; font-size: 36px; line-height: 0.9; }
 .proof .count .l { font: 700 10.5px/1.3 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; }
 .proof .count a, .proof .count .mono { display: inline-block; margin-top: 6px; font-size: 12px; font-family: var(--font-mono); color: var(--gold); text-decoration: none; overflow: hidden; text-overflow: ellipsis; max-width: 100%; white-space: nowrap; }
 .proof .count a:hover { text-decoration: underline; }
@@ -500,7 +562,24 @@ button { font: inherit; color: inherit; }
 @keyframes bump { 0% { transform: translateY(8px); opacity: 0; } 100% { transform: none; opacity: 1; } }
 .proof .pushed { margin-top: 14px; font-size: 13px; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--on-night) 10%, transparent); }
 .proof .pushed a { color: var(--gold); }
-@media (min-width: 720px) { .proof { padding: 22px 24px; } .proof .counts { grid-template-columns: repeat(5, 1fr); } .proof .head p { flex-basis: auto; margin-left: auto; } }
+@media (max-width: 719px) { .proof .count .tx-label { display: none; } }
+@media (min-width: 720px) {
+  .proof { padding: 22px 24px; }
+  .proof .counts { grid-template-columns: repeat(5, 1fr); margin-top: 16px; }
+  .proof .counts > .count, .proof .counts > .count:nth-child(n + 4) { grid-column: auto; }
+  .proof .count .n { font-size: 44px; }
+  .proof .head p { flex-basis: auto; margin-left: auto; }
+}
+
+/* ------------------------------------------------------------ for organisers */
+
+.org { display: grid; gap: 12px; }
+.org-col { background: var(--face); border: 1px solid var(--rule); border-radius: var(--radius); padding: 15px 16px 16px; }
+.org-col h3 { margin: 0 0 6px; font-size: 21px; line-height: 1; }
+.org-col p { margin: 0; color: var(--ink-soft); font-size: 14.5px; line-height: 1.45; }
+.org-col p + p { margin-top: 8px; }
+.org-col.plan { background: transparent; border-style: dashed; }
+@media (min-width: 900px) { .org { grid-template-columns: 1fr 1.3fr 1fr; align-items: stretch; } }
 
 /* ------------------------------------------------------------ check it yourself */
 
@@ -517,6 +596,12 @@ button { font: inherit; color: inherit; }
 .verify .val { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); word-break: break-all; }
 .verify .val a { color: var(--ink-soft); }
 .verify .val.text { font-family: var(--font-body); font-size: 13.5px; word-break: normal; }
+.verify .val.text .mono, .verify .val.text a { font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
+/* rows that are shown, not verified, get a plain dot instead of a tick */
+.verify .row.plain .dot { width: 8px; height: 8px; border-radius: 50%; background: color-mix(in srgb, var(--ink-faint) 60%, transparent); margin: 7px 7px 0; }
+.verify .files { margin: 2px 0 0; padding: 0; list-style: none; display: grid; gap: 3px; font: 12.5px/1.4 var(--font-mono); }
+.verify .files a { color: var(--ink-soft); word-break: normal; overflow-wrap: anywhere; }
+.verify .files a:hover { color: var(--accent); }
 .show-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 6px; }
 .show-tabs button { border: 1px solid var(--rule); background: var(--face-2); border-radius: 999px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
 .show-tabs button[aria-pressed='true'] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -533,7 +618,10 @@ dialog.sheet {
 dialog.sheet::backdrop { background: rgba(20, 12, 6, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 dialog.sheet[open] { animation: pop 0.35s var(--ease-out); }
 @keyframes pop { from { opacity: 0; transform: translateY(16px) scale(0.98); } to { opacity: 1; transform: none; } }
-.sheet .ticket { --cut: 0; }
+.sheet .ticket { -webkit-mask: none; mask: none; }
+.sheet .next { margin: 12px 0 0; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 8%, var(--face-2)); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--rule)); font-size: 14px; line-height: 1.4; display: grid; gap: 4px; }
+.sheet .next p { margin: 0; }
+.sheet .next .phone-note { color: var(--ink-soft); font-size: 13px; }
 .sheet .face { padding: 18px; }
 .sheet h2 { margin: 6px 0 4px; font-size: 32px; line-height: 0.95; }
 .sheet h2:focus { outline: none; }

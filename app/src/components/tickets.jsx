@@ -27,7 +27,7 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
             <div class="kicker">
               <span>Doorstub</span>
               <span class="pill">{model.sample ? LABELS.sample : LABELS.realShow}</span>
-              <span class="serial">No. {model.serial}</span>
+              {model.onSale === false ? <span class="pill ended-pill">{LABELS.ended}</span> : <span class="serial">No. {model.serial}</span>}
             </div>
             <div class="title-row">
               <div class="letter" aria-hidden="true">
@@ -65,10 +65,16 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
             </div>
             {model.sold !== null ? <div class="sold">{say('soldLine', { sold: model.sold, shards: model.shards })}</div> : null}
           </div>
-          {status ? <div class="status">{status}</div> : null}
+          <div class="status">{status}</div>
           <dl class="facts">
-            <div>
-              <dt>{LABELS.starts}</dt>
+            {model.callLine ? (
+              <div data-fact="call">
+                <dt>{LABELS.call}</dt>
+                <dd>{model.callLine}</dd>
+              </div>
+            ) : null}
+            <div data-fact="start">
+              <dt>{model.startLabel}</dt>
               <dd>{model.startLine}</dd>
             </div>
             {model.kind !== 'sample-refund-seat' ? (
@@ -84,7 +90,7 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
           </dl>
         </article>
       </div>
-      {children}
+      {children ? <div class="col-mine">{children}</div> : null}
     </div>
   );
 };
@@ -92,7 +98,7 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
 const SPEND_LABEL = { handBack: LABELS.handBackTx, checkIn: LABELS.checkInTx, settle: LABELS.settleTx, refund: LABELS.refundTx };
 
 /** A ticket the wallet holds (or held): seat, money, countdown or refund track, stamp, actions. */
-export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack, onWalkIn, onAction, onCancel, settleProgress }) => {
+export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack, onWalkIn, onAction, onCancel }) => {
   const prevState = usePrevious(model.state);
   const moneyRef = useRef(null);
   const cutRef = useCut();
@@ -123,6 +129,7 @@ export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack
   const spendKind = model.state === 'refunded' ? model.refundPath ?? 'refund' : model.state === 'handedBack' ? 'handBack' : model.state === 'walkedIn' ? 'checkIn' : '';
   const spendLabel = SPEND_LABEL[spendKind] ?? null;
   const showCountdown = held && model.settleLine && !model.autoRefund && model.countdown !== null;
+  const call = showCountdown ? model.call : null;
 
   return (
     <div ref={rootRef} class={`printed${fresh ? ' fresh' : ''}`} data-ticket={model.key} data-state={model.state}>
@@ -136,7 +143,7 @@ export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack
           <div class="band" />
           <div class="face">
             <div class="kicker">
-              <span>{LABELS.admitOne}</span>
+              <span class="admit-word">{LABELS.admitOne}</span>
               <span class="show-name">{model.title}</span>
               <span class="serial">No. {model.serial}</span>
             </div>
@@ -155,25 +162,45 @@ export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack
                 </div>
               ) : null}
             </div>
-            <div class="lines">
+            <div class="lines" aria-live="polite">
               {model.lines.map((line) => (
                 <p key={line}>{line}</p>
               ))}
             </div>
-            {showCountdown ? (
+            {call !== null ? (
+              <div class="countdown call" data-call={call.phase}>
+                <div class="cd-head">
+                  <span class="cd-l">{call.phase === 'before' ? LABELS.callIn : LABELS.call}</span>
+                  <span class="cd-n display">{call.phase === 'before' ? call.countdown : LABELS.onNow}</span>
+                </div>
+                <p>{call.line}</p>
+                <p class="cd-small">{model.settleLine}</p>
+              </div>
+            ) : showCountdown ? (
               <div class="countdown">
                 <div class="cd-head">
                   <span class="cd-l">{LABELS.settleIn}</span>
                   <span class="cd-n display">{model.countdown}</span>
                 </div>
-                <div class="bar" aria-hidden="true">
-                  <i style={`width:${Math.max(3, Math.round((settleProgress ?? 0) * 100))}%`} />
-                </div>
-                <p>{model.settleLine}</p>
+                {model.progress !== null ? (
+                  <div class="bar" aria-hidden="true">
+                    <i style={`width:${Math.max(3, Math.round(model.progress * 100))}%`} />
+                  </div>
+                ) : null}
+                <p>{model.settleSmall}</p>
               </div>
             ) : null}
-            {model.autoRefund && (refundRunning || !held) ? <RefundTrack step={held ? flow?.step ?? 'held' : 'back'} /> : null}
-            {flow !== undefined && flow.step !== 'done' && flow.kind !== 'refund' && flow.step !== 'door' ? (
+            {model.autoRefund && (refundRunning || !held) ? (
+              <>
+                <RefundTrack step={refundRunning && flow.error === undefined ? flow.step : held ? 'held' : 'back'} />
+                {refundRunning && flow.step === 'sent' && flow.txid ? (
+                  <div class="track-tx">
+                    <TxLink network={network} label={LABELS.refundTx} txid={flow.txid} />
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+            {flow !== undefined && (flow.step !== 'done' || flow.error !== undefined) && flow.kind !== 'refund' && flow.step !== 'door' ? (
               <FlowStatus flow={flow} onAction={onAction} onCancel={onCancel} />
             ) : null}
             {refundRunning && flow.error !== undefined ? <FlowStatus flow={flow} onAction={onAction} onCancel={onCancel} /> : null}
@@ -194,15 +221,17 @@ export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack
               </div>
             ) : null}
             {doorFlow?.doorError ? (
-              <div class="flow error" role="alert">
+              <div class="flow error" role="alert" data-door-error={doorFlow.doorError.key}>
                 <div class="line">
-                  <span>{say('doorDown')}</span>
+                  <span>{say(doorFlow.doorError.key, doorFlow.doorError.vars)}</span>
                 </div>
-                <div class="actions">
-                  <button type="button" class="btn small" onClick={() => onAction('retryDoor')}>
-                    {LABELS.tryAgain}
-                  </button>
-                </div>
+                {doorFlow.doorError.actions.includes('retryDoor') ? (
+                  <div class="actions">
+                    <button type="button" class="btn small" onClick={() => onAction('retryDoor')}>
+                      {LABELS.tryAgain}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ) : null}
             {model.state === 'walkedIn' && model.kind === 'real' && doorFlow === null ? (

@@ -20,7 +20,10 @@
 //   for this run) -> REFUNDED -> My tickets -> proof strip counts -> a phone's
 //   connect dialog -> dark mode.
 // Screenshots at 390x844 and 1440x900 go to .cache/e2e/screens/.
-//   --home   home page only (light and dark)
+//   --home      home page only (light and dark)
+//   --screens   every step at 360x740, 375x667, 390x844 and 1440x900, light and dark, into .cache/screens/
+//               (plus the approve state, the empty-wallet road and a real show's call, which this mode
+//               stages in the page's store for the screenshot only; nothing is asserted from them)
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -42,10 +45,20 @@ const CACHE = join(repoRoot, '.cache');
 const OUT = join(CACHE, 'e2e');
 const SCREENS = join(OUT, 'screens');
 const RUN = join(OUT, 'runs', String(Date.now()));
-const SIZES = [
-  { name: '390', width: 390, height: 844, deviceScaleFactor: 2 },
-  { name: '1440', width: 1440, height: 900, deviceScaleFactor: 1 },
-];
+const allScreens = process.argv.includes('--screens');
+const SIZES = allScreens
+  ? [
+      { name: '360', width: 360, height: 740, deviceScaleFactor: 2 },
+      { name: '375', width: 375, height: 667, deviceScaleFactor: 2 },
+      { name: '390', width: 390, height: 844, deviceScaleFactor: 2 },
+      { name: '1440', width: 1440, height: 900, deviceScaleFactor: 1 },
+    ]
+  : [
+      { name: '390', width: 390, height: 844, deviceScaleFactor: 2 },
+      { name: '1440', width: 1440, height: 900, deviceScaleFactor: 1 },
+    ];
+const SCHEMES = allScreens ? ['light', 'dark'] : ['light'];
+const SHOTS = allScreens ? join(CACHE, 'screens') : SCREENS;
 const homeOnly = process.argv.includes('--home');
 const PAIR_WAIT_MS = 45_000;
 const TOKEN_SATS = 1_000;
@@ -69,6 +82,7 @@ const killLeftoverChrome = () => {
 };
 
 mkdirSync(SCREENS, { recursive: true });
+mkdirSync(SHOTS, { recursive: true });
 mkdirSync(RUN, { recursive: true });
 killLeftoverChrome();
 
@@ -86,7 +100,15 @@ const stage = await startStage({
   count: 1,
 });
 const rpc = await connectRpc(stage.simnet.url, { clientName: 'doorstub e2e' });
-const wallet = makeSimWallet({ name: 'Sim wallet' });
+/** In --screens mode the first approval waits until the page's "Approve in ..." state is photographed. */
+let approvalGate = null;
+const wallet = makeSimWallet({
+  name: 'Sim wallet',
+  approve: async () => {
+    if (approvalGate !== null) await approvalGate.promise;
+    return true;
+  },
+});
 const receive = wallet.addressAt('receive', 0);
 /** The wallet's first receive addresses: the app buys to the first unused one. */
 const walletReceive = Array.from({ length: 20 }, (_, i) => wallet.addressAt('receive', i));
@@ -147,22 +169,26 @@ const checkSpendOnChain = async (show, buyTxid, spendTxid, { lock, minValue, kee
 // ------------------------------------------------------------------ the browser
 
 const shot = async (page, name, { selector, full = false } = {}) => {
-  for (const size of SIZES) {
-    await page.setViewport({ width: size.width, height: size.height, deviceScaleFactor: size.deviceScaleFactor });
-    await sleep(250);
-    if (selector) {
-      await page.evaluate((sel) => {
-        const el = document.querySelector(sel);
-        if (el) {
-          const r = el.getBoundingClientRect();
-          window.scrollTo({ top: Math.max(0, window.scrollY + r.top - 76), behavior: 'instant' });
-        }
-      }, selector);
-      await sleep(200);
+  for (const scheme of SCHEMES) {
+    if (allScreens) await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: scheme }]);
+    for (const size of SIZES) {
+      await page.setViewport({ width: size.width, height: size.height, deviceScaleFactor: size.deviceScaleFactor });
+      await sleep(250);
+      if (selector) {
+        await page.evaluate((sel) => {
+          const el = document.querySelector(sel);
+          if (el) {
+            const r = el.getBoundingClientRect();
+            window.scrollTo({ top: Math.max(0, window.scrollY + r.top - 76), behavior: 'instant' });
+          }
+        }, selector);
+        await sleep(200);
+      }
+      await page.screenshot({ path: join(SHOTS, `${name}-${size.name}${scheme === 'dark' ? '-dark' : ''}.png`), fullPage: full });
     }
-    await page.screenshot({ path: join(SCREENS, `${name}-${size.name}.png`), fullPage: full });
   }
-  await page.setViewport({ width: SIZES[0].width, height: SIZES[0].height, deviceScaleFactor: 2 });
+  if (allScreens) await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
 };
 
 /** A DOM click (immune to the print animation moving the element under the mouse). */
@@ -263,21 +289,45 @@ try {
   await page.waitForSelector(`[data-buy="${showB.id}"]`, { timeout: 30_000 });
   await page.waitForSelector(`[data-buy="${real.id}"]`, { timeout: 30_000 });
   log(`home ready in ${Date.now() - t0} ms`);
+  if (allScreens) {
+    // Staged for the screenshots only (the studio on main does not write a call time yet): the real show's call two days ahead.
+    await page.evaluate((id) => {
+      const store = window.__doorstub.controller.store;
+      const show = store.get().shows.find((x) => x.id === id);
+      if (show.eventAtMs === undefined) {
+        show.eventAtMs = Math.floor((Date.now() + 2 * 86_400_000) / 60_000) * 60_000;
+        show.eventAt = new Date(show.eventAtMs).toISOString();
+        show.durationMin = 25;
+      }
+      store.set({ shows: [...store.get().shows] });
+    }, real.id);
+    await sleep(300);
+  }
   ok((await domText(page, `[data-show="${real.id}"]`)).includes(real.card), 'the real show card shows its card text from shows.json');
   await sleep(600);
   // The judge reaches "Get a ticket" in the first phone screen, and nothing scrolls sideways.
-  for (const width of [360, 390]) {
-    await page.setViewport({ width, height: 844, deviceScaleFactor: 2 });
+  // 375x667 is an iPhone SE: with Safari's bars about 560 px of it show the page.
+  for (const [width, height, fold] of [[360, 740, 600], [375, 667, 560], [390, 844, 700]]) {
+    await page.setViewport({ width, height, deviceScaleFactor: 2 });
     await sleep(200);
     const m = await page.evaluate(() => ({
       buy: document.querySelector('[data-buy]').getBoundingClientRect().bottom,
       scroll: document.documentElement.scrollWidth,
       inner: window.innerWidth,
     }));
-    log(`${width} px: first "Get a ticket" ends at ${Math.round(m.buy)} px; page ${m.scroll} px wide`);
+    log(`${width}x${height}: first "Get a ticket" ends at ${Math.round(m.buy)} px; page ${m.scroll} px wide`);
     ok(m.scroll <= m.inner, `no horizontal scroll at ${width} px`);
-    ok(m.buy <= 700, `"Get a ticket" inside the first phone screen at ${width} px`);
+    ok(m.buy <= fold, `"Get a ticket" inside the first phone screen at ${width}x${height} (ends by ${fold} px)`);
   }
+  // A real show's card: its start block reads as the end of sales and walk-in; a sample keeps "Starts".
+  ok((await domText(page, `[data-show="${real.id}"] [data-fact="start"]`)).startsWith('DoorBuy and walk in until block'), 'the real show\'s start row reads "Buy and walk in until block ..."');
+  ok((await domText(page, `[data-show="${showA.id}"] [data-fact="start"]`)).startsWith('StartsBlock'), 'a sample show\'s start row reads "Starts"');
+  // The required BLAZE banner links the source repository; Check it yourself links the contracts and the one-page architecture.
+  ok((await page.$eval('.blaze a[href="https://github.com/tedinroc/doorstub"]', (el) => el.textContent)) === 'Source code', 'the banner links the source repository');
+  const sourceLinks = await page.$$eval('[data-source-file]', (els) => els.map((el) => el.getAttribute('href')));
+  ok(['contracts/BoxOffice.cash', 'contracts/Escrow.cash', 'ARCHITECTURE.md', 'CLAIMS.md'].every((f) => sourceLinks.includes(`https://github.com/tedinroc/doorstub/blob/main/${f}`)), 'Check it yourself links both contracts, ARCHITECTURE.md and CLAIMS.md');
+  ok((await page.$$('#check .verify .row .ok')).length === 3, 'Check it yourself ticks only the two recomputed addresses and the verified genesis');
+  ok((await domText(page, '#organisers')).includes('Plan, not built yet'), 'For organisers marks the revenue plan as a plan');
   await shot(page, '01-home');
   await shot(page, '01-home-full', { full: true });
   if (homeOnly) {
@@ -288,6 +338,10 @@ try {
   }
 
   // ---------------------------------------------------------------- connect: public relay, one retry, then a local relay
+  if (allScreens) {
+    let release;
+    approvalGate = { promise: new Promise((r) => (release = r)), release };
+  }
   await click(page, `[data-buy="${showA.id}"]`);
   await page.waitForFunction(() => document.querySelector('[data-wiz-uri]')?.value?.startsWith('wiz://'), { timeout: 30_000 });
   await page.waitForSelector('[data-qr] svg', { timeout: 10_000 });
@@ -314,6 +368,13 @@ try {
     if (!paired) throw new Error('the wallet did not pair even over the local relay');
   }
   log(`wallet connected over ${relayUsed} in ${Date.now() - tPair} ms`);
+  if (approvalGate !== null) {
+    await waitState(page, (s) => s.flows[showA.id]?.step === 'approve', 'the approve state', 60_000);
+    await sleep(500);
+    await shot(page, '02b-approve', { selector: `[data-show="${showA.id}"]` });
+    approvalGate.release();
+    approvalGate = null;
+  }
   ok((await domText(page, '[data-wallet-chip]')).length > 0, 'the header shows the connected wallet chip');
 
   // ---------------------------------------------------------------- buy A (continues by itself after pairing)
@@ -343,13 +404,40 @@ try {
 
   // ---------------------------------------------------------------- sample B: the refund arrives with no second approval
   const approvals = wallet.log.length;
+  // Record when each refund step reaches the page (the store, not the poll), to check every step stays readable.
+  // (The store changes before the page renders, so `stamped` says whether the card showed a stamp up to that change.)
+  await page.evaluate((showId) => {
+    window.__refundSteps = [];
+    window.__doorstub.controller.store.subscribe((s) => {
+      for (const f of Object.values(s.flows)) {
+        if (f?.kind !== 'refund') continue;
+        const last = window.__refundSteps.at(-1);
+        if (last?.step !== f.step) window.__refundSteps.push({ step: f.step, at: performance.now(), stamped: document.querySelector(`[data-ticket^="${showId}:"] .stamp`) !== null });
+      }
+    });
+  }, showB.id);
   await click(page, `[data-buy="${showB.id}"]`);
   const keyB = await waitState(page, (s) => s.flows[showB.id]?.step === 'done' && s.flows[showB.id].ticketKey, 'buy B', 60_000);
   const buyB = (await state(page)).flows[showB.id].txid;
   const b = await checkBuyOnChain(showB, buyB, 'buy B');
-  await sleep(400);
-  await shot(page, '05-b-notice', { selector: `[data-ticket="${keyB}"]` });
+  // The judge sees the organiser's notice step on its own (screenshot at the phone size, while it is the active step).
+  await waitState(page, (s) => s.flows[keyB]?.step === 'notice' && s.flows[keyB], 'B notice step', 30_000);
+  await page.evaluate((sel) => document.querySelector(sel)?.scrollIntoView({ block: 'center', behavior: 'instant' }), `[data-ticket="${keyB}"]`);
+  ok((await domText(page, `[data-ticket="${keyB}"] .track .step.active`)) === 'Organiser refund notice', 'B: the "Organiser refund notice" step is the active one on its own');
+  ok((await page.$(`[data-ticket="${keyB}"] .stamp`)) === null, 'B: no REFUNDED stamp during the notice step');
+  await page.screenshot({ path: join(SHOTS, '05-b-notice-390.png') });
+  await waitState(page, (s) => s.flows[keyB]?.step === 'sent' && s.flows[keyB], 'B sent step', 30_000);
+  ok((await domText(page, `[data-ticket="${keyB}"] .track .step.active`)) === 'Refund sent', 'B: "Refund sent" is shown as the active step');
+  await page.screenshot({ path: join(SHOTS, '05b-b-sent-390.png') });
   await waitState(page, (s) => s.flows[keyB]?.step === 'back', 'B refund sequence', 60_000);
+  const steps = await page.evaluate(() => window.__refundSteps);
+  const at = Object.fromEntries(steps.map((x) => [x.step, x]));
+  const spans = { held: at.notice.at - at.held.at, notice: at.sent.at - at.notice.at, sent: at.back.at - at.sent.at };
+  log(`B refund steps: ${Object.entries(spans).map(([k, v]) => `${k} ${Math.round(v)} ms`).join(', ')}; held to money back ${Math.round(at.back.at - at.held.at)} ms`);
+  ok(['held', 'notice', 'sent', 'back'].every((k) => at[k] !== undefined), 'B: the four refund steps came in order');
+  ok(Object.values(spans).every((v) => v >= 1_150), `B: every step stays on screen at least about 1.2 s (${JSON.stringify(spans)})`);
+  ok(at.back.at - at.held.at <= 7_500, 'B: from "Ticket held" to "Money back" in under about 7 s');
+  ok(!at.held.stamped && !at.notice.stamped && !at.sent.stamped && !at.back.stamped, 'B: the REFUNDED stamp comes only with "Money back"');
   await page.waitForSelector(`[data-ticket="${keyB}"][data-state="refunded"]`, { timeout: 30_000 });
   const refundTxid = (await state(page)).flows[keyB].txid;
   ok(wallet.log.length === approvals + 1, 'B: the wallet was asked once (the buy), never for the refund');
@@ -476,10 +564,38 @@ try {
     await phone.waitForFunction(() => document.querySelector('[data-wiz-uri]')?.value?.startsWith('wiz://'), { timeout: 30_000 });
     ok(await phone.$eval('[data-open-selene]', (el) => el.classList.contains('block') && !el.classList.contains('quiet')), 'on a phone, Open Selene is the main button');
     await sleep(500);
-    await phone.screenshot({ path: join(SCREENS, '14-connect-phone-390.png') });
+    await phone.screenshot({ path: join(SHOTS, '14-connect-phone-390.png') });
     await phone.close();
   } finally {
     await phoneContext.close();
+  }
+
+  if (allScreens) {
+    // Staged for the screenshots only: the empty-wallet road on sample B's card (the controller test drives it for real).
+    await page.evaluate((address, id) => {
+      const store = window.__doorstub.controller.store;
+      const next = { id };
+      store.set((st) => ({
+        flows: {
+          ...st.flows,
+          [next.id]: { kind: 'buy', step: 'preparing', at: Date.now(), error: { key: 'needMore', vars: { need: '0.00102932 BCH', have: '0 BCH' }, actions: ['retry'], fund: { address, amount: '0.0011', uri: `${address}?amount=0.0011` } } },
+        },
+      }));
+      window.__stagedFund = next.id;
+    }, walletReceive[9].address, showB.id);
+    await sleep(400);
+    await shot(page, '16-empty-wallet', { selector: '[data-fund]' });
+    await page.evaluate(() => window.__doorstub.controller.dismiss(window.__stagedFund));
+    // The connect dialog opened by "Get a ticket" (it names the show and the price).
+    await page.evaluate((id) => {
+      const store = window.__doorstub.controller.store;
+      const next = { id };
+      store.set({ pendingBuy: next.id, connectOpen: true, wallet: { ...store.get().wallet, pairing: { uri: 'wiz://staged', qrUri: 'WIZ://STAGED', selene: 'wiz://staged', cashonize: 'https://cashonize.com/?uri=staged', copy: 'wiz://staged' } } });
+    }, showB.id);
+    await sleep(500);
+    await shot(page, '17-connect-next');
+    await page.evaluate(() => window.__doorstub.controller.store.set({ pendingBuy: null, connectOpen: false }));
+    await sleep(300);
   }
 
   // ---------------------------------------------------------------- dark mode

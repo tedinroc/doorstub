@@ -1,8 +1,15 @@
-// A stand-in for the worker's two page-facing endpoints, for app tests and
-// the simnet E2E only (the real worker lives in worker/ and checks the chain
-// before it signs or opens a door). It signs 'R' notices for seats of
-// sample-refund-seat shows with the studio's data key, and answers the door
-// for real shows with a link from a map. It never signs 'C'.
+// A stand-in for the worker's two page-facing endpoints, for app tests only
+// (the real worker lives in worker/ and checks the chain before it signs or
+// opens a door). It signs 'R' notices for seats of sample-refund-seat shows
+// with the studio's data key, and answers the door for real shows with a
+// link from a map. It never signs 'C'.
+//
+// The door speaks the reservation contract (SPEC.md section 12):
+//   { category, txid, claim, reserve: true } -> 200 { reserved: true, again } for the first claim of a
+//     check-in and the same claim again; 409 already-answered for any other claim. No chain lookup.
+//   { category, txid, claim? }               -> 200 { link, again } for the claim on record (or the first
+//     caller when there is none); 409 already-answered for any other claim or no claim.
+// Errors have the worker's shape: { error: { code, message, retryable }, message }.
 //
 //   const api = stubApi({ shows, dataPrivateKey, doorLinks })   // in-process, same shape as app/src/lib/api.js
 //   const server = await startStubServer({ root, showsPath, dataPrivateKey, doorLinks, port: 0 })
@@ -17,11 +24,15 @@ import { signDataMessage } from '../../src/tx/sign.js';
 const HEX = (n) => new RegExp(`^[0-9a-f]{${n}}$`, 'i');
 
 export class StubError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code = 'error') {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
+
+/** The worker's error body. */
+export const stubErrorBody = (e) => ({ error: { code: e.code ?? 'internal', message: e.message, retryable: e.status === 404 || e.status >= 500 }, message: e.message });
 
 /**
  * @param {object} options
@@ -32,6 +43,8 @@ export class StubError extends Error {
  */
 export const stubApi = ({ shows, dataPrivateKey, doorLinks = {}, behaviour = {} }) => {
   const calls = [];
+  /** `${show id}:${txid}` -> { claim: string|null, answered: boolean } */
+  const doorRecords = new Map();
   let failures = 0;
   const find = (category) => shows().find((s) => s.params.category === String(category).toLowerCase());
   return {
@@ -50,15 +63,37 @@ export const stubApi = ({ shows, dataPrivateKey, doorLinks = {}, behaviour = {} 
       const message = encodeRefundNoticeMessage({ scope: 'R', category: hexToBin(category), seat: hexToBin(seat) });
       return { signature: binToHex(signDataMessage(dataPrivateKey, message)) };
     },
-    door: async ({ category, txid }) => {
-      calls.push({ endpoint: 'door', category, txid });
-      if (behaviour.doorDown) throw new StubError(503, 'door is down');
+    door: async ({ category, txid, claim, reserve }) => {
+      calls.push({ endpoint: reserve === true ? 'reserve' : 'door', category, txid, ...(claim !== undefined && { claim }) });
+      if (behaviour.doorDown || (reserve === true && behaviour.reserveDown)) throw new StubError(503, 'door is down', 'chain-down');
+      if (!HEX(64).test(category ?? '')) throw new StubError(400, 'category must be 64 hex characters', 'bad-request');
       const show = find(category);
-      if (show === undefined || show.kind !== 'real') throw new StubError(403, 'not a real show');
-      if (!HEX(64).test(txid ?? '')) throw new StubError(400, 'txid must be hex');
+      if (show === undefined) throw new StubError(404, 'no show in shows.json has this category', 'unknown-show');
+      if (show.kind !== 'real') throw new StubError(403, 'only real shows have a door', 'not-a-real-show');
+      if (!HEX(64).test(txid ?? '')) throw new StubError(400, 'txid must be hex', 'bad-request');
+      if (claim !== undefined && !(typeof claim === 'string' && /^(?:[0-9a-f]{2}){16,64}$/i.test(claim))) throw new StubError(400, 'claim must be hex', 'bad-request');
+      const key = `${show.id}:${txid.toLowerCase()}`;
+      const mine = claim === undefined ? null : claim.toLowerCase();
+      const record = doorRecords.get(key);
+      if (reserve === true) {
+        if (mine === null || !HEX(64).test(mine)) throw new StubError(400, 'a reservation needs a 64 hex character claim', 'bad-request');
+        if (record === undefined) {
+          doorRecords.set(key, { claim: mine, answered: false });
+          return { reserved: true, again: false };
+        }
+        if (record.claim === mine) return { reserved: true, again: true };
+        throw new StubError(409, 'this check-in already got its door answer; the page that checked in shows it', 'already-answered');
+      }
       const link = doorLinks[show.params.category];
-      if (link === undefined) throw new StubError(404, 'no door link for this show');
-      return { link };
+      if (link === undefined) throw new StubError(503, 'the door for this show is not set up yet', 'door-not-configured');
+      if (record === undefined) {
+        doorRecords.set(key, { claim: mine, answered: true });
+        return { link, again: false };
+      }
+      if (record.claim !== mine) throw new StubError(409, 'this check-in already got its door answer; the page that checked in shows it', 'already-answered');
+      const again = record.answered;
+      record.answered = true;
+      return { link, again };
     },
   };
 };
@@ -116,7 +151,7 @@ export const startStubServer = async ({ root, showsPath, dataPrivateKey, doorLin
       if (!existsSync(file) || statSync(file).isDirectory()) file = join(root, 'index.html');
       return send(200, readFileSync(file), TYPES[extname(file)] ?? 'application/octet-stream', extname(file) === '.html' ? headers : {});
     } catch (e) {
-      return send(e instanceof StubError ? e.status : 500, JSON.stringify({ error: e.message }));
+      return send(e instanceof StubError ? e.status : 500, JSON.stringify(stubErrorBody(e)));
     }
   });
   await new Promise((resolve) => server.listen(port, host, resolve));

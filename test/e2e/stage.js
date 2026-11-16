@@ -20,17 +20,23 @@ export const simnetCsp = (simnetUrl, extra = []) => {
   return csp.replace(/wss:\/\/[^ ;]+:50004 ?/g, '').replace("connect-src 'self'", `connect-src 'self' ${[simnetUrl, ...extra].join(' ')}`);
 };
 
+/** The stage's call: two days from now, on the minute (its start block is about 50 hours ahead). */
+const STAGE_CALL_AT = new Date(Math.floor((Date.now() + 48 * 3_600_000) / 60_000) * 60_000).toISOString().replace(/\.000Z$/, 'Z');
+
 /**
  * The real show on the stage: the first screening as planned (card text in CLAIMS.md section 6), far enough ahead that a
- * run never reaches its start.
+ * run never reaches its start. `eventAt`, `durationMin` and `seatPrefix` are the real-show fields of shows.json.
  */
 export const REAL_SHOW = Object.freeze({
   id: 'screening-1',
   kind: 'real',
   title: 'Doorstub screening 1',
-  subtitle: 'Online, 20 minutes',
+  subtitle: 'Online, 25 minutes',
   card: 'Online screening: a 12-minute film on how Doorstub works, then Q&A in the chat. Walk in to get the room link.',
   startHeight: '+300',
+  eventAt: STAGE_CALL_AT,
+  durationMin: 25,
+  seatPrefix: 'S',
 });
 
 /** The door link the stage's worker hands out (a test secret; {seat} is filled in by the worker). */

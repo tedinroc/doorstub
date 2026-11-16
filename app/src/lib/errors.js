@@ -18,7 +18,10 @@ const trimWords = (text, max = 240) => {
 
 /**
  * @param {unknown} error
- * @param {{ wallet?: string, show?: object }} [context]
+ * @param {{ wallet?: string, show?: object, kind?: 'buy'|'handBack'|'walkIn'|'refund' }} [context]
+ *   `kind` is the flow: a conflict on a buy is a box-office shard taken by
+ *   another buyer; on a hand-back or walk-in it is not (the controller then
+ *   reads the ledger and says what spent the coin).
  */
 export const describeError = (error, context = {}) => {
   const e = /** @type {any} */ (error) ?? {};
@@ -54,7 +57,7 @@ export const describeError = (error, context = {}) => {
   if (name === 'CheckError') return { key: 'replyFailed', vars: {}, actions: ['retry'], detail: e.message };
 
   if (name === 'BroadcastError') {
-    if (e.conflict) return { key: 'shardTaken', vars: {}, actions: ['retry'] };
+    if (e.conflict && (context.kind === undefined || context.kind === 'buy')) return { key: 'shardTaken', vars: {}, actions: ['retry'] };
     if (code === 'wrong-chain' || code === 'broadcast-disabled' || code === 'not-checked') {
       return { key: 'unexpected', vars: { message: e.message }, actions: ['reload'] };
     }

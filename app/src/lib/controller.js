@@ -18,6 +18,8 @@ import {
   createTxCache,
   discoverTickets,
   fetchShowLedger,
+  getSourceOutputs,
+  getTransaction,
   liveEscrowUtxos,
   listUnspent,
   outpointKey,
@@ -52,11 +54,19 @@ import {
   decodeBoxOfficeCommitment,
   sameBytes,
 } from '../../../src/tx/index.js';
+import { bchNumber } from '../../../src/shows/format.js';
 import { describeError } from './errors.js';
 import { createStore } from './store.js';
 
-/** How long the "Ticket held" and "Refund sent" steps stay on screen before the next one (ms). */
-export const STEP_PAUSE_MS = 900;
+/**
+ * The sample B refund is the moment the judge watches, so each step stays on
+ * screen long enough to read: at least STEP_MS each (held, organiser notice,
+ * refund sent), and a fresh ticket first finishes printing (PRINT_MS, the
+ * card's print animation and scroll). From the buy to "Money back" takes
+ * about 5 s when the notice and the broadcast are quick.
+ */
+export const PRINT_MS = 1_100;
+export const STEP_MS = 1_300;
 /** After this long without the relay connecting, the dialog offers the other relay (ms). */
 export const RELAY_SLOW_MS = 10_000;
 /** Pause before re-reading a show after a notification (several often arrive together). */
@@ -101,6 +111,17 @@ const defaultClaimStorage = () => {
 };
 
 const DOOR_RECORD_PREFIX = 'doorstub.door.';
+const PAID_PREFIX = 'doorstub.paid.';
+
+/**
+ * What to ask an empty wallet for: what is missing, plus 1,000 sats for the
+ * extra input's network fee, rounded up to 0.0001 BCH.
+ */
+export const topUpFor = (need, have) => {
+  const missing = BigInt(need) - BigInt(have) + 1_000n;
+  const step = 10_000n;
+  return missing <= 0n ? step : ((missing + step - 1n) / step) * step;
+};
 
 /** Money a hand-back returns to the buyer (every output to the buyer's address). */
 const backToBuyer = (built) => {
@@ -151,6 +172,7 @@ export const createController = ({ runtime, deps = {} }) => {
     pendingBuy: null,
     tickets: [],
     returned: {},
+    paid: {},
     flows: {},
     keeper: [],
   });
@@ -163,11 +185,15 @@ export const createController = ({ runtime, deps = {} }) => {
   let lastScan = null;
   let closed = false;
   const local = new Map(); // ticket key -> the app's own record, until the chain shows it
+  const boughtAt = new Map(); // ticket key -> the tip when this page bought it (for the countdown bar while the buy is unconfirmed)
   const touched = new Set(); // ticket keys this page acted on (shown under their show card)
+  const holding = new Set(); // sample B tickets whose refund steps are on screen: the card stays "held" until "Money back"
   const debounce = new Map();
   const settleTried = new Set();
   const subscriptions = [];
   let relaySlowTimer = null;
+  /** An empty wallet: the buy waiting for coins at the wallet's receive address ({ showId, need, have, unsubscribe }). */
+  let fundWait = null;
 
   // ---------------------------------------------------------------- small helpers
 
@@ -353,6 +379,7 @@ export const createController = ({ runtime, deps = {} }) => {
           setWallet({ state, error: { key: 'walletGone', vars: {}, actions: ['connect'] }, name: null, balance: null });
           set({ tickets: [], connectOpen: false });
           lastScan = null;
+          stopFundWait();
           return;
         }
         setWallet({ state });
@@ -410,11 +437,42 @@ export const createController = ({ runtime, deps = {} }) => {
   const closeConnect = () => set({ connectOpen: false, pendingBuy: get().wallet.state === 'connected' ? get().pendingBuy : null });
 
   const disconnect = async () => {
+    stopFundWait();
     await session?.disconnect();
     lastScan = null;
     local.clear();
     setWallet({ state: 'idle', name: null, balance: null, pairing: null, error: null });
     set({ tickets: [] });
+  };
+
+  const stopFundWait = () => {
+    fundWait?.unsubscribe();
+    fundWait = null;
+  };
+
+  /**
+   * The buy found too little plain BCH: show the wallet's receive address and
+   * watch it. When coins arrive (a notification for that address, or the
+   * next block) and the wallet can pay, the buy runs again by itself; the
+   * wallet still has to approve it.
+   */
+  const waitForFunds = (showId, e) => {
+    stopFundWait();
+    const target = lastScan?.receive;
+    if (target === undefined || pool === null) return null;
+    const need = BigInt(e.need ?? 0n);
+    const have = BigInt(lastScan.balance ?? e.have ?? 0n);
+    const amount = topUpFor(need, have);
+    let first = true;
+    const unsubscribe = pool.subscribeScripthash(target.scripthash, () => {
+      if (first) {
+        first = false;
+        return;
+      }
+      rescan().catch(() => {});
+    });
+    fundWait = { showId, need, have, unsubscribe };
+    return { address: target.address, amount: bchNumber(amount), uri: `${target.address}?amount=${bchNumber(amount)}` };
   };
 
   /** Read the wallet's addresses and coins (no tickets). */
@@ -425,6 +483,11 @@ export const createController = ({ runtime, deps = {} }) => {
       const scan = await scanWallet({ pool, keys: session.wallet.keys, network });
       lastScan = scan;
       setWallet({ balance: scan.balance, scanning: false });
+      if (fundWait !== null && scan.balance > fundWait.have && scan.balance >= fundWait.need) {
+        const { showId } = fundWait;
+        stopFundWait();
+        buy(showId);
+      }
       return scan;
     } catch (e) {
       setWallet({ scanning: false });
@@ -454,17 +517,26 @@ export const createController = ({ runtime, deps = {} }) => {
     const byKey = new Map(found.map((t) => [ticketKeyOf(t.showId, t.seatHex), t]));
     for (const [key, mine] of local) {
       const chain = byKey.get(key);
-      // The chain wins once it knows the seat and agrees or is further along.
-      if (chain !== undefined && (chain.state !== 'held' || mine.state === 'held')) local.delete(key);
+      // The chain wins once it knows the seat and agrees or is further along (but not while a refund's steps are on screen).
+      if (chain !== undefined && !holding.has(key) && (chain.state !== 'held' || mine.state === 'held')) local.delete(key);
       else byKey.set(key, mine);
     }
-    const tickets = [...byKey.values()];
+    const tickets = [...byKey.values()].map((t) => {
+      const at = boughtAt.get(ticketKeyOf(t.showId, t.seatHex));
+      return at === undefined || t.boughtAtTip !== undefined ? t : { ...t, boughtAtTip: at };
+    });
     const returned = {};
+    const paid = {};
     for (const t of tickets) {
       const key = ticketKeyOf(t.showId, t.seatHex);
       returned[key] = t.returned ?? returnedFor(t);
+      const buyTxid = t.buy?.txid;
+      if (buyTxid === undefined || t.boughtByThisWallet !== true) continue;
+      const known = knownPaid(buyTxid);
+      if (known !== undefined) paid[buyTxid] = known;
+      else if (t.state === 'handedBack' || t.state === 'refunded') paidFromChain(buyTxid);
     }
-    set({ tickets, returned });
+    set((st) => ({ tickets, returned, paid: { ...st.paid, ...paid } }));
     // Sample B: the page asks for the organiser's notice and sends the refund for this wallet's held seats.
     for (const t of tickets) {
       const key = ticketKeyOf(t.showId, t.seatHex);
@@ -472,9 +544,62 @@ export const createController = ({ runtime, deps = {} }) => {
     }
   };
 
+  // ---------------------------------------------------------------- what the wallet paid for a ticket
+
+  // What a buy cost the wallet: its coins in, less the change back (the price, the 2,000 sats the
+  // ticket and its marker carry, and the network fee). Kept per buy txid; computed from the chain
+  // for a ticket this page did not buy in this session.
+  const paidByBuy = new Map();
+  const rememberPaid = (txid, sats) => {
+    paidByBuy.set(txid, sats);
+    try {
+      claims.setItem(PAID_PREFIX + txid, sats.toString());
+    } catch {
+      // storage blocked: memory only
+    }
+  };
+  const knownPaid = (txid) => {
+    if (paidByBuy.has(txid)) return paidByBuy.get(txid);
+    try {
+      const saved = claims.getItem(PAID_PREFIX + txid);
+      if (typeof saved === 'string' && /^\d+$/.test(saved)) {
+        paidByBuy.set(txid, BigInt(saved));
+        return paidByBuy.get(txid);
+      }
+    } catch {
+      // storage blocked
+    }
+    return undefined;
+  };
+  const paidPending = new Set();
+  /** The buy's wallet inputs less its change (outputs from index 3 on), read from the network. */
+  const paidFromChain = async (txid) => {
+    if (paidPending.has(txid) || pool === null) return;
+    paidPending.add(txid);
+    try {
+      const { transaction } = await getTransaction(pool, txid, { cache });
+      const sources = await getSourceOutputs(pool, transaction, { cache });
+      const walletIn = sources.slice(1).reduce((sum, o) => sum + o.valueSatoshis, 0n);
+      const change = transaction.outputs.slice(3).reduce((sum, o) => sum + o.valueSatoshis, 0n);
+      if (walletIn > change) {
+        rememberPaid(txid, walletIn - change);
+        set((st) => ({ paid: { ...st.paid, [txid]: walletIn - change } }));
+      }
+    } catch {
+      // the line is left out; nothing else depends on it
+    } finally {
+      paidPending.delete(txid);
+    }
+  };
+
   // ---------------------------------------------------------------- sign, check, send
 
-  const signCheckSend = async (key, kind, show, built) => {
+  /**
+   * Ask the wallet to sign `built`, check its reply, then send it.
+   * `beforeSend(checked)` runs between the check and the broadcast, when only
+   * this page knows the txid (the walk-in reserves its door claim there).
+   */
+  const signCheckSend = async (key, kind, show, built, { beforeSend } = {}) => {
     const prompt = promptForBuilt(show, built);
     let request;
     try {
@@ -488,6 +613,7 @@ export const createController = ({ runtime, deps = {} }) => {
     const signed = await session.sign(request);
     setFlow(key, { ...flowOf(key), step: 'sending' });
     const checked = assertSignedReply(built, signed);
+    if (beforeSend !== undefined) await beforeSend(checked);
     return pool.broadcastChecked(checked);
   };
 
@@ -496,15 +622,34 @@ export const createController = ({ runtime, deps = {} }) => {
       setFlow(key, null);
       return;
     }
-    setFlow(key, { ...(flowOf(key) ?? {}), kind, error: describeError(e, context) });
+    setFlow(key, { ...(flowOf(key) ?? {}), kind, error: describeError(e, { ...context, kind }) });
+  };
+
+  /**
+   * A hand-back or walk-in the network refused as a conflict: read the show's
+   * ledger. When the ticket's coin was spent by another transaction (a settle
+   * or refund that got there first), refresh the tickets so the card shows
+   * what happened, and say so. Returns true when it handled the error.
+   */
+  const coinSpentFirst = async (key, kind, ticket, e) => {
+    if (!(e instanceof BroadcastError && e.conflict)) return false;
+    const ledger = await refreshLedger(ticket.show).catch(() => null);
+    const coin = ledger?.bySeat.get(ticket.seatHex);
+    if (coin?.spend === null || coin?.spend === undefined) return false;
+    local.delete(key);
+    await refreshTickets().catch(() => {});
+    setFlow(key, { kind, step: 'done', error: { key: 'coinSpent', vars: {}, actions: [], detail: e.message } });
+    return true;
   };
 
   // ---------------------------------------------------------------- buy
 
-  const localTicketFromBuy = (show, built, txid, buyer) => {
+  const localTicketFromBuy = (show, built, txid, buyer, height) => {
     const seatHex = binToHex(built.seat);
     const txidBytes = hexToBin(txid);
+    boughtAt.set(ticketKeyOf(show.id, seatHex), height);
     return {
+      boughtAtTip: height,
       show,
       showId: show.id,
       seat: built.seat,
@@ -533,7 +678,7 @@ export const createController = ({ runtime, deps = {} }) => {
    * Buy a ticket for a show. Without a wallet, opens the connect dialog and
    * buys once the wallet is ready.
    */
-  const buy = async (showId, { retrying = false, avoid = new Set() } = {}) => {
+  const buy = async (showId, { retrying = false, avoid = new Set(), reason } = {}) => {
     const show = showById(showId);
     if (show === undefined) return;
     if (session?.wallet == null || get().wallet.state !== 'connected') {
@@ -542,7 +687,8 @@ export const createController = ({ runtime, deps = {} }) => {
       return;
     }
     if (!retrying && busyStep(flowOf(showId))) return;
-    setFlow(showId, { kind: 'buy', step: 'preparing', retrying });
+    if (fundWait?.showId === showId) stopFundWait();
+    setFlow(showId, { kind: 'buy', step: 'preparing', retrying, ...(reason !== undefined && { retryReason: reason }) });
     try {
       const height = (await pool.tip()).height;
       if (!salesOpen(show, height)) {
@@ -552,7 +698,7 @@ export const createController = ({ runtime, deps = {} }) => {
       const shards = (await openShards(pool, show)).filter((u) => !avoid.has(outpointKey(u.txid, u.vout)));
       if (shards.length === 0) throw Object.assign(new Error('no open box-office shard'), { code: 'no-open-shard' });
       const shard = shards[Math.floor(random() * shards.length) % shards.length];
-      const { built } = buildBuyWithCoins({
+      const { built, selected } = buildBuyWithCoins({
         show,
         boxOfficeUtxo: shard,
         coins: scan.utxos,
@@ -567,23 +713,36 @@ export const createController = ({ runtime, deps = {} }) => {
         sent = await signCheckSend(showId, 'buy', show, built);
       } catch (e) {
         if (e instanceof BroadcastError && e.conflict && !retrying) {
-          avoid.add(outpointKey(shard.txid, shard.vout));
+          // Which input lost the race? Read the wallet's coins and the open shards again, then ask once more.
+          const shardKey = outpointKey(shard.txid, shard.vout);
           setFlow(showId, { kind: 'buy', step: 'preparing', retrying: true });
-          return buy(showId, { retrying: true, avoid });
+          await rescan();
+          const shardOpen = (await openShards(pool, show)).some((u) => outpointKey(u.txid, u.vout) === shardKey);
+          if (!shardOpen) avoid.add(shardKey);
+          return buy(showId, { retrying: true, avoid, reason: shardOpen ? 'coinsChanged' : 'shardTaken' });
         }
         throw e;
       }
-      const ticket = localTicketFromBuy(show, built, sent.txid, scan.receive);
+      const walletIn = selected.reduce((sum, c) => sum + c.output.valueSatoshis, 0n);
+      const change = built.transaction.outputs.slice(3).reduce((sum, o) => sum + o.valueSatoshis, 0n);
+      rememberPaid(sent.txid, walletIn - change);
+      set((st) => ({ paid: { ...st.paid, [sent.txid]: walletIn - change } }));
+      const ticket = localTicketFromBuy(show, built, sent.txid, scan.receive, height);
       const key = ticketKeyOf(show.id, ticket.seatHex);
       upsertLocal(ticket);
       setFlow(showId, { ...flowOf(showId), kind: 'buy', step: 'done', ticketKey: key, txid: sent.txid, error: undefined });
       refreshLedger(show)
         .then(() => refreshWallet())
         .catch(() => {});
-      if (show.kind === 'sample-refund-seat') refundSeat(key);
+      if (show.kind === 'sample-refund-seat') refundSeat(key, { fresh: true });
       return { txid: sent.txid, key };
     } catch (e) {
       fail(showId, 'buy', e, { show });
+      if (e?.name === 'FundsError') {
+        const fund = waitForFunds(showId, e);
+        const flow = flowOf(showId);
+        if (fund !== null && flow?.error !== undefined) setFlow(showId, { ...flow, error: { ...flow.error, fund } });
+      }
       return undefined;
     }
   };
@@ -611,6 +770,7 @@ export const createController = ({ runtime, deps = {} }) => {
         .catch(() => {});
       return sent;
     } catch (e) {
+      if (await coinSpentFirst(key, 'handBack', ticket, e)) return undefined;
       fail(key, 'handBack', e, { show });
       return undefined;
     }
@@ -642,15 +802,36 @@ export const createController = ({ runtime, deps = {} }) => {
     return record;
   };
 
+  /**
+   * Reserve this page's claim on the door's answer, before the check-in is
+   * sent. Any failure is only logged: the check-in goes out anyway, and the
+   * door still answers this page by its claim when nobody claimed first.
+   */
+  const reserveDoor = async (show, txid) => {
+    const record = doorClaim(txid);
+    try {
+      const answer = await api.doorReserve({ category: show.categoryHex, txid, claim: record.claim }, { endpoint: show.door?.endpoint ?? '/api/door' });
+      saveDoorRecord(txid, { ...record, reserved: true });
+      return answer;
+    } catch (e) {
+      console.warn(`[doorstub] door reservation failed, sending the check-in anyway: ${e?.message ?? e}`);
+      return null;
+    }
+  };
+
   const askDoor = async (key, show, txid) => {
-    setFlow(key, { ...flowOf(key), step: 'door', error: undefined });
+    setFlow(key, { ...flowOf(key), step: 'door', error: undefined, doorError: undefined });
     try {
       const record = doorClaim(txid);
       const { link } = await api.door({ category: show.categoryHex, txid, claim: record.claim }, { endpoint: show.door?.endpoint ?? '/api/door' });
       saveDoorRecord(txid, { ...record, link });
       setFlow(key, { ...flowOf(key), step: 'done', link, error: undefined });
     } catch (e) {
-      setFlow(key, { ...flowOf(key), step: 'done', doorError: { key: 'doorDown', vars: {}, actions: ['retryDoor'], detail: e.message } });
+      // 409: the door already answered another claimant for this check-in. Asking again cannot change that.
+      const doorError = e?.alreadyAnswered === true
+        ? { key: 'doorTaken', vars: {}, actions: [], detail: e.message }
+        : { key: 'doorDown', vars: {}, actions: ['retryDoor'], detail: e?.message };
+      setFlow(key, { ...flowOf(key), step: 'done', doorError });
     }
   };
 
@@ -665,7 +846,7 @@ export const createController = ({ runtime, deps = {} }) => {
       if (!ticket.canAct) throw new Error('this ticket cannot walk in from this wallet');
       if (lastScan === null) await rescan();
       const built = buildCheckIn({ show, escrowUtxo: ticket.escrowUtxo, ticketUtxo: ticket.ticketUtxo, contracts: show.contracts });
-      const sent = await signCheckSend(key, 'walkIn', show, built);
+      const sent = await signCheckSend(key, 'walkIn', show, built, { beforeSend: (checked) => reserveDoor(show, checked.txid) });
       upsertLocal({
         ...ticket,
         state: 'walkedIn',
@@ -682,6 +863,7 @@ export const createController = ({ runtime, deps = {} }) => {
       await askDoor(key, show, sent.txid);
       return sent;
     } catch (e) {
+      if (await coinSpentFirst(key, 'walkIn', ticket, e)) return undefined;
       fail(key, 'walkIn', e, { show });
       return undefined;
     }
@@ -698,20 +880,34 @@ export const createController = ({ runtime, deps = {} }) => {
 
   // ---------------------------------------------------------------- sample B: notice, refund, money back
 
-  const refundSeat = async (key) => {
+  /** Wait until `ms` have passed since `since` (a step's minimum time on screen). */
+  const holdFor = async (since, ms) => {
+    const left = ms - (now() - since);
+    if (left > 0) await sleep(left);
+  };
+
+  const refundSeat = async (key, { fresh = false } = {}) => {
     const ticket = ticketByKey(key);
     if (ticket === undefined || busyStep(flowOf(key))) return undefined;
     const show = ticket.show;
     touched.add(key);
+    // Keep the card on "held" (no stamp yet) until the money is back, even if the chain is quicker.
+    holding.add(key);
+    if (!local.has(key)) local.set(key, ticket);
+    const stop = (error) => {
+      holding.delete(key);
+      setFlow(key, { kind: 'refund', step: 'notice', error });
+      return undefined;
+    };
     setFlow(key, { kind: 'refund', step: 'held' });
-    await sleep(STEP_PAUSE_MS);
+    await sleep((fresh ? PRINT_MS : 0) + STEP_MS);
+    let since = now();
     setFlow(key, { kind: 'refund', step: 'notice' });
     let signature;
     try {
       ({ signature } = await api.notice({ category: show.categoryHex, seat: ticket.seatHex, ...(ticket.buy?.txid !== undefined && { txid: ticket.buy.txid }) }));
     } catch (e) {
-      setFlow(key, { kind: 'refund', step: 'notice', error: { key: 'noticeDown', vars: {}, actions: ['retryRefund'], detail: e.message } });
-      return undefined;
+      return stop({ key: 'noticeDown', vars: {}, actions: ['retryRefund'], detail: e.message });
     }
     try {
       const { invalid } = addNotices(show, [{ scope: 'R', seat: ticket.seatHex, signature }]);
@@ -737,16 +933,17 @@ export const createController = ({ runtime, deps = {} }) => {
         txid = coin.spend.txid;
       }
       const returned = built.transaction.outputs[0].valueSatoshis;
+      await holdFor(since, STEP_MS);
+      since = now();
       setFlow(key, { kind: 'refund', step: 'sent', txid, returned });
+      await Promise.all([holdFor(since, STEP_MS), refreshLedger(show).catch(() => {})]);
+      holding.delete(key);
       upsertLocal({ ...ticket, state: 'refunded', refundPath: 'refund', spend: { txid, height: 0, path: 'refund' }, escrowUtxo: null, canAct: false, returned, pending: true });
-      await sleep(STEP_PAUSE_MS);
-      await refreshLedger(show).catch(() => {});
-      await refreshWallet().catch(() => {});
       setFlow(key, { kind: 'refund', step: 'back', txid, returned });
+      refreshWallet().catch(() => {});
       return txid;
     } catch (e) {
-      setFlow(key, { kind: 'refund', step: 'notice', error: describeError(e, { show }) });
-      return undefined;
+      return stop(describeError(e, { show, kind: 'refund' }));
     }
   };
 
@@ -786,6 +983,7 @@ export const createController = ({ runtime, deps = {} }) => {
 
   const close = async () => {
     closed = true;
+    stopFundWait();
     clearTimeout(relaySlowTimer);
     for (const t of debounce.values()) clearTimeout(t);
     for (const unsub of subscriptions) unsub();
@@ -807,7 +1005,10 @@ export const createController = ({ runtime, deps = {} }) => {
     retryRefund,
     refreshWallet,
     cancelSign: () => session?.cancel('Cancelled in Doorstub'),
-    dismiss: (key) => setFlow(key, null),
+    dismiss: (key) => {
+      if (fundWait?.showId === key) stopFundWait();
+      setFlow(key, null);
+    },
     touched: () => new Set(touched),
     onSale: () => (tip() === null ? [] : showsOnSale(get().shows, tip())),
     close,

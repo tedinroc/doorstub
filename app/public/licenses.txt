@@ -17,3 +17,7 @@ MIT licence
 nostr-tools (used by WizardConnect for its relay transport)
   Released under the Unlicense (public domain): https://unlicense.org
   https://github.com/nbd-wtf/nostr-tools
+
+Barlow Condensed (the display font, ExtraBold 800, latin subset: fonts/barlow-condensed-800.woff2)
+  Copyright 2017 The Barlow Project Authors (https://github.com/jpt/barlow)
+  Licensed under the SIL Open Font License, Version 1.1; the full text is in fonts/OFL.txt.

@@ -1,4 +1,5 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
+import QRCode from 'qrcode';
 import { EXPLORER } from '../config.js';
 import { LABELS, say } from '../lib/copy.js';
 import { refundTrack } from '../lib/view.js';
@@ -42,10 +43,19 @@ export const Barcode = ({ bits }) => {
 /** A txid as a short explorer link (plain text on simnet, where no explorer can see it). */
 export const TxLink = ({ txid, network, label, vout }) => {
   if (!txid) return null;
-  const text = `${label ? `${label} ` : ''}${txid.slice(0, 8)}…${txid.slice(-4)}${vout !== undefined ? `:${vout}` : ''}`;
-  if (network !== 'mainnet') return <span class="mono" title={txid}>{text}</span>;
+  const text = `${txid.slice(0, 8)}…${txid.slice(-4)}${vout !== undefined ? `:${vout}` : ''}`;
+  const tag = label ? <span class="tx-label">{label} </span> : null;
+  if (network !== 'mainnet') {
+    return (
+      <span class="mono" title={txid}>
+        {tag}
+        {text}
+      </span>
+    );
+  }
   return (
     <a href={EXPLORER.tx(txid)} target="_blank" rel="noopener noreferrer" title={txid}>
+      {tag}
       {text} ↗
     </a>
   );
@@ -68,6 +78,46 @@ export const CopyButton = ({ text, class: cls = 'btn quiet small', label = LABEL
     </button>
   );
 };
+
+/** A QR code as inline SVG (dark modules on a light tile in both themes). */
+export const QrCode = ({ text, label, class: cls = 'qr' }) => {
+  const [svg, setSvg] = useState('');
+  useEffect(() => {
+    let live = true;
+    setSvg('');
+    if (text) {
+      QRCode.toString(text, { type: 'svg', errorCorrectionLevel: 'M', margin: 1, color: { dark: '#1d1813', light: '#00000000' } })
+        .then((out) => live && setSvg(out))
+        .catch(() => {});
+    }
+    return () => {
+      live = false;
+    };
+  }, [text]);
+  return (
+    <div class={cls} role="img" aria-label={label}>
+      {svg ? <div class="qr-svg" dangerouslySetInnerHTML={{ __html: svg }} /> : null}
+    </div>
+  );
+};
+
+/** An empty wallet is a road, not a wall: where to send BCH, and the buy goes on when it arrives. */
+export const FundBox = ({ fund }) => (
+  <div class="fund" data-fund>
+    <p class="fund-say">{say('fundHere', { amount: fund.amount })}</p>
+    <div class="fund-row">
+      <QrCode text={fund.uri} label={LABELS.receiveQr} class="fund-qr" />
+      <div class="fund-address">
+        <code data-fund-address>{fund.address}</code>
+        <CopyButton text={fund.address} label={LABELS.copyAddress} />
+      </div>
+    </div>
+    <p class="fund-wait" role="status">
+      <span class="spin" aria-hidden="true" />
+      <span>{say('fundWatching')}</span>
+    </p>
+  </div>
+);
 
 const ACTION_LABEL = {
   retry: LABELS.tryAgain,
@@ -92,18 +142,17 @@ export const FlowStatus = ({ flow, onAction, onCancel }) => {
           <span>{say(flow.error.key, flow.error.vars)}</span>
         </div>
         {flow.error.detail ? <div class="detail">{flow.error.detail}</div> : null}
-        {actions.length > 0 ? (
-          <div class="actions">
-            {actions.map((a, i) => (
-              <button type="button" key={a} class={i === 0 ? 'btn small' : 'btn quiet small'} onClick={() => onAction(a)}>
-                {ACTION_LABEL[a]}
-              </button>
-            ))}
-            <button type="button" class="linkish" onClick={() => onAction('dismiss')}>
-              {LABELS.close}
+        {flow.error.fund ? <FundBox fund={flow.error.fund} /> : null}
+        <div class="actions">
+          {actions.map((a, i) => (
+            <button type="button" key={a} class={i === 0 ? 'btn small' : 'btn quiet small'} onClick={() => onAction(a)}>
+              {ACTION_LABEL[a]}
             </button>
-          </div>
-        ) : null}
+          ))}
+          <button type="button" class="linkish" onClick={() => onAction('dismiss')}>
+            {LABELS.close}
+          </button>
+        </div>
       </div>
     );
   }
@@ -112,7 +161,7 @@ export const FlowStatus = ({ flow, onAction, onCancel }) => {
       <div class="flow" role="status">
         <div class="line">
           <span class="spin" aria-hidden="true" />
-          <span>{flow.retrying ? say('shardTaken') : flow.kind === 'buy' ? say('buyPreparing') : say('sending')}</span>
+          <span>{flow.retrying ? say(flow.retryReason ?? 'shardTaken') : flow.kind === 'buy' ? say('buyPreparing') : say('sending')}</span>
         </div>
       </div>
     );
@@ -122,7 +171,7 @@ export const FlowStatus = ({ flow, onAction, onCancel }) => {
       <div class="flow" role="status" data-flow="approve">
         {flow.retrying ? (
           <div class="line">
-            <span>{say('shardTaken')}</span>
+            <span>{say(flow.retryReason ?? 'shardTaken')}</span>
           </div>
         ) : null}
         <div class="line">
@@ -150,13 +199,22 @@ export const FlowStatus = ({ flow, onAction, onCancel }) => {
   return null;
 };
 
-export const RefundTrack = ({ step }) => (
-  <ol class="track" aria-label={LABELS.stepNotice}>
-    {refundTrack(step).map((s) => (
-      <li key={s.id} class={`step${s.done ? ' done' : ''}${s.active ? ' active' : ''}`} style="list-style:none">
-        <span class="dot" aria-hidden="true" />
-        <span>{s.label}</span>
-      </li>
-    ))}
-  </ol>
-);
+export const RefundTrack = ({ step }) => {
+  const steps = refundTrack(step);
+  const now = steps.find((s) => s.active) ?? (step === 'back' ? steps.at(-1) : null);
+  return (
+    <>
+      <ol class="track" aria-label={LABELS.refundProgress}>
+        {steps.map((s) => (
+          <li key={s.id} class={`step${s.done ? ' done' : ''}${s.active ? ' active' : ''}`} style="list-style:none" aria-current={s.active ? 'step' : undefined}>
+            <span class="dot" aria-hidden="true" />
+            <span>{s.label}</span>
+          </li>
+        ))}
+      </ol>
+      <p class="sr-only" aria-live="polite">
+        {now ? now.label : ''}
+      </p>
+    </>
+  );
+};

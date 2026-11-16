@@ -116,8 +116,12 @@ test('page + real worker on simnet: B refund through the notice signer, walk in 
   const label = seatLabelOf(parseWorkerShows(showsText, { network: 'simnet' }).shows.find((s) => s.id === real.id), hexToBin(ticket(r.key).seatHex));
   assert.match(label, /^S-\d-1$/);
   assert.equal(state().flows[r.key].link, STAGE_DOOR_LINK.replace('{seat}', label));
-  const firstDoor = calls.filter((c) => c.path === '/api/door');
+  // The page first reserves its claim (reserve: true, before the check-in is sent), then asks for the link.
+  const reserved = calls.filter((c) => c.path === '/api/door' && c.body.reserve === true);
+  assert.equal(reserved.length, 1, 'one reservation before the check-in');
+  const firstDoor = calls.filter((c) => c.path === '/api/door' && c.body.reserve !== true);
   assert.equal(firstDoor.length, 1);
+  assert.equal(reserved[0].body.claim, firstDoor[0].body.claim, 'the reservation and the ask carry the same claim');
   assert.match(firstDoor[0].body.claim, /^[0-9a-f]{64}$/, 'the page sends a random claim secret');
   assert.equal(JSON.parse(claims.getItem(`doorstub.door.${sentIn.txid}`)).claim, firstDoor[0].body.claim, 'and keeps it for this check-in');
   // Someone who saw only the txid (another client, no claim) is refused.
