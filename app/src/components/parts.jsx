@@ -43,10 +43,19 @@ export const Barcode = ({ bits }) => {
 /** A txid as a short explorer link (plain text on simnet, where no explorer can see it). */
 export const TxLink = ({ txid, network, label, vout }) => {
   if (!txid) return null;
-  const text = `${label ? `${label} ` : ''}${txid.slice(0, 8)}…${txid.slice(-4)}${vout !== undefined ? `:${vout}` : ''}`;
-  if (network !== 'mainnet') return <span class="mono" title={txid}>{text}</span>;
+  const text = `${txid.slice(0, 8)}…${txid.slice(-4)}${vout !== undefined ? `:${vout}` : ''}`;
+  const tag = label ? <span class="tx-label">{label} </span> : null;
+  if (network !== 'mainnet') {
+    return (
+      <span class="mono" title={txid}>
+        {tag}
+        {text}
+      </span>
+    );
+  }
   return (
     <a href={EXPLORER.tx(txid)} target="_blank" rel="noopener noreferrer" title={txid}>
+      {tag}
       {text} ↗
     </a>
   );
@@ -95,18 +104,18 @@ export const QrCode = ({ text, label, class: cls = 'qr' }) => {
 /** An empty wallet is a road, not a wall: where to send BCH, and the buy goes on when it arrives. */
 export const FundBox = ({ fund }) => (
   <div class="fund" data-fund>
-    <QrCode text={fund.uri} label={LABELS.receiveQr} class="fund-qr" />
-    <div class="fund-text">
-      <p>{say('fundHere', { amount: fund.amount })}</p>
+    <p class="fund-say">{say('fundHere', { amount: fund.amount })}</p>
+    <div class="fund-row">
+      <QrCode text={fund.uri} label={LABELS.receiveQr} class="fund-qr" />
       <div class="fund-address">
         <code data-fund-address>{fund.address}</code>
         <CopyButton text={fund.address} label={LABELS.copyAddress} />
       </div>
-      <p class="fund-wait" role="status">
-        <span class="spin" aria-hidden="true" />
-        {say('fundWatching')}
-      </p>
     </div>
+    <p class="fund-wait" role="status">
+      <span class="spin" aria-hidden="true" />
+      <span>{say('fundWatching')}</span>
+    </p>
   </div>
 );
 

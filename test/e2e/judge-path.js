@@ -425,10 +425,10 @@ try {
   await page.evaluate((sel) => document.querySelector(sel)?.scrollIntoView({ block: 'center', behavior: 'instant' }), `[data-ticket="${keyB}"]`);
   ok((await domText(page, `[data-ticket="${keyB}"] .track .step.active`)) === 'Organiser refund notice', 'B: the "Organiser refund notice" step is the active one on its own');
   ok((await page.$(`[data-ticket="${keyB}"] .stamp`)) === null, 'B: no REFUNDED stamp during the notice step');
-  await page.screenshot({ path: join(SCREENS, '05-b-notice-390.png') });
+  await page.screenshot({ path: join(SHOTS, '05-b-notice-390.png') });
   await waitState(page, (s) => s.flows[keyB]?.step === 'sent' && s.flows[keyB], 'B sent step', 30_000);
   ok((await domText(page, `[data-ticket="${keyB}"] .track .step.active`)) === 'Refund sent', 'B: "Refund sent" is shown as the active step');
-  await page.screenshot({ path: join(SCREENS, '05b-b-sent-390.png') });
+  await page.screenshot({ path: join(SHOTS, '05b-b-sent-390.png') });
   await waitState(page, (s) => s.flows[keyB]?.step === 'back', 'B refund sequence', 60_000);
   const steps = await page.evaluate(() => window.__refundSteps);
   const at = Object.fromEntries(steps.map((x) => [x.step, x]));
@@ -564,17 +564,17 @@ try {
     await phone.waitForFunction(() => document.querySelector('[data-wiz-uri]')?.value?.startsWith('wiz://'), { timeout: 30_000 });
     ok(await phone.$eval('[data-open-selene]', (el) => el.classList.contains('block') && !el.classList.contains('quiet')), 'on a phone, Open Selene is the main button');
     await sleep(500);
-    await phone.screenshot({ path: join(SCREENS, '14-connect-phone-390.png') });
+    await phone.screenshot({ path: join(SHOTS, '14-connect-phone-390.png') });
     await phone.close();
   } finally {
     await phoneContext.close();
   }
 
   if (allScreens) {
-    // Staged for the screenshots only: the empty-wallet road on the next sample A card (the controller test drives it for real).
-    await page.evaluate((address) => {
+    // Staged for the screenshots only: the empty-wallet road on sample B's card (the controller test drives it for real).
+    await page.evaluate((address, id) => {
       const store = window.__doorstub.controller.store;
-      const next = window.__doorstub.controller.onSale().find((x) => x.kind === 'sample-settle');
+      const next = { id };
       store.set((st) => ({
         flows: {
           ...st.flows,
@@ -582,16 +582,16 @@ try {
         },
       }));
       window.__stagedFund = next.id;
-    }, walletReceive[9].address);
+    }, walletReceive[9].address, showB.id);
     await sleep(400);
     await shot(page, '16-empty-wallet', { selector: '[data-fund]' });
     await page.evaluate(() => window.__doorstub.controller.dismiss(window.__stagedFund));
     // The connect dialog opened by "Get a ticket" (it names the show and the price).
-    await page.evaluate(() => {
+    await page.evaluate((id) => {
       const store = window.__doorstub.controller.store;
-      const next = window.__doorstub.controller.onSale().find((x) => x.kind === 'sample-settle');
+      const next = { id };
       store.set({ pendingBuy: next.id, connectOpen: true, wallet: { ...store.get().wallet, pairing: { uri: 'wiz://staged', qrUri: 'WIZ://STAGED', selene: 'wiz://staged', cashonize: 'https://cashonize.com/?uri=staged', copy: 'wiz://staged' } } });
-    });
+    }, showB.id);
     await sleep(500);
     await shot(page, '17-connect-next');
     await page.evaluate(() => window.__doorstub.controller.store.set({ pendingBuy: null, connectOpen: false }));

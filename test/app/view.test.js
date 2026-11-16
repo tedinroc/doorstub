@@ -22,12 +22,12 @@ const date = new Date('2026-11-24T13:00:00Z');
 
 test('clockText: English, the reader\'s zone named, never the browser locale\'s words', () => {
   assert.equal(clockText(date, { timeZone: 'Asia/Taipei' }), 'Tue 24 Nov, 21:00 GMT+8');
-  assert.equal(clockText(date, { timeZone: 'America/New_York' }), 'Tue 24 Nov, 08:00 GMT-5');
+  assert.equal(clockText(date, { timeZone: 'America/New_York' }), 'Tue 24 Nov, 08:00 GMT\u20115');
   assert.equal(clockText(date, { timeZone: 'Asia/Kolkata' }), 'Tue 24 Nov, 18:30 GMT+5:30');
   assert.equal(clockText(date, { timeZone: 'UTC' }), 'Tue 24 Nov, 13:00 UTC');
   assert.equal(clockText(new Date('2026-11-17T00:05:00Z'), { timeZone: 'Asia/Taipei' }), 'Tue 17 Nov, 08:05 GMT+8');
   // Whatever the process locale, only ASCII English comes out.
-  assert.match(clockText(date), /^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2}, \d{2}:\d{2} (?:UTC|GMT[+-]\d{1,2}(?::\d{2})?)$/);
+  assert.match(clockText(date), /^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2}, \d{2}:\d{2} (?:UTC|GMT[+\u2011]\d{1,2}(?::\d{2})?)$/);
 });
 
 test('whenText and etaText: block, estimated time, how long', () => {
@@ -182,7 +182,7 @@ test('real show card: the call in the reader\'s own zone with its length, and sa
   const now = Date.parse('2026-11-16T13:00:00Z');
   const taipei = showCardModel(screening, { tip: 977_700, now, timeZone: 'Asia/Taipei' });
   assert.equal(taipei.callLine, 'Tue 24 Nov, 21:00 GMT+8 (in 8 days), for 25 minutes.');
-  assert.equal(showCardModel(screening, { tip: 977_700, now, timeZone: 'America/New_York' }).callLine, 'Tue 24 Nov, 08:00 GMT-5 (in 8 days), for 25 minutes.');
+  assert.equal(showCardModel(screening, { tip: 977_700, now, timeZone: 'America/New_York' }).callLine, 'Tue 24 Nov, 08:00 GMT\u20115 (in 8 days), for 25 minutes.');
   assert.equal(showCardModel(screening, { tip: 977_700, now, timeZone: 'UTC' }).callLine, 'Tue 24 Nov, 13:00 UTC (in 8 days), for 25 minutes.');
   assert.equal(taipei.startLabel, 'Door');
   assert.match(taipei.startLine, /^Buy and walk in until block 978,776, about [A-Z][a-z]{2} \d{1,2} Nov, \d\d:\d\d GMT\+8 \(in \d+ days\)\.$/);

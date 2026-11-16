@@ -71,7 +71,8 @@ export const clockText = (date, { timeZone } = {}) => {
     // An engine without shortOffset: UTC, named as such.
     return `${date.toUTCString().slice(0, 11).replace(',', '')}, ${date.toISOString().slice(11, 16)} UTC`;
   }
-  const zone = (parts.timeZoneName ?? 'UTC').replace(/^GMT$|^GMT\+0$|^UTC$/, 'UTC');
+  // A non-breaking hyphen in "GMT‑5", so a line never breaks inside the zone.
+  const zone = (parts.timeZoneName ?? 'UTC').replace(/^GMT$|^GMT\+0$|^UTC$/, 'UTC').replace('-', '\u2011');
   return `${parts.weekday} ${parts.day} ${parts.month}, ${parts.hour}:${parts.minute} ${zone}`;
 };
 
