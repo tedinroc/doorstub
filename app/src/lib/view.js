@@ -3,6 +3,7 @@
 import { binToHex, hexToBin } from '@bitauth/libauth';
 import {
   blocksUntil,
+  callEnded,
   callEndsAt,
   estimateTimeOf,
   formatBch,
@@ -12,6 +13,7 @@ import {
   shortTxid,
   showPhase,
   showSeatLabel,
+  showsOnSale,
 } from '../../../src/shows/index.js';
 import { TOKEN_OUTPUT_SATS, encodeTicketCommitment } from '../../../src/tx/index.js';
 import { LABELS, say } from './copy.js';
@@ -112,8 +114,11 @@ export const callOf = (show, { now = Date.now(), timeZone } = {}) => {
  * @param {{ tip: number, usd?: number|null, ledger?: object, now?: number, locale?: string, timeZone?: string }} ctx
  */
 export const showCardModel = (show, { tip, usd = null, ledger, now = Date.now(), locale, timeZone } = {}) => {
-  const start = whenText(show.startHeight, tip, { now, locale, timeZone });
-  const settle = whenText(settleOpensAt(show), tip, { now, locale, timeZone });
+  // Before the first tip arrives (the card is drawn from shows.json while the page connects), the rows that count
+  // blocks wait for it; a real show's Door row needs only the clock.
+  const known = tip !== null && tip !== undefined && Number.isFinite(Number(tip));
+  const start = known ? whenText(show.startHeight, tip, { now, locale, timeZone }) : { block: num(show.startHeight), time: null, eta: null };
+  const settle = known ? whenText(settleOpensAt(show), tip, { now, locale, timeZone }) : null;
   const call = callOf(show, { now, timeZone });
   // A real show sells and lets you walk in until its call ends (the reader's clock); its startHeight, hours later,
   // is only the on-chain backstop. So the Door row names the end of the call and never contradicts the Call row.
@@ -121,9 +126,9 @@ export const showCardModel = (show, { tip, usd = null, ledger, now = Date.now(),
   const real = end !== null;
   const until = real ? { time: clockText(new Date(end), { timeZone }), eta: etaMinutes(Math.ceil((end - now) / 60_000)) } : null;
   let startLine;
-  if (!real) startLine = say('showStarts', { start: start.block, time: start.time, eta: start.eta });
+  if (!real) startLine = known ? say('showStarts', { start: start.block, time: start.time, eta: start.eta }) : null;
   else if (now >= end) startLine = null; // the stub says sales and walk-in closed
-  else if (salesOpen(show, tip)) startLine = say('realUntil', until);
+  else if (!known || salesOpen(show, tip)) startLine = say('realUntil', until);
   else startLine = `${say('showSalesEnded', { start: start.block })} ${say('walkInUntil', until)}`;
   return {
     id: show.id,
@@ -139,21 +144,45 @@ export const showCardModel = (show, { tip, usd = null, ledger, now = Date.now(),
     startLabel: real ? LABELS.door : LABELS.starts,
     startLine,
     callLine: call === null ? null : say('callAt', { time: call.time, eta: call.eta, minutes: call.minutes }),
-    settleLine: say('showSettles', { settle: settle.block, time: settle.time, eta: settle.eta }),
+    settleLine: settle === null ? null : say('showSettles', { settle: settle.block, time: settle.time, eta: settle.eta }),
+    waitingForTip: !known,
     feesLine: say('showFees', { handBack: bpsText(show.handBackFeeBps), noShow: bpsText(show.noShowFeeBps), cap: num(show.minerFeeCap) }),
-    phase: showPhase(show, tip),
-    onSale: salesOpen(show, tip, { now }),
+    phase: known ? showPhase(show, tip) : null,
+    onSale: known ? salesOpen(show, tip, { now }) : !show.cancelled && !(real && now >= end),
     endedLine: real && now >= end ? say('callSalesEnded') : say('showSalesEnded', { start: start.block }),
     startBlock: start.block,
     startEta: start.eta,
     startTime: start.time,
-    settleBlock: settle.block,
-    settleTime: settle.time,
+    settleBlock: settle?.block ?? null,
+    settleTime: settle?.time ?? null,
     sold: ledger?.seatCounts?.sold ?? null,
     shards: show.shards,
     serial: show.categoryHex.slice(0, 8).toUpperCase(),
     category: show.categoryHex,
   };
+};
+
+/**
+ * The cards to draw from shows.json while the page is still connecting and
+ * checking each show's genesis (their Get a ticket waits for that check):
+ * what showsOnSale would offer. Before the first tip, the sample A instance
+ * is the one whose start estimate (from shows.json) is the soonest still at
+ * least ten minutes away; sample B and the real shows whose call is not over
+ * are drawn as they are.
+ */
+export const previewShows = (catalogue, { tip = null, now = Date.now() } = {}) => {
+  if (tip !== null && tip !== undefined) return showsOnSale(catalogue, tip, { now });
+  const later = (s) => {
+    const at = Date.parse(s.startsAtEstimate ?? '');
+    return Number.isFinite(at) ? at : null;
+  };
+  const a = catalogue
+    .filter((s) => s.kind === 'sample-settle' && !s.cancelled && later(s) !== null && later(s) > now + 10 * 60_000)
+    .sort((x, y) => later(x) - later(y))[0];
+  const rest = catalogue.filter(
+    (s) => !s.cancelled && ((s.kind === 'sample-refund-seat' && (later(s) === null || later(s) > now)) || (s.kind === 'real' && !callEnded(s, now))),
+  );
+  return [...(a === undefined ? [] : [a]), ...rest];
 };
 
 /**

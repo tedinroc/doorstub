@@ -674,6 +674,7 @@ dialog.sheet[open] { animation: pop 0.35s var(--ease-out); }
 .notice-box { padding: 16px; border-radius: var(--radius); border: 1px dashed var(--rule); color: var(--ink-soft); background: var(--face-2); }
 .skeleton { height: 290px; border-radius: var(--radius); background: linear-gradient(100deg, var(--face-2) 30%, var(--face) 50%, var(--face-2) 70%) 0 0 / 300% 100%; animation: shimmer 1.6s linear infinite; }
 @keyframes shimmer { to { background-position: -150% 0; } }
+.wait-bar { display: inline-block; width: min(16em, 100%); height: 0.9em; vertical-align: middle; border-radius: 4px; background: linear-gradient(100deg, var(--face-2) 30%, var(--face) 50%, var(--face-2) 70%) 0 0 / 300% 100%; animation: shimmer 1.6s linear infinite; }
 .dev { margin-top: 18px; padding: 12px 14px; border-radius: var(--radius-s); border: 2px dashed var(--gold); background: color-mix(in srgb, var(--gold) 10%, var(--paper)); font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .dev b { font-family: var(--font-mono); letter-spacing: 0.06em; }
 .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 70; background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 999px; font-size: 14px; box-shadow: var(--shadow-pop); animation: rise 0.3s var(--ease-out); max-width: calc(100vw - 32px); }

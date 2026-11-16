@@ -190,6 +190,7 @@ export const createController = ({ runtime, deps = {} }) => {
     chain: { status: 'connecting', tip: null, server: null },
     usd: typeof runtime.usd === 'number' && runtime.usd > 0 ? runtime.usd : null,
     shows: [],
+    catalogue: [],
     unverified: [],
     rejected: [],
     ledgers: new Map(),
@@ -359,10 +360,13 @@ export const createController = ({ runtime, deps = {} }) => {
       set({ boot: 'failed', bootError: { key: 'showsFailed', vars: {}, actions: ['reload'], detail: e.message } });
       return;
     }
-    set({ rejected: file.rejected, order: new Map(file.shows.map((s, i) => [s.id, i])) });
+    // The cards are drawn from shows.json at once; Get a ticket waits until each show's genesis passed its check.
+    set({ rejected: file.rejected, catalogue: file.shows, order: new Map(file.shows.map((s, i) => [s.id, i])) });
     pool = createPool({
       network,
       ...(runtime.servers !== undefined && { servers: runtime.servers }),
+      // Four servers at once: the first to answer serves the page (a slow pair no longer costs seconds).
+      raceWidth: 4,
       allowBroadcast: true,
       onStatus: onPoolStatus,
       ...(WebSocketImpl !== undefined && { WebSocketImpl }),

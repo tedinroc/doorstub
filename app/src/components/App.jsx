@@ -3,7 +3,7 @@ import { nextOpenInstance, showsOnSale } from '../../../src/shows/schedule.js';
 import { formatBch } from '../../../src/shows/format.js';
 import { TEST_HOOKS } from '../env.js';
 import { LABELS, say } from '../lib/copy.js';
-import { listedShows, newestFirst, num, showCardModel, ticketModel } from '../lib/view.js';
+import { listedShows, newestFirst, num, previewShows, showCardModel, ticketModel } from '../lib/view.js';
 import { useNow, useStore } from '../hooks.js';
 import { ConnectDialog } from './connect.jsx';
 import { Banner, CheckIt, DevPanel, Footer, ForOrganisers, Header, Hero, HowItWorks, ProofStrip } from './sections.jsx';
@@ -56,6 +56,9 @@ export const App = ({ controller, dev }) => {
   // This wallet's tickets shown under a show card, newest first: held ones, and any this page acted on.
   const mineOf = (show) => newest.filter(({ ticket }) => ticket.showId === show.id && (ticket.state === 'held' || touched.has(keyOf(ticket))));
   const listed = tip === null ? [] : listedShows({ shows: state.shows, onSale, tickets: state.tickets, touched });
+  // Until the shows are verified, their cards are drawn from shows.json with Get a ticket waiting for the check.
+  const checking = state.boot === 'loading' || (state.boot === 'ready' && tip === null);
+  const preview = checking ? previewShows(state.catalogue, { tip, now }) : [];
   const freshKeys = new Set(
     Object.values(state.flows)
       .filter((f) => f?.kind === 'buy' && f.step === 'done' && f.ticketKey && now - f.at < FRESH_MS + 30_000)
@@ -136,7 +139,20 @@ export const App = ({ controller, dev }) => {
                 </button>
               </div>
             ) : null}
-            {state.boot === 'loading' || (state.boot === 'ready' && tip === null) ? (
+            {checking && preview.length > 0 ? (
+              <div class={`shows n${Math.min(preview.length, 4)}`} aria-busy="true">
+                {preview.map((show) => (
+                  <ShowCard
+                    key={show.id}
+                    checking
+                    model={{ ...showCardModel(show, { tip, usd: state.usd, now }), priceSats: show.price }}
+                    onBuy={() => {}}
+                    onAction={() => {}}
+                    onCancel={() => {}}
+                  />
+                ))}
+              </div>
+            ) : checking ? (
               <div class="shows n2" aria-busy="true">
                 <p class="sr-only">{say('showsChecking')}</p>
                 <div class="skeleton" />

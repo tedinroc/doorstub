@@ -10,6 +10,7 @@ import {
   etaText,
   listedShows,
   newestFirst,
+  previewShows,
   proofModel,
   refundTrack,
   shortBch,
@@ -286,4 +287,29 @@ test('a finished ticket says what was paid, what came back and where the rest we
   assert.equal(ticketModel(ticket({ show: settledWithFee, state: 'refunded', refundPath: 'settle', escrowUtxo: null, canAct: false }), { tip: 977_650, returned: 95_000n, paid: 102_932n }).lines.length, 1);
   // Unknown payment: no line.
   assert.equal(ticketModel(ticket({ state: 'handedBack', escrowUtxo: null, canAct: false }), { tip: 977_610, returned: 101_029n }).lines.length, 1);
+});
+
+test('before the tip: cards drawn from shows.json (the next sample A by its start estimate, B, real shows whose call is not over), rows that count blocks wait', () => {
+  const now = Date.parse('2026-11-24T12:00:00Z');
+  const at = (minutes) => new Date(now + minutes * 60_000).toISOString();
+  const a = (id, minutes) => ({ ...show, id, startsAtEstimate: at(minutes) });
+  const catalogue = [
+    a('sample-a-1', -60),
+    a('sample-a-2', 5),
+    a('sample-a-3', 30),
+    a('sample-a-4', 66),
+    { ...show, id: 'sample-b', kind: 'sample-refund-seat', startsAtEstimate: at(60 * 24 * 40) },
+    screening,
+    { ...screening, id: 'screening-0', eventAtMs: now - 3 * 3_600_000 },
+  ];
+  assert.deepEqual(previewShows(catalogue, { now }).map((s) => s.id), ['sample-a-3', 'sample-b', 'screening-1'], 'at least ten minutes of sales left, and no call that is over');
+  assert.deepEqual(previewShows(catalogue, { now, tip: show.startHeight - 1 }).map((s) => s.id).slice(0, 1), ['sample-a-1'], 'with a tip it is what is on sale');
+  const waiting = showCardModel(show, { tip: null, now });
+  assert.equal(waiting.waitingForTip, true);
+  assert.equal(waiting.startLine, null);
+  assert.equal(waiting.settleLine, null);
+  assert.equal(waiting.onSale, true);
+  const real = showCardModel(screening, { tip: null, now, timeZone: 'UTC' });
+  assert.equal(real.startLine, 'Buy and walk in until the call ends, Tue 24 Nov, 13:25 UTC (in 1 h 25 min).', 'the Door row needs only the clock');
+  assert.equal(real.callLine, 'Tue 24 Nov, 13:00 UTC (in 1 h), for 25 minutes.');
 });

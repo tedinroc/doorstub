@@ -14,10 +14,21 @@ const busy = (flow) => flow !== undefined && flow.error === undefined && ['prepa
  * button sit right under the show's words (the judge reaches "Get a ticket"
  * in one screen); from 720 px the stub with the price tears off on the right.
  */
-export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) => {
+export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, checking = false, children }) => {
   const working = busy(flow);
   const cutRef = useCut();
-  const status = flow !== undefined && flow.step !== 'done' ? <FlowStatus flow={flow} onAction={onAction} onCancel={onCancel} /> : null;
+  // Drawn from shows.json while the page checks this show's genesis on chain: Get a ticket waits for that check.
+  const status = checking ? (
+    <div class="flow" role="status" data-checking={model.id}>
+      <div class="line">
+        <span class="spin" aria-hidden="true" />
+        <span>{say('showsChecking')}</span>
+      </div>
+    </div>
+  ) : flow !== undefined && flow.step !== 'done' ? (
+    <FlowStatus flow={flow} onAction={onAction} onCancel={onCancel} />
+  ) : null;
+  const wait = <span class="wait-bar" aria-hidden="true" />;
   return (
     <div class={`show-col kind-${BAND[model.kind] ?? 'a'}`} data-show={model.id}>
       <div class="ticket-shadow">
@@ -27,7 +38,7 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
             <div class="kicker">
               <span>Doorstub</span>
               <span class="pill">{model.sample ? LABELS.sample : LABELS.realShow}</span>
-              {model.onSale === false ? <span class="pill ended-pill">{LABELS.ended}</span> : <span class="serial">No. {model.serial}</span>}
+              {model.onSale === false ? <span class="pill ended-pill">{LABELS.ended}</span> : checking ? null : <span class="serial">No. {model.serial}</span>}
             </div>
             <div class="title-row">
               <div class="letter" aria-hidden="true">
@@ -57,7 +68,7 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
                   {model.endedLine}
                 </p>
               ) : (
-                <button type="button" class="btn cta" onClick={onBuy} disabled={working} data-buy={model.id}>
+                <button type="button" class="btn cta" onClick={onBuy} disabled={working || checking} data-buy={checking ? undefined : model.id} data-buy-waiting={checking ? model.id : undefined}>
                   {working ? <span class="spin" aria-hidden="true" /> : null}
                   {LABELS.getTicket}
                 </button>
@@ -73,16 +84,16 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
                 <dd>{model.callLine}</dd>
               </div>
             ) : null}
-            {model.startLine ? (
+            {model.startLine || model.waitingForTip ? (
               <div data-fact="start">
                 <dt>{model.startLabel}</dt>
-                <dd>{model.startLine}</dd>
+                <dd>{model.startLine ?? wait}</dd>
               </div>
             ) : null}
             {model.kind !== 'sample-refund-seat' ? (
               <div>
                 <dt>{LABELS.refundsLabel}</dt>
-                <dd>{model.settleLine}</dd>
+                <dd>{model.settleLine ?? wait}</dd>
               </div>
             ) : null}
             <div>

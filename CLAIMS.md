@@ -142,7 +142,7 @@ Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js
 | `At block {settle}, about {time}; the refund follows once the keeper or this page sends it.` | The same rule, shown under a held ticket's "Settling opens in" countdown (so the countdown is not said twice). |
 | `Hand-back fee {handBack}. No-show fee {noShow}. Network fee cap {cap} sats per ticket.` | Section 4, limits 6 and 7; the values are the posted parameters, recomputed into the Escrow address by the shows loader. |
 | `Sales for this show ended at block {start}.` | Section 4, limit 14: `buildBuy` refuses at or after `startHeight`. |
-| `Checking every show's genesis transaction on chain.` | Section 4, limit 10 (`verifyShowGenesis`). |
+| `Checking every show's genesis transaction on chain.` | Section 4, limit 10 (`verifyShowGenesis`). Each card is drawn from `shows.json` at once with this line, and its Get a ticket stays disabled until the show's genesis passed the check (`previewShows`, `app/src/lib/view.js`); a show that fails it is not offered. |
 | `No show is on sale right now.` | Status line. |
 | `The show list did not load.` | Status line. |
 | `Doorstub could not verify this show's genesis on chain, so it is not on sale.` | Section 4, limit 10: the app refuses a show whose genesis fails the check. |
