@@ -237,3 +237,20 @@ test('settle countdown: the place and time once (not the countdown again), and a
   assert.equal(later.progress, 0.5);
   assert.equal(ticketModel(ticket(), { tip: 977_603 }).progress, null, 'no purchase height known: no bar');
 });
+
+test('a finished ticket says what was paid, what came back and where the rest went (no posted fee)', () => {
+  const back = ticketModel(ticket({ state: 'handedBack', escrowUtxo: null, ticketUtxo: null, canAct: false }), { tip: 977_610, returned: 101_029n, paid: 102_932n });
+  assert.deepEqual(back.lines, [
+    'Handed back. 0.00101029 BCH came back to your wallet.',
+    'You paid 0.00102932 BCH; 0.00101029 BCH came back; the rest was network fees.',
+  ]);
+  const refunded = ticketModel(ticket({ state: 'refunded', refundPath: 'refund', escrowUtxo: null, canAct: false, ticketUtxo: { txid: 'aa'.repeat(32), vout: 1, output: { valueSatoshis: 1_000n } } }), { tip: 977_610, returned: 100_179n, paid: 102_932n });
+  assert.equal(refunded.lines[1], 'You paid 0.00102932 BCH; 0.00100179 BCH came back and 0.00001 BCH stays with the ticket NFT; the rest was network fees.');
+  // A posted fee would be part of "the rest": the line is left out.
+  const withFee = { ...show, handBackFeeBps: 200 };
+  assert.equal(ticketModel(ticket({ show: withFee, state: 'handedBack', escrowUtxo: null, canAct: false }), { tip: 977_610, returned: 99_000n, paid: 102_932n }).lines.length, 1);
+  const settledWithFee = { ...show, noShowFeeBps: 500 };
+  assert.equal(ticketModel(ticket({ show: settledWithFee, state: 'refunded', refundPath: 'settle', escrowUtxo: null, canAct: false }), { tip: 977_650, returned: 95_000n, paid: 102_932n }).lines.length, 1);
+  // Unknown payment: no line.
+  assert.equal(ticketModel(ticket({ state: 'handedBack', escrowUtxo: null, canAct: false }), { tip: 977_610, returned: 101_029n }).lines.length, 1);
+});

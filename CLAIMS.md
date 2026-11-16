@@ -189,6 +189,8 @@ Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js
 | `Until you walk in or the show settles, you can hand your ticket back for your money, minus the hand-back fee shown on the show page.` | C4. |
 | `Your ticket is an NFT in your own wallet. After check-in it stays there as a keepsake stub with no money behind it.` | C8. |
 | `Handed back. {amount} came back to your wallet.` | `{amount}` is the sum of the hand-back's outputs to the buyer's address (C4). |
+| `You paid {paid}; {amount} came back; the rest was network fees.` | `{paid}` is the buy's wallet inputs less its change: the price, the 1,000 sats each of the ticket and the marker carry, and the network fee. A hand-back returns both coins' values less its own network fee, so with no posted hand-back fee the difference is the two network fees (the line is left out when the show posts one). This is why more than the price comes back. |
+| `You paid {paid}; {amount} came back and {kept} stays with the ticket NFT; the rest was network fees.` | As above; a refund or settle pays the escrow coin's value less its network fee, and the ticket NFT keeps its own 1,000 sats (`{kept}`). Left out for a settle when the show posts a no-show fee. |
 | `Refunded by the settle after the show: {amount} to the address that bought it.` | C3, C7; `{amount}` is the settle's output at the coin's index. |
 | `Refunded under the organiser's refund notice: {amount} to the address that bought it.` | C6, C7; `{amount}` is the refund's output at the coin's index. |
 | `Walked in. Your ticket stays in your wallet as a keepsake stub with no money behind it.` | C8. |

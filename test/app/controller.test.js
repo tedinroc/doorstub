@@ -132,6 +132,10 @@ test('controller on simnet: buy A, hand back, buy B and its refund arrives, the 
   assert.ok(back.returned >= 102_000n - 1_500n && back.returned < 102_000n, `returned ${back.returned}`);
   await waitFor(() => state().tickets.find((x) => `${x.showId}:${x.seatHex}` === keyA)?.pending !== true && state().tickets.find((x) => `${x.showId}:${x.seatHex}` === keyA)?.state === 'handedBack', 'hand-back from the chain');
   assert.equal(state().returned[keyA], back.returned, 'the amount back is read from the chain too');
+  // What the wallet paid: the price, 2,000 sats for the ticket and marker, and the buy's network fee (under 1,500 sats).
+  const paidA = state().paid[buyA.txid];
+  assert.ok(paidA > 102_000n && paidA < 103_500n, `paid ${paidA}`);
+  assert.ok(paidA > back.returned, 'more was paid than came back: the difference is the network fees');
 
   // Sample B: buy, then the refund sequence runs by itself.
   const bought = await controller.buy(showB.id);

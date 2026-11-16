@@ -12,7 +12,7 @@ import {
   showPhase,
   showSeatLabel,
 } from '../../../src/shows/index.js';
-import { encodeTicketCommitment } from '../../../src/tx/index.js';
+import { TOKEN_OUTPUT_SATS, encodeTicketCommitment } from '../../../src/tx/index.js';
 import { LABELS, say } from './copy.js';
 
 export const BLOCK_MINUTES = 10;
@@ -184,7 +184,7 @@ const amountText = (sats) => (sats === null || sats === undefined ? null : forma
  * @param {object} ticket from myTickets / discoverTickets, or the app's own record right after a buy
  * @param {{ tip?: number, now?: number, locale?: string, timeZone?: string, returned?: bigint|null }} [ctx]
  */
-export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, returned = null } = {}) => {
+export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, returned = null, paid = null } = {}) => {
   const show = ticket.show;
   const seatBytes = ticket.seat instanceof Uint8Array ? ticket.seat : hexToBin(ticket.seatHex);
   const buyerPkh = hexToBin(ticket.buyerPkhHex);
@@ -200,9 +200,18 @@ export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, r
     if (ticket.canAct === false && ticket.ticketUtxo !== null && ticket.ticketUtxo !== undefined) lines.push(say('movedAway'));
   } else if (state === 'handedBack') {
     if (returned !== null) lines.push(say('handBackDone', { amount: amountText(returned) }));
+    // Why more came back than the price: the ticket's and the marker's 1,000 sats each. Only when no posted fee was taken.
+    if (returned !== null && paid !== null && Number(show.handBackFeeBps) === 0 && paid >= returned) {
+      lines.push(say('paidHandBack', { paid: formatBch(paid), amount: formatBch(returned) }));
+    }
   } else if (state === 'refunded') {
     const amount = amountText(returned);
     if (amount !== null) lines.push(say(ticket.refundPath === 'settle' ? 'settleDone' : 'noticeDone', { amount }));
+    const kept = ticket.ticketUtxo?.output?.valueSatoshis ?? TOKEN_OUTPUT_SATS;
+    const feeFree = ticket.refundPath !== 'settle' || Number(show.noShowFeeBps) === 0;
+    if (returned !== null && paid !== null && feeFree && paid >= returned + kept) {
+      lines.push(say('paidRefund', { paid: formatBch(paid), amount: formatBch(returned), kept: formatBch(kept) }));
+    }
   } else if (state === 'walkedIn') {
     lines.push(say('walkedIn'));
     const c = callOf(show, { now, timeZone });

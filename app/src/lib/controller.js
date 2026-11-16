@@ -18,6 +18,8 @@ import {
   createTxCache,
   discoverTickets,
   fetchShowLedger,
+  getSourceOutputs,
+  getTransaction,
   liveEscrowUtxos,
   listUnspent,
   outpointKey,
@@ -109,6 +111,7 @@ const defaultClaimStorage = () => {
 };
 
 const DOOR_RECORD_PREFIX = 'doorstub.door.';
+const PAID_PREFIX = 'doorstub.paid.';
 
 /**
  * What to ask an empty wallet for: what is missing, plus 1,000 sats for the
@@ -169,6 +172,7 @@ export const createController = ({ runtime, deps = {} }) => {
     pendingBuy: null,
     tickets: [],
     returned: {},
+    paid: {},
     flows: {},
     keeper: [],
   });
@@ -522,15 +526,69 @@ export const createController = ({ runtime, deps = {} }) => {
       return at === undefined || t.boughtAtTip !== undefined ? t : { ...t, boughtAtTip: at };
     });
     const returned = {};
+    const paid = {};
     for (const t of tickets) {
       const key = ticketKeyOf(t.showId, t.seatHex);
       returned[key] = t.returned ?? returnedFor(t);
+      const buyTxid = t.buy?.txid;
+      if (buyTxid === undefined || t.boughtByThisWallet !== true) continue;
+      const known = knownPaid(buyTxid);
+      if (known !== undefined) paid[buyTxid] = known;
+      else if (t.state === 'handedBack' || t.state === 'refunded') paidFromChain(buyTxid);
     }
-    set({ tickets, returned });
+    set((st) => ({ tickets, returned, paid: { ...st.paid, ...paid } }));
     // Sample B: the page asks for the organiser's notice and sends the refund for this wallet's held seats.
     for (const t of tickets) {
       const key = ticketKeyOf(t.showId, t.seatHex);
       if (t.show.kind === 'sample-refund-seat' && t.state === 'held' && t.boughtByThisWallet && flowOf(key) === undefined) refundSeat(key);
+    }
+  };
+
+  // ---------------------------------------------------------------- what the wallet paid for a ticket
+
+  // What a buy cost the wallet: its coins in, less the change back (the price, the 2,000 sats the
+  // ticket and its marker carry, and the network fee). Kept per buy txid; computed from the chain
+  // for a ticket this page did not buy in this session.
+  const paidByBuy = new Map();
+  const rememberPaid = (txid, sats) => {
+    paidByBuy.set(txid, sats);
+    try {
+      claims.setItem(PAID_PREFIX + txid, sats.toString());
+    } catch {
+      // storage blocked: memory only
+    }
+  };
+  const knownPaid = (txid) => {
+    if (paidByBuy.has(txid)) return paidByBuy.get(txid);
+    try {
+      const saved = claims.getItem(PAID_PREFIX + txid);
+      if (typeof saved === 'string' && /^\d+$/.test(saved)) {
+        paidByBuy.set(txid, BigInt(saved));
+        return paidByBuy.get(txid);
+      }
+    } catch {
+      // storage blocked
+    }
+    return undefined;
+  };
+  const paidPending = new Set();
+  /** The buy's wallet inputs less its change (outputs from index 3 on), read from the network. */
+  const paidFromChain = async (txid) => {
+    if (paidPending.has(txid) || pool === null) return;
+    paidPending.add(txid);
+    try {
+      const { transaction } = await getTransaction(pool, txid, { cache });
+      const sources = await getSourceOutputs(pool, transaction, { cache });
+      const walletIn = sources.slice(1).reduce((sum, o) => sum + o.valueSatoshis, 0n);
+      const change = transaction.outputs.slice(3).reduce((sum, o) => sum + o.valueSatoshis, 0n);
+      if (walletIn > change) {
+        rememberPaid(txid, walletIn - change);
+        set((st) => ({ paid: { ...st.paid, [txid]: walletIn - change } }));
+      }
+    } catch {
+      // the line is left out; nothing else depends on it
+    } finally {
+      paidPending.delete(txid);
     }
   };
 
@@ -640,7 +698,7 @@ export const createController = ({ runtime, deps = {} }) => {
       const shards = (await openShards(pool, show)).filter((u) => !avoid.has(outpointKey(u.txid, u.vout)));
       if (shards.length === 0) throw Object.assign(new Error('no open box-office shard'), { code: 'no-open-shard' });
       const shard = shards[Math.floor(random() * shards.length) % shards.length];
-      const { built } = buildBuyWithCoins({
+      const { built, selected } = buildBuyWithCoins({
         show,
         boxOfficeUtxo: shard,
         coins: scan.utxos,
@@ -665,6 +723,10 @@ export const createController = ({ runtime, deps = {} }) => {
         }
         throw e;
       }
+      const walletIn = selected.reduce((sum, c) => sum + c.output.valueSatoshis, 0n);
+      const change = built.transaction.outputs.slice(3).reduce((sum, o) => sum + o.valueSatoshis, 0n);
+      rememberPaid(sent.txid, walletIn - change);
+      set((st) => ({ paid: { ...st.paid, [sent.txid]: walletIn - change } }));
       const ticket = localTicketFromBuy(show, built, sent.txid, scan.receive, height);
       const key = ticketKeyOf(show.id, ticket.seatHex);
       upsertLocal(ticket);

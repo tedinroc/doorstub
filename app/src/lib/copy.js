@@ -75,6 +75,8 @@ export const SENTENCES = Object.freeze({
   ticketHandBack: 'Until you walk in or the show settles, you can hand your ticket back for your money, minus the hand-back fee shown on the show page.',
   ticketNft: 'Your ticket is an NFT in your own wallet. After check-in it stays there as a keepsake stub with no money behind it.',
   handBackDone: 'Handed back. {amount} came back to your wallet.',
+  paidHandBack: 'You paid {paid}; {amount} came back; the rest was network fees.',
+  paidRefund: 'You paid {paid}; {amount} came back and {kept} stays with the ticket NFT; the rest was network fees.',
   settleDone: 'Refunded by the settle after the show: {amount} to the address that bought it.',
   noticeDone: "Refunded under the organiser's refund notice: {amount} to the address that bought it.",
   walkedIn: 'Walked in. Your ticket stays in your wallet as a keepsake stub with no money behind it.',

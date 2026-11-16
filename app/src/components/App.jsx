@@ -50,7 +50,7 @@ export const App = ({ controller, dev }) => {
     .reverse()
     .map((t) => ({
       ticket: t,
-      model: ticketModel(t, { tip: tip ?? undefined, now, returned: state.returned[keyOf(t)] ?? null }),
+      model: ticketModel(t, { tip: tip ?? undefined, now, returned: state.returned[keyOf(t)] ?? null, paid: (t.buy?.txid && state.paid[t.buy.txid]) ?? null }),
     }));
   // This wallet's tickets shown under a show card: held ones, and any this page acted on.
   const mineOf = (show) => tickets.filter(({ ticket }) => ticket.showId === show.id && (ticket.state === 'held' || touched.has(keyOf(ticket))));
