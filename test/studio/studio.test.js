@@ -228,6 +228,10 @@ test('plan: the default catalogue, its card texts, and the policy and payee chec
   }
   assert.throws(() => makePlan({ ...realBase, schedule: [entry, { ...entry, id: 'y' }] }), /seat letter L is already used/);
   assert.throws(() => makePlan({ ...realBase, schedule: [{ ...entry, startHeight: undefined, eventAt: '2026-11-16T05:00:00Z' }] }), /is over/, 'a call that is over');
+  // The page never offers a show whose call is over, so it is refused with a startHeight from the schedule too.
+  assert.throws(() => makePlan({ ...realBase, schedule: [{ ...entry, eventAt: '2026-11-16T05:00:00Z' }] }), /x: the call at 2026-11-16T05:00:00Z is over/, 'a call that is over, with startHeight');
+  assert.throws(() => makePlan({ ...realBase, schedule: [{ ...entry, eventAt: '2026-11-16T06:03:00Z' }] }), /is over/, 'a call that ends right now');
+  assert.doesNotThrow(() => makePlan({ ...realBase, schedule: [{ ...entry, eventAt: '2026-11-16T06:04:00Z' }] }), 'a call still on');
   assert.throws(() => makePlan({ ...realBase, schedule: [{ ...entry, kind: 'sample-settle', startHeight: undefined, eventAt: undefined, durationMin: undefined, seatPrefix: undefined }] }), /needs startHeight/);
   assert.throws(() => makePlan({ ...realBase, schedule: [{ ...entry, kind: 'sample-settle', seatPrefix: 'Q', eventAt: undefined, durationMin: undefined }] }), /only real shows/);
 

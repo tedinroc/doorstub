@@ -170,6 +170,9 @@ export const makePlan = ({
     if (!SHOW_KINDS.includes(entry.kind) || entry.kind === 'proof') throw new Error(`${entry.id}: plan kinds are sample-settle, sample-refund-seat and real`);
     if (!Number.isInteger(entry.shards) || entry.shards < 1 || entry.shards > 256) throw new Error(`${entry.id}: shards must be 1-256`);
     const call = callFields(entry, entry.id);
+    // The page never offers a real show whose call is over, so genesis would pay for a show nobody can buy,
+    // whether startHeight came from the call or from the schedule.
+    if (entry.kind === 'real' && call.eventAtMs + call.durationMin * 60_000 <= now.getTime()) throw new Error(`${entry.id}: the call at ${entry.eventAt} is over`);
     if (entry.kind === 'real' && shows.some((s) => s.kind === 'real' && s.seatPrefix === call.seatPrefix)) {
       throw new Error(`${entry.id}: seat letter ${call.seatPrefix} is already used by another real show`);
     }
