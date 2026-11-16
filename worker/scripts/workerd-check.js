@@ -6,7 +6,9 @@
 // in-process simnet, and checks they work end to end:
 //   1. Pages Functions (`wrangler pages dev` with ./functions): /api/health,
 //      and /api/notice signs an 'R' notice for a live sample B seat; the
-//      notice verifies with src/tx and the refund built from it is accepted.
+//      notice verifies with src/tx and the refund built from it is accepted;
+//      /api/door gives a real show's link for a check-in on the simnet (once
+//      per claimant) and refuses a hand-back.
 //   2. The cron Worker (`wrangler dev --test-scheduled` with worker/wrangler.toml
 //      overridden by --var): one scheduled run refunds a new sample B seat and
 //      settles a sample A ticket past its start plus grace.
@@ -26,7 +28,7 @@ import { bootstrapSimnet } from '../../studio/index.js';
 import { parseShowsFile } from '../../src/shows/index.js';
 import { buildRefund, verifyRefundNotice } from '../../src/tx/index.js';
 import { checkSignatureFree, createFulcrumPool } from '../../src/chain/index.js';
-import { buyTicket, unspentAt } from '../../test/worker/support.js';
+import { buyTicket, send, signedCheckIn, signedHandBack, unspentAt } from '../../test/worker/support.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const wrangler = join(root, 'node_modules', '.bin', 'wrangler');
@@ -94,11 +96,20 @@ try {
   mkdirSync(work, { recursive: true });
   simnet = await startSimnet({ port: 0, seed: 'workerd-check', height: 977_600 });
   rpc = await connectRpc(simnet.url);
-  const boot = await bootstrapSimnet({ server: simnet.url, dir: work, count: 1, firstStart: '+12', refundSeatStart: '+6500' });
+  const boot = await bootstrapSimnet({
+    server: simnet.url,
+    dir: work,
+    count: 1,
+    firstStart: '+12',
+    refundSeatStart: '+6500',
+    schedule: [{ id: 'live-call', kind: 'real', title: 'Live call', card: 'A real show.', startHeight: '+300' }],
+  });
   const showsText = readFileSync(boot.showsPath, 'utf8');
   const { shows } = parseShowsFile(showsText, { network: 'simnet' });
   const showA = shows.find((s) => s.kind === 'sample-settle');
   const showB = shows.find((s) => s.kind === 'sample-refund-seat');
+  const real = shows.find((s) => s.kind === 'real');
+  const doorLinks = JSON.stringify({ 'live-call': 'https://example.invalid/call?seat={seat}' });
   const dataKeyHex = JSON.parse(readFileSync(boot.secretsPath, 'utf8')).data.privateKey;
   pool = createFulcrumPool({ network: 'simnet', servers: [simnet.url], allowBroadcast: true, pingIntervalMs: 0 });
 
@@ -109,7 +120,7 @@ try {
       'pages', 'dev', dirname(boot.showsPath),
       '--ip', '127.0.0.1', '--port', String(pagesPort), '--inspector-port', String(await freePort()),
       '--compatibility-date', '2024-11-11', '--show-interactive-dev-session=false',
-      '--binding', 'DOORSTUB_NETWORK=simnet', `DOORSTUB_FULCRUM=${simnet.url}`, `STUDIO_DATA_KEY=${dataKeyHex}`,
+      '--binding', 'DOORSTUB_NETWORK=simnet', `DOORSTUB_FULCRUM=${simnet.url}`, `STUDIO_DATA_KEY=${dataKeyHex}`, `DOOR_LINKS=${doorLinks}`,
     ],
     'pages',
   );
@@ -139,6 +150,23 @@ try {
   const bad = await fetch(`${base}/api/notice`, { method: 'POST', body: JSON.stringify({ category: showA.categoryHex, seat: '000100' }) });
   if (bad.status !== 403) throw new Error(`sample A notice should be refused, got ${bad.status}`);
   step('pages: refuses a notice for sample A', { status: bad.status });
+
+  const holder = await buyTicket(rpc, real);
+  const checkInTxid = await send(rpc, signedCheckIn(real, holder));
+  const askDoor = async (txid) => {
+    const r = await fetch(`${base}/api/door`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ category: real.categoryHex, txid }) });
+    return { status: r.status, body: await r.json() };
+  };
+  const t1 = Date.now();
+  const opened = await askDoor(checkInTxid);
+  if (opened.status !== 200 || opened.body.link !== 'https://example.invalid/call?seat=L-0-1') throw new Error(`door ${opened.status} ${JSON.stringify(opened.body)}\n${pages.log()}`);
+  const doorMs = Date.now() - t1;
+  const again = await askDoor(checkInTxid);
+  if (again.status !== 200 || again.body.again !== true) throw new Error(`door repeat ${again.status} ${JSON.stringify(again.body)}`);
+  const handBackTxid = await send(rpc, signedHandBack(real, await buyTicket(rpc, real)));
+  const refused = await askDoor(handBackTxid);
+  if (refused.status !== 422 || refused.body.error?.code !== 'not-a-check-in') throw new Error(`door should refuse a hand-back, got ${refused.status} ${JSON.stringify(refused.body)}`);
+  step('pages: /api/door answers a real check-in in workerd (again for the same caller) and refuses a hand-back', { ms: doorMs, seatLabel: opened.body.seatLabel, refused: refused.body.error.code });
   killAll();
 
   // ---------------------------------------------------------------- 2. the cron Worker in workerd
