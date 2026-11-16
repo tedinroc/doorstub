@@ -80,13 +80,6 @@ export const decodeSeat = (seat) => {
   return { shard: seat[0], sold: readUint16le(seat, 1) };
 };
 
-/** Human label for a seat, e.g. "A-0007" for shard 0, sold 7. */
-export const seatLabel = (seat) => {
-  const { shard, sold } = decodeSeat(seat);
-  const prefix = shard < 26 ? String.fromCharCode(65 + shard) : `S${shard}`;
-  return `${prefix}-${String(sold).padStart(4, '0')}`;
-};
-
 const tagged = (tag, seat, buyerPkh) => {
   assertBytes(seat, 3, 'seat');
   assertBytes(buyerPkh, 20, 'buyerPkh');
