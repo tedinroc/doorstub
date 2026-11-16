@@ -1,0 +1,18 @@
+[
+  {
+    "id": "screening-1",
+    "kind": "real",
+    "title": "Doorstub screening 1",
+    "subtitle": "Online, Tue 24 Nov, 21:00 GMT+8 (13:00 UTC), 20 minutes",
+    "card": "Online screening: a 12-minute film on how Doorstub works, then Q&A in the chat. Walk in to get the room link.",
+    "startHeight": 978776
+  },
+  {
+    "id": "screening-2",
+    "kind": "real",
+    "title": "Doorstub screening 2",
+    "subtitle": "Online, Sat 28 Nov, 21:00 GMT+8 (13:00 UTC), 20 minutes",
+    "card": "Online screening: a 12-minute film on how Doorstub works, then Q&A in the chat. Walk in to get the room link.",
+    "startHeight": 979352
+  }
+]
