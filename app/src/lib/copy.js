@@ -73,6 +73,7 @@ export const SENTENCES = Object.freeze({
   doorAsking: 'Your check-in is on chain. Asking the door for your event link.',
   doorAnswered: 'The door answered with your event link.',
   doorDown: 'Your check-in is on chain. The door did not answer yet; try again in a moment.',
+  doorTaken: 'The door already gave the event link for this check-in to another page, so it cannot give it here.',
   noticeDown: "The refund-notice service did not answer. Doorstub's keeper sends this refund within minutes, with no approval from you.",
   movedAway: "A ticket moved away from the buyer's address can no longer check in or hand back. Settle still refunds the original buyer.",
   unknownState: "This ticket's contract coin is not in the show's history yet.",

@@ -18,7 +18,7 @@ import { say } from '../../app/src/lib/copy.js';
 import { memoryStorage } from '../../src/wallet/index.js';
 import { settleOpensAt } from '../../src/shows/index.js';
 import { makeSimWallet } from '../support/sim-wallet.js';
-import { stubApi } from '../support/stub-worker.js';
+import { stubApi, stubErrorBody } from '../support/stub-worker.js';
 import { scratchDir } from '../simnet/support.js';
 import { REAL_SHOW } from '../e2e/stage.js';
 
@@ -34,22 +34,24 @@ const waitFor = async (predicate, what, ms = 8_000) => {
   }
 };
 
-/** createApi over an in-process stub (so app/src/lib/api.js runs too). */
-const apiOver = (stub) =>
+/** createApi over an in-process stub (so app/src/lib/api.js runs too). `intercept(path, body)` runs first (tests). */
+const apiOver = (stub, intercept = async () => {}) =>
   createApi({
     retryDelaysMs: [1, 1, 1],
     fetchImpl: async (url, init) => {
       const path = new URL(url, 'http://local').pathname;
       try {
-        const result = path === '/api/notice' ? await stub.notice(JSON.parse(init.body)) : await stub.door(JSON.parse(init.body));
+        const body = JSON.parse(init.body);
+        await intercept(path, body);
+        const result = path === '/api/notice' ? await stub.notice(body) : await stub.door(body);
         return new Response(JSON.stringify(result), { status: 200 });
       } catch (e) {
-        return new Response(JSON.stringify({ error: e.message }), { status: e.status ?? 500 });
+        return new Response(JSON.stringify(stubErrorBody(e)), { status: e.status ?? 500 });
       }
     },
   });
 
-const setup = async (t, { walletOptions = {}, behaviour = {} } = {}) => {
+const setup = async (t, { walletOptions = {}, behaviour = {}, intercept } = {}) => {
   const simnet = await startSimnet({ port: 0, seed: 'app-controller', height: 977_600 });
   t.after(() => simnet.close());
   const scratch = scratchDir('app-controller');
@@ -66,7 +68,7 @@ const setup = async (t, { walletOptions = {}, behaviour = {} } = {}) => {
       fetchShows: async () => readFileSync(boot.showsPath, 'utf8'),
       initiateRelay: wallet.inProcessRelay(),
       storage: memoryStorage(),
-      api: apiOver(stub),
+      api: apiOver(stub, intercept === undefined ? undefined : (path, body) => intercept(path, body, { simnet })),
       sleep: async () => {},
       dappIcon: 'https://doorstub.pages.dev/icon.png',
     },
@@ -146,9 +148,16 @@ test('controller on simnet: buy A, hand back, buy B and its refund arrives, the 
   assert.ok(boughtReal?.key, JSON.stringify(state().flows[real.id]?.error));
   const sentIn = await controller.walkIn(boughtReal.key);
   assert.ok(sentIn?.txid, JSON.stringify(state().flows[boughtReal.key]?.error));
-  assert.match(wallet.log.at(-1).userPrompt, /^Doorstub: walk in with seat D-\d-1\. This pays the organiser 0\.000\d+ BCH; your ticket stays as a keepsake\.$/);
+  assert.match(wallet.log.at(-1).userPrompt, /^Doorstub: walk in with seat [A-Z]-\d-1\. This pays the organiser 0\.000\d+ BCH; your ticket stays as a keepsake\.$/);
   assert.equal(state().flows[boughtReal.key].link, DOOR_LINK);
-  assert.deepEqual(stub.calls.filter((c) => c.endpoint === 'door').map((c) => c.txid), [sentIn.txid]);
+  // The page reserved its claim first (before the check-in was sent), then asked the door with the same claim.
+  const doorCalls = stub.calls.filter((c) => c.endpoint === 'reserve' || c.endpoint === 'door');
+  assert.deepEqual(doorCalls.map((c) => [c.endpoint, c.txid]), [['reserve', sentIn.txid], ['door', sentIn.txid]]);
+  assert.equal(doorCalls[0].claim, doorCalls[1].claim);
+  assert.match(doorCalls[0].claim, /^[0-9a-f]{64}$/);
+  // Someone who saw the check-in on the network and asks with another claim, or none, is refused.
+  await assert.rejects(stub.door({ category: real.categoryHex, txid: sentIn.txid, claim: 'ee'.repeat(32) }), (e) => e.status === 409 && e.code === 'already-answered');
+  await assert.rejects(stub.door({ category: real.categoryHex, txid: sentIn.txid }), (e) => e.status === 409);
   await waitFor(() => {
     const t4 = state().tickets.find((x) => `${x.showId}:${x.seatHex}` === boughtReal.key);
     return t4?.state === 'walkedIn' && t4.pending !== true;
@@ -158,6 +167,7 @@ test('controller on simnet: buy A, hand back, buy B and its refund arrives, the 
   await controller.retryDoor(boughtReal.key);
   assert.equal(state().flows[boughtReal.key].link, DOOR_LINK);
   assert.equal(stub.calls.filter((c) => c.endpoint === 'door').at(-1).txid, sentIn.txid);
+  assert.equal(stub.calls.filter((c) => c.endpoint === 'door').at(-1).claim, doorCalls[0].claim, 'the same claim after a reload (kept in storage)');
 
   // A second A ticket, then the show starts and passes its grace: the page pushes the settle itself.
   const second = await controller.buy(showA.id);
@@ -226,6 +236,61 @@ test('controller stuck states: not enough BCH, a declined approval, the notice s
   stub.behaviour.down = false;
   await controller.retryRefund(bought.key);
   assert.equal(state().flows[bought.key].step, 'back');
+});
+
+test('walk in: the door claim is reserved before the check-in is sent; a failed reservation still sends it; a 409 is not asked again', async (t) => {
+  const reserves = [];
+  let ctl;
+  let observer = false;
+  const { controller, wallet, state, stub } = await setup(t, {
+    intercept: async (path, body) => {
+      if (path !== '/api/door') return;
+      if (body.reserve === true) {
+        // Only this page knows the txid now: the network has not seen the check-in.
+        const known = await ctl.pool.request('blockchain.transaction.get', [body.txid]).then(() => true, () => false);
+        reserves.push({ txid: body.txid, known });
+        if (observer) throw Object.assign(new Error('the door is down'), { status: 503, code: 'chain-down' });
+      } else if (observer) {
+        // Someone read the check-in from the network and asked first, with a claim of their own.
+        await stub.door({ category: body.category, txid: body.txid, claim: 'ee'.repeat(32) }).catch(() => {});
+      }
+    },
+  });
+  ctl = controller;
+  await controller.start();
+  const real = controller.onSale().find((s) => s.kind === 'real');
+  await controller.pool.request('simnet.fund', { address: wallet.addressAt('receive', 0).address, sats: 1_000_000, mine: true });
+  await controller.connect();
+  await waitFor(() => state().wallet.state === 'connected' && state().wallet.balance !== null, 'wallet ready');
+
+  const one = await controller.buy(real.id);
+  assert.ok(one?.key, JSON.stringify(state().flows[real.id]?.error));
+  const sent = await controller.walkIn(one.key);
+  assert.ok(sent?.txid);
+  assert.deepEqual(reserves, [{ txid: sent.txid, known: false }], 'reserved before the check-in reached the network');
+  assert.equal(state().flows[one.key].link, DOOR_LINK);
+
+  // The reservation fails (non-fatal: the check-in is sent anyway), and an observer claims first: the page says so once.
+  observer = true;
+  const two = await controller.buy(real.id);
+  assert.ok(two?.key, JSON.stringify(state().flows[real.id]?.error));
+  const warn = console.warn;
+  console.warn = () => {};
+  let sent2;
+  try {
+    sent2 = await controller.walkIn(two.key);
+  } finally {
+    console.warn = warn;
+  }
+  assert.ok(sent2?.txid, 'the check-in went out although the reservation failed');
+  assert.equal(await controller.pool.request('blockchain.transaction.get', [sent2.txid]).then(() => true, () => false), true);
+  const flow = state().flows[two.key];
+  assert.equal(flow.link, undefined);
+  assert.equal(flow.doorError.key, 'doorTaken');
+  assert.deepEqual(flow.doorError.actions, [], 'no "Try again" for a 409');
+  assert.equal(say(flow.doorError.key, flow.doorError.vars), 'The door already gave the event link for this check-in to another page, so it cannot give it here.');
+  const pageAsks = stub.calls.filter((c) => c.endpoint === 'door' && c.txid === sent2.txid && c.claim !== 'ee'.repeat(32));
+  assert.equal(pageAsks.length, 1, 'a 409 is not retried');
 });
 
 test('reopening the connect dialog shows the same link while it waits for a wallet; the other relay makes a new one', async () => {

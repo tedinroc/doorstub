@@ -194,15 +194,17 @@ export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack
               </div>
             ) : null}
             {doorFlow?.doorError ? (
-              <div class="flow error" role="alert">
+              <div class="flow error" role="alert" data-door-error={doorFlow.doorError.key}>
                 <div class="line">
-                  <span>{say('doorDown')}</span>
+                  <span>{say(doorFlow.doorError.key, doorFlow.doorError.vars)}</span>
                 </div>
-                <div class="actions">
-                  <button type="button" class="btn small" onClick={() => onAction('retryDoor')}>
-                    {LABELS.tryAgain}
-                  </button>
-                </div>
+                {doorFlow.doorError.actions.includes('retryDoor') ? (
+                  <div class="actions">
+                    <button type="button" class="btn small" onClick={() => onAction('retryDoor')}>
+                      {LABELS.tryAgain}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ) : null}
             {model.state === 'walkedIn' && model.kind === 'real' && doorFlow === null ? (

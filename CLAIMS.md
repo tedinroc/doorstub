@@ -187,6 +187,7 @@ Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js
 | `Your check-in is on chain. Asking the door for your event link.` | Shown after the check-in was accepted by a server. |
 | `The door answered with your event link.` | The door verifies the check-in on chain before it answers (`SPEC.md` section 12); the page opens only an `https:` link. |
 | `Your check-in is on chain. The door did not answer yet; try again in a moment.` | The check-in was accepted; only the door's answer is missing. |
+| `The door already gave the event link for this check-in to another page, so it cannot give it here.` | The door gives the link to one claimant per check-in and answers any other claim with `409 already-answered` (`SPEC.md` section 12); the page reserves its claim before it sends the check-in, shows this sentence on a 409 and does not ask again (`app/src/lib/api.js`, `test/app/client.test.js`). |
 | `The refund-notice service did not answer. Doorstub's keeper sends this refund within minutes, with no approval from you.` | The cron keeper runs every 5 minutes and refunds every live sample B marker with a fresh notice; a refund needs no key (C5, C6) *(keeper not deployed yet)*. |
 | `A ticket moved away from the buyer's address can no longer check in or hand back. Settle still refunds the original buyer.` | Section 4, limit 5. |
 | `This ticket's contract coin is not in the show's history yet.` | Status line. |

@@ -474,7 +474,12 @@ export const createController = ({ runtime, deps = {} }) => {
 
   // ---------------------------------------------------------------- sign, check, send
 
-  const signCheckSend = async (key, kind, show, built) => {
+  /**
+   * Ask the wallet to sign `built`, check its reply, then send it.
+   * `beforeSend(checked)` runs between the check and the broadcast, when only
+   * this page knows the txid (the walk-in reserves its door claim there).
+   */
+  const signCheckSend = async (key, kind, show, built, { beforeSend } = {}) => {
     const prompt = promptForBuilt(show, built);
     let request;
     try {
@@ -488,6 +493,7 @@ export const createController = ({ runtime, deps = {} }) => {
     const signed = await session.sign(request);
     setFlow(key, { ...flowOf(key), step: 'sending' });
     const checked = assertSignedReply(built, signed);
+    if (beforeSend !== undefined) await beforeSend(checked);
     return pool.broadcastChecked(checked);
   };
 
@@ -642,15 +648,36 @@ export const createController = ({ runtime, deps = {} }) => {
     return record;
   };
 
+  /**
+   * Reserve this page's claim on the door's answer, before the check-in is
+   * sent. Any failure is only logged: the check-in goes out anyway, and the
+   * door still answers this page by its claim when nobody claimed first.
+   */
+  const reserveDoor = async (show, txid) => {
+    const record = doorClaim(txid);
+    try {
+      const answer = await api.doorReserve({ category: show.categoryHex, txid, claim: record.claim }, { endpoint: show.door?.endpoint ?? '/api/door' });
+      saveDoorRecord(txid, { ...record, reserved: true });
+      return answer;
+    } catch (e) {
+      console.warn(`[doorstub] door reservation failed, sending the check-in anyway: ${e?.message ?? e}`);
+      return null;
+    }
+  };
+
   const askDoor = async (key, show, txid) => {
-    setFlow(key, { ...flowOf(key), step: 'door', error: undefined });
+    setFlow(key, { ...flowOf(key), step: 'door', error: undefined, doorError: undefined });
     try {
       const record = doorClaim(txid);
       const { link } = await api.door({ category: show.categoryHex, txid, claim: record.claim }, { endpoint: show.door?.endpoint ?? '/api/door' });
       saveDoorRecord(txid, { ...record, link });
       setFlow(key, { ...flowOf(key), step: 'done', link, error: undefined });
     } catch (e) {
-      setFlow(key, { ...flowOf(key), step: 'done', doorError: { key: 'doorDown', vars: {}, actions: ['retryDoor'], detail: e.message } });
+      // 409: the door already answered another claimant for this check-in. Asking again cannot change that.
+      const doorError = e?.alreadyAnswered === true
+        ? { key: 'doorTaken', vars: {}, actions: [], detail: e.message }
+        : { key: 'doorDown', vars: {}, actions: ['retryDoor'], detail: e?.message };
+      setFlow(key, { ...flowOf(key), step: 'done', doorError });
     }
   };
 
@@ -665,7 +692,7 @@ export const createController = ({ runtime, deps = {} }) => {
       if (!ticket.canAct) throw new Error('this ticket cannot walk in from this wallet');
       if (lastScan === null) await rescan();
       const built = buildCheckIn({ show, escrowUtxo: ticket.escrowUtxo, ticketUtxo: ticket.ticketUtxo, contracts: show.contracts });
-      const sent = await signCheckSend(key, 'walkIn', show, built);
+      const sent = await signCheckSend(key, 'walkIn', show, built, { beforeSend: (checked) => reserveDoor(show, checked.txid) });
       upsertLocal({
         ...ticket,
         state: 'walkedIn',

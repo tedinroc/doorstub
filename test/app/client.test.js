@@ -64,6 +64,44 @@ test('api: the optional buy txid (notice) and claim secret (door) go in the body
   ]);
 });
 
+test('api: the door reservation is one try with the claim and reserve: true, and a 409 is never retried', async () => {
+  const sent = [];
+  const answers = [];
+  const api = createApi({
+    sleep: noSleep,
+    reserveTimeoutMs: 20,
+    fetchImpl: async (url, init) => {
+      sent.push({ url, body: JSON.parse(init.body) });
+      return answers.shift() ?? json(200, { reserved: true, again: false });
+    },
+  });
+  const claim = 'cd'.repeat(32);
+  assert.deepEqual(await api.doorReserve({ category: 'aa'.repeat(32), txid: 'bb'.repeat(32), claim }), { reserved: true, again: false });
+  assert.deepEqual(sent.at(-1), { url: '/api/door', body: { category: 'aa'.repeat(32), txid: 'bb'.repeat(32), claim, reserve: true } });
+  answers.push(json(200, { reserved: true, again: true }));
+  assert.deepEqual(await api.doorReserve({ category: 'aa', txid: 'bb', claim }), { reserved: true, again: true });
+
+  // The worker's error shape: { error: { code, message, retryable }, message }.
+  const taken = { error: { code: 'already-answered', message: 'this check-in already got its door answer', retryable: false }, message: 'this check-in already got its door answer' };
+  for (const status of [409, 404, 503]) {
+    const before = sent.length;
+    answers.push(json(status, status === 409 ? taken : { error: { code: 'x', message: 'not now', retryable: true }, message: 'not now' }));
+    await assert.rejects(api.doorReserve({ category: 'aa', txid: 'bb', claim }), (e) => e instanceof ApiError && e.status === status);
+    assert.equal(sent.length, before + 1, `a reservation answered ${status} is not tried again`);
+  }
+  answers.push(json(200, { link: 'https://meet.example.org/x' }));
+  await assert.rejects(api.doorReserve({ category: 'aa', txid: 'bb', claim }), (e) => e.code === 'bad-answer', 'a door answer without reserved: true is refused');
+  await assert.rejects(api.doorReserve({ category: 'aa', txid: 'bb', claim: 'short' }), (e) => e.code === 'bad-request');
+  const slow = createApi({ reserveTimeoutMs: 20, fetchImpl: (url, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new Error('aborted')))) });
+  await assert.rejects(slow.doorReserve({ category: 'aa', txid: 'bb', claim }), (e) => e.code === 'timeout');
+
+  // The normal door request: 409 already-answered is thrown at once, with the server's code.
+  let asks = 0;
+  const door = createApi({ sleep: noSleep, fetchImpl: async () => (asks++, json(409, taken)) });
+  await assert.rejects(door.door({ category: 'aa', txid: 'bb', claim }), (e) => e.alreadyAnswered === true && e.serverCode === 'already-answered' && e.serverMessage.startsWith('this check-in'));
+  assert.equal(asks, 1, 'a 409 is not retried');
+});
+
 test('runtime: the E2E switches (a local relay, the page keeper off) accept only local relays', () => {
   const r = resolveTestRuntime('?fulcrum=ws://127.0.0.1:50021&relay=ws://127.0.0.1:7777&pagekeeper=0');
   assert.deepEqual(r.relayUrls, ['ws://127.0.0.1:7777']);
