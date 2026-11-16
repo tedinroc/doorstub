@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Doorstub probe</title>
+    <meta name="description" content="Sign-only wallet probe for Doorstub. Nothing is broadcast and no money moves." />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <main>
+      <header class="top">
+        <h1>Doorstub probe</h1>
+        <p class="lead">Sign only. Nothing is sent. No money moves.</p>
+        <p class="lead zh">只簽名，不送出，不動錢。每筆交易都含一個捏造的輸入，就算錢包想廣播也不可能上鏈。</p>
+      </header>
+
+      <section class="card" id="connect-card">
+        <h2><span class="step">1</span> Connect a wallet <span class="zh">連接錢包</span></h2>
+        <div id="connect-idle">
+          <button id="connect-btn" class="primary">Connect wallet</button>
+        </div>
+        <div id="connect-dialog" hidden>
+          <div class="pair">
+            <div class="qr" id="qr" aria-label="WizardConnect QR code"></div>
+            <div class="pair-actions">
+              <p class="hint">Scan with the wallet's WizardConnect scanner, or:</p>
+              <a id="open-selene" class="btn" href="#">Open Selene</a>
+              <a id="open-cashonize" class="btn" href="#" target="_blank" rel="noopener">Open in Cashonize</a>
+              <button id="copy-link" class="btn" type="button">Copy link</button>
+              <p class="hint">Copy link is for Paytaca and OPTN (paste it into the wallet's WizardConnect screen).</p>
+              <code id="wiz-uri" class="uri"></code>
+            </div>
+          </div>
+          <p class="status" id="relay-status">Relay: starting…</p>
+          <div class="row"><button id="cancel-pairing" class="btn quiet" type="button">Start over</button></div>
+        </div>
+        <div id="wallet-box" hidden>
+          <dl class="facts">
+            <dt>Wallet</dt><dd id="w-name"></dd>
+            <dt>Network</dt><dd id="w-network"></dd>
+            <dt>Receive 0 (token-aware)</dt><dd><code id="w-token-address"></code></dd>
+            <dt>Receive 0 (plain)</dt><dd><code id="w-address"></code></dd>
+          </dl>
+          <div class="row">
+            <button id="scan-btn" class="btn" type="button">Scan for real coins (read-only)</button>
+            <button id="disconnect-btn" class="btn quiet" type="button">Disconnect, pair another wallet</button>
+          </div>
+          <p class="status" id="scan-status">Scan not run. Only needed for shape A-real.</p>
+        </div>
+      </section>
+
+      <section class="card" id="shapes-card">
+        <h2><span class="step">2</span> Sign each shape <span class="zh">逐一簽名</span></h2>
+        <p class="hint">One request at a time. After you press a button, open the wallet and look at its confirm screen. Take a screenshot, then approve (or reject, and note why).</p>
+        <div id="shapes"></div>
+      </section>
+
+      <section class="card" id="results-card">
+        <h2><span class="step">3</span> Results <span class="zh">結果</span></h2>
+        <label class="field">
+          <span>Wallet, version and device (for the record)</span>
+          <input id="notes" type="text" placeholder="e.g. Selene 2026.10.02, iPhone 15, QR from desktop" />
+        </label>
+        <div class="row">
+          <button id="copy-results" class="primary" type="button">Copy results JSON</button>
+          <button id="download-results" class="btn" type="button">Download JSON</button>
+          <button id="clear-results" class="btn quiet" type="button">Clear results</button>
+        </div>
+        <p class="status" id="results-status"></p>
+        <textarea id="results-json" class="json" readonly hidden aria-label="Results JSON"></textarea>
+        <table class="runs" id="runs"></table>
+      </section>
+
+      <section class="card" id="show-card">
+        <h2>Made-up show <span class="zh">捏造的演出（每次配對重新產生）</span></h2>
+        <dl class="facts" id="show-facts"></dl>
+      </section>
+
+      <footer class="foot">
+        Every probe transaction spends at least one outpoint that does not exist, and every request says <code>broadcast: false</code>.
+        This page has no code that can broadcast. The only network traffic is the WizardConnect relay and, if you press Scan, read-only Fulcrum queries.
+      </footer>
+    </main>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

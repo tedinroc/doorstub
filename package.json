@@ -10,8 +10,9 @@
   },
   "scripts": {
     "compile": "node scripts/compile.js",
-    "test": "node --test \"test/**/*.test.js\"",
+    "test": "node --test \"test/**/*.test.js\" \"probe/test/*.test.js\"",
     "probe": "vite probe",
+    "probe:selftest": "node probe/scripts/relay-selftest.js --scan",
     "probe:build": "vite build probe"
   },
   "dependencies": {

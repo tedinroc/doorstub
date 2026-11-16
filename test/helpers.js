@@ -56,9 +56,7 @@ export const sampleShowParams = (organiser, dataKey, overrides = {}) => ({
 });
 
 /** Build, sign (test key) and check a genesis; returns the show and its shard coins. */
-export const makeShow = (assert, { shards = 4, overrides = {} } = {}) => {
-  const organiser = freshKey();
-  const dataKey = freshKey();
+export const makeShow = (assert, { shards = 4, overrides = {}, organiser = freshKey(), dataKey = freshKey() } = {}) => {
   const genesis = buildGenesis({
     show: sampleShowParams(organiser, dataKey, overrides),
     shards,

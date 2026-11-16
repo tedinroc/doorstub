@@ -197,7 +197,8 @@ Inputs `0..k-1`: Escrow coins (unlock `refund(sig, scope)`). Each coin uses an '
 
 ## 7. What a client must verify
 
-- **Genesis.** The category's genesis transaction must create exactly N minting NFTs, all at the show's BoxOffice address, with commitments `01 | i | 0000` for distinct `i`, and no other token of the category. The contracts cannot see genesis; this check is what makes seat ids unique across shards and rules out pre-minted tickets or markers. A client must also recompute both addresses from the posted show parameters.
+- **Genesis.** The category's genesis transaction must create exactly N minting NFTs, all at the show's BoxOffice address, with commitments `01 | i | 0000` for distinct `i`, and no other token of the category (no tickets, markers or fungible amounts). The contracts cannot see genesis; this check is what makes seat ids unique across shards and rules out pre-minted tickets or markers. A client must also recompute both addresses from the posted show parameters: the BoxOffice address commits to the Escrow address, which commits to the category, so a shard of any other category fails the check. `verifyGenesis({ show, transaction })` in `src/tx/verify.js` does all of this (`test/genesis.test.js`).
+- **Wallet signatures.** A holder's ticket input must be signed with `SIGHASH_ALL` (`0x41`, or `0x61` with `SIGHASH_UTXOS`). A signature with `SIGHASH_NONE | SIGHASH_ANYONECANPAY` can be lifted into another transaction, for example to turn a hand-back into a check-in (pinned in `test/attacks-escrow.test.js`). A client that relays a wallet's signed transaction should check the sighash byte of every wallet signature.
 - **Ticket.** A ticket is live if an Escrow coin with marker `'E' | seat | buyerPkh` exists. The NFT alone proves nothing.
 
 ## 8. Limits
@@ -210,12 +211,14 @@ Enforced or inherent:
 - **Buy allows at most 6 outputs** (shard, ticket, escrow, plus 3 for change or data).
 - **A ticket moved away from `P2PKH(buyerPkh)`** can no longer check in or hand back. Settle (and any refund) still pays the original buyer.
 - **One check-in per transaction.** Each `checkIn` allows exactly one category output (its own keepsake), so two check-ins in one transaction fail. Hand-backs, settles and refunds can be batched.
-- **`minerFeeCap` is what the builder can keep, not only what miners get.** In `settle` and `refund`, which anyone can push, the pusher may send up to `minerFeeCap` of each coin to an output of their own. Keep it small.
+- **`minerFeeCap` is what the builder can keep, not only what miners get.** In `settle` and `refund`, which anyone can push, the pusher may send up to `minerFeeCap` of each coin to an output of their own. In `checkIn` the holder builds the transaction and may likewise keep up to `minerFeeCap` of the organiser's payout. One satoshi more fails in every path (pinned in the attack suite). Keep the cap near the real fee: the largest single-coin transaction (check-in) is 1,007 bytes, so about 1,500 sats leaves room at 1 sat/byte. The samples use 5,000.
 - **Fees under 546 sats are waived**, not collected (they would be dust).
-- **The organiser key can refund (never redirect) money**, and only the holder's signature can release money to the organiser.
+- **The organiser key can refund (never redirect) money.** A ticket's price reaches the organiser only through a check-in the holder signs; the only other money the organiser can receive is the posted hand-back and no-show fees (0 on the samples).
 - **Coins sent to the Escrow address without a marker are unspendable.** Every path requires a marker.
 - **Fee basis points are not range-checked on chain.** The builders refuse a show with fees over 10,000 bps; the app must show the posted fees.
-- **Genesis is trusted to be well formed** (section 7). A malformed genesis (duplicate shard bytes, a `sold` field of `0x8000` or more, extra minted tokens) can only give away the organiser's own money or confuse seat numbering; it cannot take a buyer's money.
+- **Genesis is trusted to be well formed** (section 7). A malformed genesis (duplicate shard bytes, a `sold` field of `0x8000` or more, extra minted tokens) can give away the organiser's own money or confuse seat numbering, and one case can hurt buyers: a shard whose category differs from the Escrow's category still sells (BoxOffice does not know the Escrow's category), but no Escrow path accepts its markers, so that ticket money is locked for good. No genesis lets anyone take a buyer's money. `buildBuy` refuses such a shard and `verifyGenesis` refuses such a genesis.
+- **closeSales may leave extra closed tokens at the BoxOffice.** Every category output of `closeSales` must sit at the BoxOffice in the closed state, so the organiser can park extra closed minting NFTs there with their own sats. Closed is final: they can never sell, and nothing can move them out.
+- **Plain coins sent to the BoxOffice address are unspendable** (both paths need a token).
 - **Contention.** Each buy spends and recreates a shard; two buyers on the same shard at once means one wallet must sign again. Shards spread the load.
 
 ## 9. Measured sizes and budgets
@@ -237,4 +240,13 @@ Largest unlocking bytecode: `refund`, 752 bytes, against the 10,000-byte standar
 - `src/tx/builders.js`: genesis, buy, closeSales, handBack, checkIn, settle, refund.
 - `src/tx/vm.js`: evaluates every input and the whole transaction in the 2026 VM, standard and consensus.
 - `src/tx/sign.js`: signing with test keys (tests only; builders never sign).
-- `test/`: `npm test` runs everything.
+- `src/tx/verify.js`: `verifyGenesis`, the client-side genesis check (section 7).
+- `test/`: `npm test` runs everything. `happy.test.js` and `sanity.test.js` cover the honest paths and the harness; `attacks-boxoffice.test.js`, `attacks-escrow.test.js` and `genesis.test.js` are the attack suite (section 11); `kit.js` builds hand-made attack transactions over made-up coins.
+
+## 11. Attack suite
+
+Every attack is a hand-built transaction, usually one change away from an honest control that passes. Each case asserts that the 2026 VM rejects it in **both** standard and consensus mode, and names the input that must fail while every other input passes, so the rejection is pinned on that input's own rule rather than on a stale signature or a value error. Attacks stopped by consensus token rules (fungible amounts after genesis) assert the whole-transaction error instead. `LIMIT` cases are accepted on purpose: they pin the limits in section 8 so a behaviour change shows up as a failing test.
+
+Covered (brief K8 list first): extra mint (outputs 3 and 5), minting capability leaked to outputs 1 or 2, wrong category (ticket and marker), seat reuse (counter not advanced, counter rolled back, old seat re-sold, shard byte rewritten; across shards via genesis in `genesis.test.js`), buy not at input 0, two shards in one transaction, a leaked minting input, output-count overflow, double satisfaction in hand-back, check-in, settle, refund and mixed paths, fee drain one satoshi past `minerFeeCap` in every path, wrong payout or refund address in every path, ticket-marker mismatch (seat, pkh, category, capability), check-in and hand-back by a non-holder (ticket moved, or wrong key), settle one block early, fees above the posted bps, missing, short, misdirected or double-counted fee outputs, refund notices over the wrong scope, seat, shard, category, byte order or key, and replayed on another show of the same organiser, 41-byte ticket and marker commitments (the 2026 VM allows 128 bytes, so the contracts are what stop them), closeSales without the organiser key, with an empty or replayed signature, reopening, leaking, minting or spawning an open shard, and buy after closeSales.
+
+Further: a ticket or marker sent to another pkh than its twin, a marker kept by the buyer or sent to another show's Escrow, ticket and marker swapped, the marker or ticket surviving a payout path, a keepsake sent elsewhere, missing, at the wrong index or re-labelled as a marker, a used keepsake replayed on another seat, two check-ins in one transaction, a check-in mixed with a hand-back or settle, a buy that also settles a coin, a settle that also mints, timestamp locktimes and final sequence numbers, wrong argument sizes and unknown function selectors, the per-shard seat limit, a hand-back signature lifted into a check-in, and coins at either address that no path can spend.
