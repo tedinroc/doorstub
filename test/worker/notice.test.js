@@ -24,7 +24,7 @@ test('notice signer: live B seats only, verifiable, refund accepted by the simne
   assert.equal(health.body.ok, true);
   assert.equal(health.body.network, 'simnet');
   assert.equal(health.body.chain.tip, await tipOf(ctx.rpc));
-  assert.deepEqual(health.body.signer, { configured: true, shows: [{ id: showB.id, keyMatches: true }] });
+  assert.deepEqual(health.body.signer, { configured: true, shows: [{ id: showB.id, keyMatches: true }], alsoKeyOf: [real.id] }, 'the studio uses one data key today, so health names the real show it also covers');
   assert.equal(health.body.runtime, 'node');
 
   // A buy of sample B, still in the mempool.

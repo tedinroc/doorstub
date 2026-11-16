@@ -56,7 +56,7 @@ Refusals: `404 not-on-chain` (retryable: the network does not know the transacti
 
 ### `GET /api/health`
 
-`{ ok, service, api, network, runtime: "workerd"|"node", vm, config: { errors }, shows: { loaded, rejected }, signer: { configured, shows: [{ id, keyMatches }] }, door: { shows: [{ id, configured }] }, chain: { tip } }`. It opens one Fulcrum connection (60 per minute per IP).
+`{ ok, service, api, network, runtime: "workerd"|"node", vm, config: { errors }, shows: { loaded, rejected }, signer: { configured, shows: [{ id, keyMatches }], alsoKeyOf: [real show ids whose data key is this key] }, door: { shows: [{ id, configured }] }, chain: { tip } }`. It opens one Fulcrum connection (60 per minute per IP).
 
 ## 3. Keeper
 
@@ -122,4 +122,4 @@ Measured CPU on this Mac (Node, warm): parsing a 50-show shows.json about 2.6 ms
 
 **Configuration.** Requests cannot change the network, Fulcrum servers, keys or catalogue. A mainnet worker always uses the fixed server list; before any broadcast it asks each server for its chain's genesis hash and refuses a server that does not serve BCH mainnet (and a simnet worker refuses one that does). shows.json is refused when it is for another network, and any show whose posted `derived` scripts differ from the recomputed ones is dropped.
 
-**The one real risk: the data key.** `STUDIO_DATA_KEY` sits in the Pages and cron environments. If it leaked, its holder could sign `'C'` notices for every studio show and refund every unused ticket. That moves money only back to buyers (never to the holder), but on a real show it would cost the organiser the payments of guests who had not checked in yet. The studio uses one data key for every show today. Before a real show sells, give real shows a data key the worker never holds (open issue for the studio).
+**The one real risk: the data key.** `STUDIO_DATA_KEY` sits in the Pages and cron environments. If it leaked, its holder could sign `'C'` notices for every studio show and refund every unused ticket. That moves money only back to buyers (never to the holder), but on a real show it would cost the organiser the payments of guests who had not checked in yet. The studio uses one data key for every show today, and `/api/health` lists the real shows that share it (`signer.alsoKeyOf`). Before a real show sells, give real shows a data key the worker never holds (open issue for the studio); until then the exposure is the unused tickets of that show, refunded to their buyers.

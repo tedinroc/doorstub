@@ -65,13 +65,13 @@ export const answerDoor = async ({ shows, chain, doorLinks, claims, vmCheck, bod
   if (found === null) refuse('not-on-chain', 'the network does not know this check-in; send it first, then ask again', { status: 404, retryable: true });
   const { transaction } = found;
   if (transaction.inputs.length !== 2) refuse('not-a-check-in', 'a check-in has exactly two inputs', { status: 422 });
-  const sourceOutputs = [];
-  for (const [i, input] of transaction.inputs.entries()) {
-    const parent = await chain.getTransaction(bytesToHex(input.outpointTransactionHash));
-    const output = parent?.transaction.outputs[input.outpointIndex];
+  // The coins it spends, from the network (never from the caller), both at once.
+  const parents = await Promise.all(transaction.inputs.map((input) => chain.getTransaction(bytesToHex(input.outpointTransactionHash))));
+  const sourceOutputs = transaction.inputs.map((input, i) => {
+    const output = parents[i]?.transaction.outputs[input.outpointIndex];
     if (output === undefined) refuse('missing-source', `the coin input ${i} spends is not known to the network`, { status: 422 });
-    sourceOutputs.push(output);
-  }
+    return output;
+  });
   const { seat } = checkCheckIn({ show, transaction, sourceOutputs });
   if (typeof vmCheck === 'function') {
     const r = vmCheck({ kind: 'checkIn', transaction, sourceOutputs });
