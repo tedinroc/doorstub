@@ -163,6 +163,7 @@ export const createController = ({ runtime, deps = {} }) => {
   let lastScan = null;
   let closed = false;
   const local = new Map(); // ticket key -> the app's own record, until the chain shows it
+  const boughtAt = new Map(); // ticket key -> the tip when this page bought it (for the countdown bar while the buy is unconfirmed)
   const touched = new Set(); // ticket keys this page acted on (shown under their show card)
   const debounce = new Map();
   const settleTried = new Set();
@@ -458,7 +459,10 @@ export const createController = ({ runtime, deps = {} }) => {
       if (chain !== undefined && (chain.state !== 'held' || mine.state === 'held')) local.delete(key);
       else byKey.set(key, mine);
     }
-    const tickets = [...byKey.values()];
+    const tickets = [...byKey.values()].map((t) => {
+      const at = boughtAt.get(ticketKeyOf(t.showId, t.seatHex));
+      return at === undefined || t.boughtAtTip !== undefined ? t : { ...t, boughtAtTip: at };
+    });
     const returned = {};
     for (const t of tickets) {
       const key = ticketKeyOf(t.showId, t.seatHex);
@@ -524,10 +528,12 @@ export const createController = ({ runtime, deps = {} }) => {
 
   // ---------------------------------------------------------------- buy
 
-  const localTicketFromBuy = (show, built, txid, buyer) => {
+  const localTicketFromBuy = (show, built, txid, buyer, height) => {
     const seatHex = binToHex(built.seat);
     const txidBytes = hexToBin(txid);
+    boughtAt.set(ticketKeyOf(show.id, seatHex), height);
     return {
+      boughtAtTip: height,
       show,
       showId: show.id,
       seat: built.seat,
@@ -600,7 +606,7 @@ export const createController = ({ runtime, deps = {} }) => {
         }
         throw e;
       }
-      const ticket = localTicketFromBuy(show, built, sent.txid, scan.receive);
+      const ticket = localTicketFromBuy(show, built, sent.txid, scan.receive, height);
       const key = ticketKeyOf(show.id, ticket.seatHex);
       upsertLocal(ticket);
       setFlow(showId, { ...flowOf(showId), kind: 'buy', step: 'done', ticketKey: key, txid: sent.txid, error: undefined });

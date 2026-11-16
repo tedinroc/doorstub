@@ -77,8 +77,6 @@ export const App = ({ controller, dev }) => {
 
   const renderTicket = ({ ticket, model }, reveal = false) => {
     const key = keyOf(ticket);
-    const settleAt = Number(ticket.show.startHeight) + Number(ticket.show.graceBlocks) + 1;
-    const left = tip === null ? 1 : Math.max(0, settleAt - 1 - tip);
     return (
       <Ticket
         key={key}
@@ -87,7 +85,6 @@ export const App = ({ controller, dev }) => {
         network={state.network}
         fresh={freshKeys.has(key)}
         reveal={reveal}
-        settleProgress={1 - Math.min(1, left / 40)}
         onHandBack={() => controller.handBack(key)}
         onWalkIn={() => controller.walkIn(key)}
         onAction={ticketAction(key)}

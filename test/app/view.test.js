@@ -162,3 +162,78 @@ test('listedShows: shows on sale, then an ended show only while this wallet has 
     ['sample-a-2', 'sample-b', 'sample-a-1'],
   );
 });
+
+// A real show as the shows loader exposes it (CONTRACT: eventAt, eventAtMs, durationMin, seatPrefix for kind "real").
+const screening = {
+  ...show,
+  id: 'screening-1',
+  kind: 'real',
+  title: 'Doorstub screening 1',
+  subtitle: 'Online, 25 minutes',
+  card: 'Online screening: a 12-minute film on how Doorstub works, then Q&A in the chat. Walk in to get the room link.',
+  seatPrefix: 'S',
+  startHeight: 978_776,
+  eventAt: '2026-11-24T13:00:00Z',
+  eventAtMs: Date.parse('2026-11-24T13:00:00Z'),
+  durationMin: 25,
+};
+
+test('real show card: the call in the reader\'s own zone with its length, and sales and walk-in until the start block', () => {
+  const now = Date.parse('2026-11-16T13:00:00Z');
+  const taipei = showCardModel(screening, { tip: 977_700, now, timeZone: 'Asia/Taipei' });
+  assert.equal(taipei.callLine, 'Tue 24 Nov, 21:00 GMT+8 (in 8 days), for 25 minutes.');
+  assert.equal(showCardModel(screening, { tip: 977_700, now, timeZone: 'America/New_York' }).callLine, 'Tue 24 Nov, 08:00 GMT-5 (in 8 days), for 25 minutes.');
+  assert.equal(showCardModel(screening, { tip: 977_700, now, timeZone: 'UTC' }).callLine, 'Tue 24 Nov, 13:00 UTC (in 8 days), for 25 minutes.');
+  assert.equal(taipei.startLabel, 'Door');
+  assert.match(taipei.startLine, /^Buy and walk in until block 978,776, about [A-Z][a-z]{2} \d{1,2} Nov, \d\d:\d\d GMT\+8 \(in \d+ days\)\.$/);
+  assert.equal(taipei.subtitle, 'Online, 25 minutes', 'a real show\'s subtitle carries no time');
+  // An hour before, during and after the call.
+  const at = (iso) => showCardModel(screening, { tip: 978_700, now: Date.parse(iso), timeZone: 'UTC' }).callLine;
+  assert.equal(at('2026-11-24T12:00:00Z'), 'Tue 24 Nov, 13:00 UTC (in 1 h), for 25 minutes.');
+  assert.equal(at('2026-11-24T13:10:00Z'), 'Tue 24 Nov, 13:00 UTC (on now), for 25 minutes.');
+  assert.equal(at('2026-11-24T13:30:00Z'), 'Tue 24 Nov, 13:00 UTC (over), for 25 minutes.');
+  // A sample show has no call and keeps "Starts".
+  const sample = showCardModel(show, { tip: 977_603 });
+  assert.equal(sample.callLine, null);
+  assert.equal(sample.startLabel, 'Starts');
+  // A real show without a call time (an older shows.json) still renders.
+  const plain = { ...screening };
+  delete plain.eventAt;
+  delete plain.eventAtMs;
+  delete plain.durationMin;
+  assert.equal(showCardModel(plain, { tip: 977_700 }).callLine, null);
+});
+
+test('real ticket: held counts down to the call with the settle as small print; walked in says when the call starts', () => {
+  const now = Date.parse('2026-11-23T13:00:00Z');
+  const held = ticketModel(ticket({ show: screening }), { tip: 978_630, now, timeZone: 'Asia/Taipei' });
+  assert.deepEqual(held.call, { phase: 'before', countdown: '24 h', line: 'The call starts Tue 24 Nov, 21:00 GMT+8, for 25 minutes.' });
+  assert.match(held.settleLine, /^Settling opens at block 978,779, about .+; the refund follows once the keeper or this page sends it\.$/);
+  assert.equal(held.seat, 'S-2-1');
+  assert.equal(held.canWalkIn, true);
+  const during = ticketModel(ticket({ show: screening }), { tip: 978_700, now: Date.parse('2026-11-24T13:05:00Z'), timeZone: 'UTC' });
+  assert.deepEqual(during.call, { phase: 'on', countdown: null, line: 'The call is on now.' });
+  const after = ticketModel(ticket({ show: screening }), { tip: 978_770, now: Date.parse('2026-11-24T14:00:00Z'), timeZone: 'UTC' });
+  assert.equal(after.call, null, 'after the call the ticket counts down to the settle again');
+
+  const walked = ticketModel(ticket({ show: screening, state: 'walkedIn', escrowUtxo: null, canAct: false }), { tip: 978_630, now, timeZone: 'Asia/Taipei' });
+  assert.deepEqual(walked.lines, [
+    'Walked in. Your ticket stays in your wallet as a keepsake stub with no money behind it.',
+    'The call starts Tue 24 Nov, 21:00 GMT+8 (in 24 h).',
+  ]);
+  const walkedDuring = ticketModel(ticket({ show: screening, state: 'walkedIn', escrowUtxo: null, canAct: false }), { tip: 978_700, now: Date.parse('2026-11-24T13:05:00Z') });
+  assert.equal(walkedDuring.lines.at(-1), 'The call is on now.');
+  // A sample ticket has no call.
+  assert.equal(ticketModel(ticket(), { tip: 977_603 }).call, null);
+});
+
+test('settle countdown: the place and time once (not the countdown again), and a bar from the purchase to the settle', () => {
+  const now = Date.parse('2026-11-16T08:00:00Z');
+  const fresh = ticketModel(ticket({ boughtAtTip: 977_603 }), { tip: 977_603, now, timeZone: 'UTC' });
+  assert.equal(fresh.countdown, '6 h 10 min');
+  assert.equal(fresh.settleSmall, 'At block 977,640, about Mon 16 Nov, 14:10 UTC; the refund follows once the keeper or this page sends it.');
+  assert.equal(fresh.progress, 0);
+  const later = ticketModel(ticket({ buy: { txid: 'c035df00'.padEnd(64, '0'), height: 977_603 } }), { tip: 977_621, now, timeZone: 'UTC' });
+  assert.equal(later.progress, 0.5);
+  assert.equal(ticketModel(ticket(), { tip: 977_603 }).progress, null, 'no purchase height known: no bar');
+});

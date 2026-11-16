@@ -67,8 +67,14 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
           </div>
           {status ? <div class="status">{status}</div> : null}
           <dl class="facts">
-            <div>
-              <dt>{LABELS.starts}</dt>
+            {model.callLine ? (
+              <div data-fact="call">
+                <dt>{LABELS.call}</dt>
+                <dd>{model.callLine}</dd>
+              </div>
+            ) : null}
+            <div data-fact="start">
+              <dt>{model.startLabel}</dt>
               <dd>{model.startLine}</dd>
             </div>
             {model.kind !== 'sample-refund-seat' ? (
@@ -92,7 +98,7 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
 const SPEND_LABEL = { handBack: LABELS.handBackTx, checkIn: LABELS.checkInTx, settle: LABELS.settleTx, refund: LABELS.refundTx };
 
 /** A ticket the wallet holds (or held): seat, money, countdown or refund track, stamp, actions. */
-export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack, onWalkIn, onAction, onCancel, settleProgress }) => {
+export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack, onWalkIn, onAction, onCancel }) => {
   const prevState = usePrevious(model.state);
   const moneyRef = useRef(null);
   const cutRef = useCut();
@@ -123,6 +129,7 @@ export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack
   const spendKind = model.state === 'refunded' ? model.refundPath ?? 'refund' : model.state === 'handedBack' ? 'handBack' : model.state === 'walkedIn' ? 'checkIn' : '';
   const spendLabel = SPEND_LABEL[spendKind] ?? null;
   const showCountdown = held && model.settleLine && !model.autoRefund && model.countdown !== null;
+  const call = showCountdown ? model.call : null;
 
   return (
     <div ref={rootRef} class={`printed${fresh ? ' fresh' : ''}`} data-ticket={model.key} data-state={model.state}>
@@ -160,16 +167,27 @@ export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack
                 <p key={line}>{line}</p>
               ))}
             </div>
-            {showCountdown ? (
+            {call !== null ? (
+              <div class="countdown call" data-call={call.phase}>
+                <div class="cd-head">
+                  <span class="cd-l">{call.phase === 'before' ? LABELS.callIn : LABELS.call}</span>
+                  <span class="cd-n display">{call.phase === 'before' ? call.countdown : LABELS.onNow}</span>
+                </div>
+                <p>{call.line}</p>
+                <p class="cd-small">{model.settleLine}</p>
+              </div>
+            ) : showCountdown ? (
               <div class="countdown">
                 <div class="cd-head">
                   <span class="cd-l">{LABELS.settleIn}</span>
                   <span class="cd-n display">{model.countdown}</span>
                 </div>
-                <div class="bar" aria-hidden="true">
-                  <i style={`width:${Math.max(3, Math.round((settleProgress ?? 0) * 100))}%`} />
-                </div>
-                <p>{model.settleLine}</p>
+                {model.progress !== null ? (
+                  <div class="bar" aria-hidden="true">
+                    <i style={`width:${Math.max(3, Math.round(model.progress * 100))}%`} />
+                  </div>
+                ) : null}
+                <p>{model.settleSmall}</p>
               </div>
             ) : null}
             {model.autoRefund && (refundRunning || !held) ? <RefundTrack step={held ? flow?.step ?? 'held' : 'back'} /> : null}

@@ -122,9 +122,12 @@ Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js
 | `Works with your own wallet over WizardConnect. Doorstub never holds your money or your keys.` | C10. |
 | `Built from scratch during BCH BLAZE 2026; first commit 16 Nov (UTC); no earlier code.` | The repository's first commit is from 16 Nov 2026 03:21 UTC (`git log --reverse`); nothing older was copied in (the project's hygiene rules, `npm run check:hygiene`). |
 | `Block {start}, about {time} ({eta}).` | `startHeight` from the show; the time is the tip plus ten minutes a block, in the reader's own time zone with the zone named. |
+| `Buy and walk in until block {start}, about {time} ({eta}).` | A real show's `startHeight` (about the end of its call plus 6 blocks, section 6). Sales end there (section 4, limit 14), and a walk-in works at least until then because a settle can be mined only from `startHeight + graceBlocks + 1` (C3); after the start, whoever moves first decides (limit 2). The time is estimated as above. |
+| `{time} ({eta}), for {minutes} minutes.` | A real show's call: `eventAt` and `durationMin` from `shows.json` (the organiser's plan, checked by the shows loader), shown in the reader's own time zone with the zone named; `{eta}` is counted from the reader's clock ("on now" during the call, "over" after it). |
 | `about {usd}` | Today's rate from a public price source; hidden when none answers (section 3, "dollar amounts as a promise"). |
 | `{sold} sold on {shards} box-office shards` | Seats counted from the markers at the show's Escrow address (`src/chain/ledger.js`). |
 | `Settling opens at block {settle}, about {time} ({eta}); the refund follows once the keeper or this page sends it.` | C3: `settle` opens at `startHeight + graceBlocks + 1`. |
+| `At block {settle}, about {time}; the refund follows once the keeper or this page sends it.` | The same rule, shown under a held ticket's "Settling opens in" countdown (so the countdown is not said twice). |
 | `Hand-back fee {handBack}. No-show fee {noShow}. Network fee cap {cap} sats per ticket.` | Section 4, limits 6 and 7; the values are the posted parameters, recomputed into the Escrow address by the shows loader. |
 | `Sales for this show ended at block {start}.` | Section 4, limit 14: `buildBuy` refuses at or after `startHeight`. |
 | `Checking every show's genesis transaction on chain.` | Section 4, limit 10 (`verifyShowGenesis`). |
@@ -185,6 +188,9 @@ Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js
 | `Refunded by the settle after the show: {amount} to the address that bought it.` | C3, C7; `{amount}` is the settle's output at the coin's index. |
 | `Refunded under the organiser's refund notice: {amount} to the address that bought it.` | C6, C7; `{amount}` is the refund's output at the coin's index. |
 | `Walked in. Your ticket stays in your wallet as a keepsake stub with no money behind it.` | C8. |
+| `The call starts {time} ({eta}).` | On a walked-in ticket of a real show before its call: `eventAt` from `shows.json` in the reader's zone (see 9.1). |
+| `The call starts {time}, for {minutes} minutes.` | On a held ticket of a real show, under its "Call starts in" countdown: `eventAt` and `durationMin` from `shows.json`. |
+| `The call is on now.` | The reader's clock is between `eventAt` and `eventAt + durationMin`. |
 | `Check-in is final. Once you check in, the organiser has the money.` | Section 4, limit 8. |
 | `Your check-in is on chain. Asking the door for your event link.` | Shown after the check-in was accepted by a server. |
 | `The door answered with your event link.` | The door verifies the check-in on chain before it answers (`SPEC.md` section 12); the page opens only an `https:` link. |

@@ -29,19 +29,21 @@ export const shortBch = (sats) => {
 /** Basis points as a percentage: 0 -> "0%", 150 -> "1.5%". */
 export const bpsText = (bps) => `${Number((Number(bps) / 100).toFixed(2))}%`;
 
-/** How long until a block `blocks` from now, at ten minutes a block: "in 40 min", "in 5 h 50 min", "in 3 days", "now". Callers say "about". */
-export const etaText = (blocks) => {
-  const b = Math.max(0, Math.round(Number(blocks)));
-  if (b === 0) return 'now';
-  const minutes = b * BLOCK_MINUTES;
-  if (minutes < 60) return `in ${minutes} min`;
-  if (minutes < 48 * 60) {
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
+/** How long until `minutes` from now: "in 40 min", "in 5 h 50 min", "in 3 days", "now". */
+export const etaMinutes = (minutes) => {
+  const total = Math.max(0, Math.round(Number(minutes)));
+  if (total === 0) return 'now';
+  if (total < 60) return `in ${total} min`;
+  if (total < 48 * 60) {
+    const h = Math.floor(total / 60);
+    const m = total % 60;
     return m === 0 ? `in ${h} h` : `in ${h} h ${m} min`;
   }
-  return `in ${Math.round(minutes / (24 * 60))} days`;
+  return `in ${Math.round(total / (24 * 60))} days`;
 };
+
+/** How long until a block `blocks` from now, at ten minutes a block: "in 40 min", "in 5 h 50 min", "in 3 days", "now". Callers say "about". */
+export const etaText = (blocks) => etaMinutes(Math.max(0, Math.round(Number(blocks))) * BLOCK_MINUTES);
 
 /** A short countdown for the ticket: "5 h 40 min", "40 min", "3 days", "now". */
 export const countdownText = (blocks) => etaText(blocks).replace(/^in /, '');
@@ -84,6 +86,25 @@ export const whenText = (height, tip, options = {}) => ({
 export const isSample = (show) => show.kind === 'sample-settle' || show.kind === 'sample-refund-seat';
 
 /**
+ * A real show's call (its `eventAt` and `durationMin` from shows.json, the
+ * organiser's plan) at `now`: { phase: 'before' | 'on' | 'over', time, eta,
+ * countdown, minutes }, or null when the show has no call time.
+ */
+export const callOf = (show, { now = Date.now(), timeZone } = {}) => {
+  if (show.kind !== 'real' || typeof show.eventAtMs !== 'number' || !Number.isFinite(show.eventAtMs)) return null;
+  const start = show.eventAtMs;
+  const minutes = Number(show.durationMin ?? 0);
+  const end = start + minutes * 60_000;
+  const time = clockText(new Date(start), { timeZone });
+  if (now < start) {
+    const left = Math.ceil((start - now) / 60_000);
+    return { phase: 'before', time, minutes, eta: etaMinutes(left), countdown: etaMinutes(left).replace(/^in /, '') };
+  }
+  if (now < end) return { phase: 'on', time, minutes, eta: 'on now', countdown: null };
+  return { phase: 'over', time, minutes, eta: 'over', countdown: null };
+};
+
+/**
  * A show card.
  * @param {object} show verified show object (src/shows)
  * @param {{ tip: number, usd?: number|null, ledger?: object, now?: number, locale?: string, timeZone?: string }} ctx
@@ -91,6 +112,8 @@ export const isSample = (show) => show.kind === 'sample-settle' || show.kind ===
 export const showCardModel = (show, { tip, usd = null, ledger, now = Date.now(), locale, timeZone } = {}) => {
   const start = whenText(show.startHeight, tip, { now, locale, timeZone });
   const settle = whenText(settleOpensAt(show), tip, { now, locale, timeZone });
+  const call = callOf(show, { now, timeZone });
+  const real = show.kind === 'real';
   return {
     id: show.id,
     kind: show.kind,
@@ -102,7 +125,10 @@ export const showCardModel = (show, { tip, usd = null, ledger, now = Date.now(),
     sample: isSample(show),
     priceBch: formatBch(show.price),
     priceUsd: formatUsd(show.price, usd),
-    startLine: say('showStarts', { start: start.block, time: start.time, eta: start.eta }),
+    // A real show's startHeight is the end of sales and walk-in (about the end of the call plus 6 blocks).
+    startLabel: real ? LABELS.door : LABELS.starts,
+    startLine: say(real ? 'realUntil' : 'showStarts', { start: start.block, time: start.time, eta: start.eta }),
+    callLine: call === null ? null : say('callAt', { time: call.time, eta: call.eta, minutes: call.minutes }),
     settleLine: say('showSettles', { settle: settle.block, time: settle.time, eta: settle.eta }),
     feesLine: say('showFees', { handBack: bpsText(show.handBackFeeBps), noShow: bpsText(show.noShowFeeBps), cap: num(show.minerFeeCap) }),
     phase: showPhase(show, tip),
@@ -178,6 +204,9 @@ export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, r
     if (amount !== null) lines.push(say(ticket.refundPath === 'settle' ? 'settleDone' : 'noticeDone', { amount }));
   } else if (state === 'walkedIn') {
     lines.push(say('walkedIn'));
+    const c = callOf(show, { now, timeZone });
+    if (c?.phase === 'before') lines.push(say('callStarts', { time: c.time, eta: c.eta }));
+    else if (c?.phase === 'on') lines.push(say('callOn'));
   } else {
     lines.push(say('unknownState'));
   }
@@ -185,6 +214,10 @@ export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, r
   const canAct = held && ticket.canAct !== false && escrow !== null && escrow !== undefined;
   const settleAt = settleOpensAt(show);
   const settleWhen = tip === undefined ? null : whenText(settleAt, tip, { now, locale, timeZone });
+  const call = held ? callOf(show, { now, timeZone }) : null;
+  // The bar runs from the block the ticket was bought in (or the tip when the page bought it) to the settle.
+  const from = (ticket.buy?.height ?? 0) > 0 ? ticket.buy.height : ticket.boughtAtTip ?? null;
+  const progress = tip === undefined || from === null || settleAt - 1 <= from ? null : Math.min(1, Math.max(0, (tip - from) / (settleAt - 1 - from)));
   return {
     key: `${show.id}:${ticket.seatHex}`,
     showId: show.id,
@@ -209,8 +242,13 @@ export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, r
     settleLine: held && show.kind !== 'sample-refund-seat' && settleWhen !== null
       ? say('showSettles', { settle: settleWhen.block, time: settleWhen.time, eta: settleWhen.eta })
       : null,
+    // Under the big settle countdown: where and when, without the countdown again.
+    settleSmall: held && show.kind !== 'sample-refund-seat' && settleWhen !== null ? say('settleSmall', { settle: settleWhen.block, time: settleWhen.time }) : null,
     settleBlocksLeft: tip === undefined ? null : Math.max(0, settleAt - 1 - tip),
     countdown: tip === undefined ? null : countdownText(Math.max(0, settleAt - tip)),
+    progress,
+    // A held real ticket counts down to the call instead (the settle stays as small print).
+    call: call === null || call.phase === 'over' ? null : { phase: call.phase, countdown: call.countdown, line: call.phase === 'before' ? say('callTime', { time: call.time, minutes: call.minutes }) : say('callOn') },
     barcode: commitmentBits(encodeTicketCommitment(seatBytes, buyerPkh)),
     serial: (buyTxid ?? ticket.seatHex).slice(0, 8).toUpperCase(),
     confirmed: (ticket.buy?.height ?? 0) > 0,
