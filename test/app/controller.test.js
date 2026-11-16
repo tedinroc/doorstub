@@ -213,9 +213,20 @@ test('controller stuck states: not enough BCH, a declined approval, the notice s
   await controller.buy(showA.id);
   const poor = state().flows[showA.id].error;
   assert.equal(poor.key, 'needMore');
-  assert.match(say(poor.key, poor.vars), /^You need about 0\.00\d+ BCH for this ticket; your wallet has 0\.0005 BCH in plain BCH\.$/);
+  assert.match(say(poor.key, poor.vars), /^You need about 0\.00\d+ BCH for this ticket; your wallet has 0\.0005 BCH\.$/);
+  // Not a wall: the wallet's next receive address, how much to send, and the buy goes on by itself when it arrives.
+  assert.equal(poor.fund.address, wallet.addressAt('receive', 1).address);
+  assert.equal(poor.fund.amount, '0.0006', 'what is missing plus 1,000 sats, rounded up to 0.0001 BCH');
+  assert.equal(poor.fund.uri, `${poor.fund.address}?amount=0.0006`);
+  assert.equal(say('fundHere', { amount: poor.fund.amount }), 'Send at least 0.0006 BCH to this address. When it arrives, the buy continues and your wallet asks you to approve.');
+  const asked = wallet.log.length;
+  await controller.pool.request('simnet.fund', { address: poor.fund.address, sats: 60_000 });
+  // The wallet is asked to approve with no click on the page (it declines here, so the flow ends declined).
+  await waitFor(() => state().flows[showA.id]?.error?.key === 'walletDeclined', 'the buy continued when the coins arrived', 15_000);
+  assert.equal(wallet.log.length, asked + 1);
+  assert.equal(state().wallet.balance, 110_000n);
 
-  await controller.pool.request('simnet.fund', { address: wallet.addressAt('receive', 1).address, sats: 500_000, mine: true });
+  await controller.pool.request('simnet.fund', { address: wallet.addressAt('receive', 2).address, sats: 500_000, mine: true });
   await controller.buy(showA.id);
   const declined = state().flows[showA.id].error;
   assert.equal(declined.key, 'walletDeclined');

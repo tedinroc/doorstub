@@ -52,6 +52,7 @@ import {
   decodeBoxOfficeCommitment,
   sameBytes,
 } from '../../../src/tx/index.js';
+import { bchNumber } from '../../../src/shows/format.js';
 import { describeError } from './errors.js';
 import { createStore } from './store.js';
 
@@ -101,6 +102,16 @@ const defaultClaimStorage = () => {
 };
 
 const DOOR_RECORD_PREFIX = 'doorstub.door.';
+
+/**
+ * What to ask an empty wallet for: what is missing, plus 1,000 sats for the
+ * extra input's network fee, rounded up to 0.0001 BCH.
+ */
+export const topUpFor = (need, have) => {
+  const missing = BigInt(need) - BigInt(have) + 1_000n;
+  const step = 10_000n;
+  return missing <= 0n ? step : ((missing + step - 1n) / step) * step;
+};
 
 /** Money a hand-back returns to the buyer (every output to the buyer's address). */
 const backToBuyer = (built) => {
@@ -169,6 +180,8 @@ export const createController = ({ runtime, deps = {} }) => {
   const settleTried = new Set();
   const subscriptions = [];
   let relaySlowTimer = null;
+  /** An empty wallet: the buy waiting for coins at the wallet's receive address ({ showId, need, have, unsubscribe }). */
+  let fundWait = null;
 
   // ---------------------------------------------------------------- small helpers
 
@@ -354,6 +367,7 @@ export const createController = ({ runtime, deps = {} }) => {
           setWallet({ state, error: { key: 'walletGone', vars: {}, actions: ['connect'] }, name: null, balance: null });
           set({ tickets: [], connectOpen: false });
           lastScan = null;
+          stopFundWait();
           return;
         }
         setWallet({ state });
@@ -411,11 +425,42 @@ export const createController = ({ runtime, deps = {} }) => {
   const closeConnect = () => set({ connectOpen: false, pendingBuy: get().wallet.state === 'connected' ? get().pendingBuy : null });
 
   const disconnect = async () => {
+    stopFundWait();
     await session?.disconnect();
     lastScan = null;
     local.clear();
     setWallet({ state: 'idle', name: null, balance: null, pairing: null, error: null });
     set({ tickets: [] });
+  };
+
+  const stopFundWait = () => {
+    fundWait?.unsubscribe();
+    fundWait = null;
+  };
+
+  /**
+   * The buy found too little plain BCH: show the wallet's receive address and
+   * watch it. When coins arrive (a notification for that address, or the
+   * next block) and the wallet can pay, the buy runs again by itself; the
+   * wallet still has to approve it.
+   */
+  const waitForFunds = (showId, e) => {
+    stopFundWait();
+    const target = lastScan?.receive;
+    if (target === undefined || pool === null) return null;
+    const need = BigInt(e.need ?? 0n);
+    const have = BigInt(lastScan.balance ?? e.have ?? 0n);
+    const amount = topUpFor(need, have);
+    let first = true;
+    const unsubscribe = pool.subscribeScripthash(target.scripthash, () => {
+      if (first) {
+        first = false;
+        return;
+      }
+      rescan().catch(() => {});
+    });
+    fundWait = { showId, need, have, unsubscribe };
+    return { address: target.address, amount: bchNumber(amount), uri: `${target.address}?amount=${bchNumber(amount)}` };
   };
 
   /** Read the wallet's addresses and coins (no tickets). */
@@ -426,6 +471,11 @@ export const createController = ({ runtime, deps = {} }) => {
       const scan = await scanWallet({ pool, keys: session.wallet.keys, network });
       lastScan = scan;
       setWallet({ balance: scan.balance, scanning: false });
+      if (fundWait !== null && scan.balance > fundWait.have && scan.balance >= fundWait.need) {
+        const { showId } = fundWait;
+        stopFundWait();
+        buy(showId);
+      }
       return scan;
     } catch (e) {
       setWallet({ scanning: false });
@@ -571,6 +621,7 @@ export const createController = ({ runtime, deps = {} }) => {
       return;
     }
     if (!retrying && busyStep(flowOf(showId))) return;
+    if (fundWait?.showId === showId) stopFundWait();
     setFlow(showId, { kind: 'buy', step: 'preparing', retrying, ...(reason !== undefined && { retryReason: reason }) });
     try {
       const height = (await pool.tip()).height;
@@ -617,6 +668,11 @@ export const createController = ({ runtime, deps = {} }) => {
       return { txid: sent.txid, key };
     } catch (e) {
       fail(showId, 'buy', e, { show });
+      if (e?.name === 'FundsError') {
+        const fund = waitForFunds(showId, e);
+        const flow = flowOf(showId);
+        if (fund !== null && flow?.error !== undefined) setFlow(showId, { ...flow, error: { ...flow.error, fund } });
+      }
       return undefined;
     }
   };
@@ -842,6 +898,7 @@ export const createController = ({ runtime, deps = {} }) => {
 
   const close = async () => {
     closed = true;
+    stopFundWait();
     clearTimeout(relaySlowTimer);
     for (const t of debounce.values()) clearTimeout(t);
     for (const unsub of subscriptions) unsub();
@@ -863,7 +920,10 @@ export const createController = ({ runtime, deps = {} }) => {
     retryRefund,
     refreshWallet,
     cancelSign: () => session?.cancel('Cancelled in Doorstub'),
-    dismiss: (key) => setFlow(key, null),
+    dismiss: (key) => {
+      if (fundWait?.showId === key) stopFundWait();
+      setFlow(key, null);
+    },
     touched: () => new Set(touched),
     onSale: () => (tip() === null ? [] : showsOnSale(get().shows, tip())),
     close,

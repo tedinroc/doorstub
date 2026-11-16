@@ -1,4 +1,5 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
+import QRCode from 'qrcode';
 import { EXPLORER } from '../config.js';
 import { LABELS, say } from '../lib/copy.js';
 import { refundTrack } from '../lib/view.js';
@@ -69,6 +70,46 @@ export const CopyButton = ({ text, class: cls = 'btn quiet small', label = LABEL
   );
 };
 
+/** A QR code as inline SVG (dark modules on a light tile in both themes). */
+export const QrCode = ({ text, label, class: cls = 'qr' }) => {
+  const [svg, setSvg] = useState('');
+  useEffect(() => {
+    let live = true;
+    setSvg('');
+    if (text) {
+      QRCode.toString(text, { type: 'svg', errorCorrectionLevel: 'M', margin: 1, color: { dark: '#1d1813', light: '#00000000' } })
+        .then((out) => live && setSvg(out))
+        .catch(() => {});
+    }
+    return () => {
+      live = false;
+    };
+  }, [text]);
+  return (
+    <div class={cls} role="img" aria-label={label}>
+      {svg ? <div class="qr-svg" dangerouslySetInnerHTML={{ __html: svg }} /> : null}
+    </div>
+  );
+};
+
+/** An empty wallet is a road, not a wall: where to send BCH, and the buy goes on when it arrives. */
+export const FundBox = ({ fund }) => (
+  <div class="fund" data-fund>
+    <QrCode text={fund.uri} label={LABELS.receiveQr} class="fund-qr" />
+    <div class="fund-text">
+      <p>{say('fundHere', { amount: fund.amount })}</p>
+      <div class="fund-address">
+        <code data-fund-address>{fund.address}</code>
+        <CopyButton text={fund.address} label={LABELS.copyAddress} />
+      </div>
+      <p class="fund-wait" role="status">
+        <span class="spin" aria-hidden="true" />
+        {say('fundWatching')}
+      </p>
+    </div>
+  </div>
+);
+
 const ACTION_LABEL = {
   retry: LABELS.tryAgain,
   connect: LABELS.connect,
@@ -92,6 +133,7 @@ export const FlowStatus = ({ flow, onAction, onCancel }) => {
           <span>{say(flow.error.key, flow.error.vars)}</span>
         </div>
         {flow.error.detail ? <div class="detail">{flow.error.detail}</div> : null}
+        {flow.error.fund ? <FundBox fund={flow.error.fund} /> : null}
         <div class="actions">
           {actions.map((a, i) => (
             <button type="button" key={a} class={i === 0 ? 'btn small' : 'btn quiet small'} onClick={() => onAction(a)}>

@@ -148,7 +148,7 @@ test('every stuck state has a plain sentence and a next step', () => {
     [new WalletError('timeout', 'no answer'), 'walletTimeout', ['retry'], 'Your wallet did not answer in time. Nothing was sent.'],
     [new WalletError('wrong-network', 'chipnet'), 'walletWrongNetwork', ['connect'], null],
     [new WalletError('relay', 'relay down'), 'walletRelay', ['retry'], null],
-    [Object.assign(new Error('x'), { name: 'FundsError', code: 'insufficient-funds', need: 103_000n, have: 50_000n }), 'needMore', ['retry'], 'You need about 0.00103 BCH for this ticket; your wallet has 0.0005 BCH in plain BCH.'],
+    [Object.assign(new Error('x'), { name: 'FundsError', code: 'insufficient-funds', need: 103_000n, have: 50_000n }), 'needMore', ['retry'], 'You need about 0.00103 BCH for this ticket; your wallet has 0.0005 BCH.'],
     [Object.assign(new Error('x'), { name: 'FundsError', code: 'only-token-coins' }), 'onlyTokens', ['retry'], null],
     [Object.assign(new BroadcastError('conflict', 'txn-mempool-conflict'), { conflict: true }), 'shardTaken', ['retry'], null],
     [new BroadcastError('rejected', 'the transaction was rejected by network rules.\n\nmin relay fee not met'), 'refused', ['retry'], 'The network refused the transaction: “min relay fee not met”'],
