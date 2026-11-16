@@ -81,4 +81,4 @@ AI coding assistance (Claude).
 
 ## Licence
 
-The licence for Doorstub's own code is being chosen. The parts listed under Credits keep their own licences (`app/public/licenses.txt`).
+Doorstub's own code is under the MIT licence ([LICENSE](LICENSE)). The parts listed under Credits keep their own licences (`app/public/licenses.txt`).

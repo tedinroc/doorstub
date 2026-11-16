@@ -5,6 +5,7 @@
   "description": "Tickets that refund themselves: an event box office on Bitcoin Cash.",
   "type": "module",
   "author": "Ted Chen",
+  "license": "MIT",
   "engines": {
     "node": ">=22"
   },
