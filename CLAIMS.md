@@ -86,6 +86,16 @@ The sample show card must say: "Sample show. Nobody will check in, so every tick
 
 **Open question before the app is built:** a "Walk in" button on a sample show would pay the sample organiser (us) the ticket price, which breaks "no tap may pay us for a show that does not happen". Either the sample show's check-in is labelled with who gets paid and how much, or the sample organiser refunds by notice afterwards, or "Walk in" is shown only on a show that really takes place.
 
-## 7. Credits
+## 7. Wallet prompts
+
+What the app asks the wallet to show on its confirm screen (`userPrompt`, `src/shows/format.js`, pinned by `test/shows/schedule-format.test.js`). `<seat>` is the show letter, shard and seat number (`A-0-12`); `<price>` is the show's price; `<refund>` and `<payout>` are the values of the built transaction's refund and payout outputs (so after the network fee), never estimates.
+
+| Path | Exact wording | Why it is true |
+|---|---|---|
+| Buy | "Doorstub: buy seat `<seat>` for `<price>` BCH. The money waits in the show's contract." | `buy` sends `price + 1,000` sats to the show's Escrow with this seat's marker (C1). |
+| Hand back | "Doorstub: hand back seat `<seat>`. `<refund>` BCH comes back to this wallet." | `handBack` pays `P2PKH(buyerPkh)`, and the ticket must sit at that address, so the refund goes to the signing wallet (C4). |
+| Check in | "Doorstub: walk in with seat `<seat>`. This pays the organiser `<payout>` BCH; your ticket stays as a keepsake." | `checkIn` pays the organiser payee and returns the ticket (C2, C8). It names who is paid and how much, which also answers section 6's open question for any show with a Walk in button. |
+
+## 8. Credits
 
 AI coding assistance (Claude).
