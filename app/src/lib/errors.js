@@ -68,10 +68,11 @@ export const describeError = (error, context = {}) => {
 
   if (name === 'DoorstubError') {
     if (code === 'call-ended') return { key: 'callSalesEnded', vars: {}, actions: [] };
-    if (code === 'sales-ended' || code === 'sales-cancelled') {
+    if (code === 'sales-ended') {
       return { key: 'showSalesEnded', vars: { start: Number(context.show?.startHeight ?? 0).toLocaleString('en-US') }, actions: ['nextInstance'] };
     }
-    if (code === 'sales-closed' || code === 'shard-full') return { key: 'salesClosed', vars: {}, actions: ['nextInstance'] };
+    // A cancel ends sales whatever the tip, so the start block is not named.
+    if (code === 'sales-closed' || code === 'shard-full' || code === 'sales-cancelled') return { key: 'salesClosed', vars: {}, actions: ['nextInstance'] };
   }
 
   if (code === 'no-open-shard') return { key: 'salesClosed', vars: {}, actions: ['nextInstance'] };

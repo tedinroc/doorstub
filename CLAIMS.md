@@ -191,7 +191,7 @@ Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js
 | `Your wallet's reply did not pass Doorstub's checks, so it was not sent.` | `checkSignedReply` refused it. |
 | `The network refused the transaction: “{words}”` | `{words}` is the server's own error text. |
 | `No Bitcoin Cash server answered. Doorstub keeps trying.` | The pool retries with back-off. |
-| `Sales for this show are closed.` | No open box-office shard of the show's category on chain. |
+| `Sales for this show are closed.` | No open box-office shard of the show's category on chain. Also on the card of a show its organiser cancelled (a `'C'` notice in `shows.json` that verifies against the show's data key, `src/shows`) and after a buy refused for that reason: a cancel ends sales whatever the tip (limit 14), so no start block is named. Such a card draws no Door or Call row, and a ticket still held there offers Hand it back but not Walk in, which the controller refuses too, because a check-in would pay the organiser of a cancelled show (`app/src/lib/view.js`, `app/src/lib/controller.js`; `test/app/view.test.js`, `test/app/controller.test.js`). |
 | `Something went wrong: {message}` | Any other error, with its text. |
 
 ### 9.4 Tickets

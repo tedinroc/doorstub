@@ -339,6 +339,13 @@ test('a real show stops selling and walking in when its call ends, by the page c
   clock = callEnd - 10 * 60_000;
   const one = await controller.buy(real.id);
   assert.ok(one?.key, JSON.stringify(state().flows[real.id]?.error));
+  // A cancelled show has no walk-in, even during its call (a check-in would pay its organiser).
+  real.cancelled = true;
+  const before = wallet.log.length;
+  assert.equal(await controller.walkIn(one.key), undefined);
+  assert.match(state().flows[one.key].error.vars.message, /cancelled this show/);
+  assert.equal(wallet.log.length, before, 'the wallet was not asked');
+  real.cancelled = false;
   decline = true;
   await controller.walkIn(one.key);
   assert.deepEqual(state().flows[one.key].error.actions, ['retry']);

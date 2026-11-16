@@ -154,6 +154,8 @@ test('every stuck state has a plain sentence and a next step', () => {
     [new BroadcastError('rejected', 'the transaction was rejected by network rules.\n\nmin relay fee not met'), 'refused', ['retry'], 'The network refused the transaction: “min relay fee not met”'],
     [Object.assign(new Error('all servers down'), { name: 'TransportError', code: 'all-down' }), 'chainDown', ['retry'], null],
     [new DoorstubError('sales-ended', 'sales ended'), 'showSalesEnded', ['nextInstance'], 'Sales for this show ended at block 977,637.'],
+    [new DoorstubError('sales-cancelled', 'sales ended'), 'salesClosed', ['nextInstance'], 'Sales for this show are closed.'],
+    [new DoorstubError('call-ended', 'the call is over'), 'callSalesEnded', [], 'Sales and walk-in for this show closed when its call ended.'],
     [Object.assign(new Error('no open box-office shard'), { code: 'no-open-shard' }), 'salesClosed', ['nextInstance'], null],
     [Object.assign(new Error('outputs differ'), { name: 'CheckError' }), 'replyFailed', ['retry'], null],
   ];

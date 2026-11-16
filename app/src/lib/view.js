@@ -129,9 +129,9 @@ export const showCardModel = (show, { tip, usd = null, ledger, now = Date.now(),
   const until = real ? { time: clockText(new Date(end), { timeZone }), eta: etaMinutes(Math.ceil((end - now) / 60_000)) } : null;
   let startLine;
   if (!real) startLine = known ? say('showStarts', { start: start.block, time: start.time, eta: start.eta }) : null;
-  else if (now >= end) startLine = null; // the stub says sales and walk-in closed
-  else if (!known || salesOpen(show, tip)) startLine = say('realUntil', until);
-  else startLine = `${say('showSalesEnded', { start: start.block })} ${say('walkInUntil', until)}`;
+  else if (now >= end || show.cancelled) startLine = null; // the stub says sales and walk-in closed, or that sales are closed (a cancel)
+  else if (!known || Number(tip) < Number(show.startHeight)) startLine = say('realUntil', until);
+  else startLine = `${say('showSalesEnded', { start: start.block })} ${say('walkInUntil', until)}`; // the chain reached startHeight first
   return {
     id: show.id,
     kind: show.kind,
@@ -145,13 +145,14 @@ export const showCardModel = (show, { tip, usd = null, ledger, now = Date.now(),
     priceUsd: formatUsd(show.price, usd),
     startLabel: real ? LABELS.door : LABELS.starts,
     startLine,
-    callLine: call === null ? null : say('callAt', { time: call.time, eta: call.eta, minutes: call.minutes }),
+    callLine: call === null || show.cancelled ? null : say('callAt', { time: call.time, eta: call.eta, minutes: call.minutes }),
     settleLine: settle === null ? null : say('showSettles', { settle: settle.block, time: settle.time, eta: settle.eta }),
     waitingForTip: !known,
     feesLine: say('showFees', { handBack: bpsText(show.handBackFeeBps), noShow: bpsText(show.noShowFeeBps), cap: num(show.minerFeeCap) }),
     phase: known ? showPhase(show, tip) : null,
     onSale: known ? salesOpen(show, tip, { now }) : !show.cancelled && !(real && now >= end),
-    endedLine: real && now >= end ? say('callSalesEnded') : say('showSalesEnded', { start: start.block }),
+    // A cancelled show's sales ended with the cancel, not at its start block.
+    endedLine: show.cancelled ? say('salesClosed') : real && now >= end ? say('callSalesEnded') : say('showSalesEnded', { start: start.block }),
     startBlock: start.block,
     startEta: start.eta,
     startTime: start.time,
@@ -251,8 +252,10 @@ export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, r
   const escrowTxid = escrow ? (typeof escrow.txid === 'string' ? escrow.txid : binToHex(escrow.txid)) : null;
   const lines = [];
   const value = ticket.value ?? escrow?.output?.valueSatoshis ?? null;
-  // A real show's Walk in closes when its call ends (the reader's clock); the ticket then refunds by the settle.
+  // A real show's Walk in closes when its call ends (the reader's clock) or when its organiser cancelled it; the
+  // ticket then refunds by the settle (or the cancel's refund).
   const callOver = show.kind === 'real' && callOf(show, { now, timeZone })?.phase === 'over';
+  const walkInClosed = callOver || show.cancelled === true;
   if (state === 'held') {
     if (escrowTxid !== null) lines.push(say('buyHeld', { price: formatBch(show.price), outpoint: `${shortId(escrowTxid)}:${escrow.vout}` }));
     else lines.push(say('ticketMoney'));
@@ -284,7 +287,7 @@ export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, r
   const canAct = held && ticket.canAct !== false && escrow !== null && escrow !== undefined;
   const settleAt = settleOpensAt(show);
   const settleWhen = tip === undefined ? null : whenText(settleAt, tip, { now, locale, timeZone });
-  const call = held ? callOf(show, { now, timeZone }) : null;
+  const call = held && !show.cancelled ? callOf(show, { now, timeZone }) : null;
   // The bar runs from the block the ticket was bought in (or the tip when the page bought it) to the settle.
   const from = (ticket.buy?.height ?? 0) > 0 ? ticket.buy.height : ticket.boughtAtTip ?? null;
   const progress = tip === undefined || from === null || settleAt - 1 <= from ? null : Math.min(1, Math.max(0, (tip - from) / (settleAt - 1 - from)));
@@ -307,7 +310,7 @@ export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, r
     escrowOutpoint: escrowTxid === null ? null : { txid: escrowTxid, vout: escrow.vout },
     ticketTxid: ticket.ticketUtxo ? (typeof ticket.ticketUtxo.txid === 'string' ? ticket.ticketUtxo.txid : binToHex(ticket.ticketUtxo.txid)) : buyTxid,
     canHandBack: canAct && show.kind !== 'proof',
-    canWalkIn: canAct && show.kind === 'real' && !callOver,
+    canWalkIn: canAct && show.kind === 'real' && !walkInClosed,
     autoRefund: show.kind === 'sample-refund-seat',
     settleLine: held && show.kind !== 'sample-refund-seat' && settleWhen !== null
       ? say('showSettles', { settle: settleWhen.block, time: settleWhen.time, eta: settleWhen.eta })

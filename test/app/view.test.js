@@ -216,6 +216,15 @@ test('real show card: the call in the reader\'s own zone with its length, and sa
   assert.equal(early.onSale, false);
   assert.equal(early.startLine, 'Sales for this show ended at block 978,776. Walk in until the call ends, Tue 24 Nov, 13:25 UTC (in 15 min).');
   assert.equal(early.endedLine, 'Sales for this show ended at block 978,776.');
+  // A cancelled real show (a valid 'C' notice) stays listed while a ticket is held there: no Door row, no call, and the
+  // stub does not name a start block that is still ahead.
+  const cancelled = { ...screening, cancelled: true };
+  const gone = showCardModel(cancelled, { tip: 978_000, now: Date.parse('2026-11-20T10:00:00Z'), timeZone: 'UTC' });
+  assert.equal(gone.onSale, false);
+  assert.equal(gone.startLine, null);
+  assert.equal(gone.callLine, null);
+  assert.equal(gone.endedLine, 'Sales for this show are closed.');
+  assert.equal(showCardModel(cancelled, { tip: null, now: Date.parse('2026-11-20T10:00:00Z') }).onSale, false);
   assert.equal(taipei.subtitle, 'Online, 25 minutes', 'a real show\'s subtitle carries no time');
   // An hour before, during and after the call.
   const at = (iso) => showCardModel(screening, { tip: 978_700, now: Date.parse(iso), timeZone: 'UTC' }).callLine;
@@ -249,6 +258,12 @@ test('real ticket: held counts down to the call with the settle as small print; 
   assert.equal(after.canHandBack, true);
   assert.equal(after.lines.at(-1), 'The call is over, so Walk in is closed.');
   assert.equal(ticketModel(ticket({ show: screening }), { tip: 978_700, now: Date.parse('2026-11-24T13:24:00Z') }).canWalkIn, true, 'a late arrival walks in during the call');
+  // A cancelled show has no walk-in (a check-in would pay its organiser) and no call to count down to.
+  const cancelledHeld = ticketModel(ticket({ show: { ...screening, cancelled: true } }), { tip: 978_000, now: Date.parse('2026-11-20T10:00:00Z'), timeZone: 'UTC' });
+  assert.equal(cancelledHeld.canWalkIn, false);
+  assert.equal(cancelledHeld.canHandBack, true);
+  assert.equal(cancelledHeld.call, null);
+  assert.notEqual(cancelledHeld.countdown, null);
 
   const walked = ticketModel(ticket({ show: screening, state: 'walkedIn', escrowUtxo: null, canAct: false }), { tip: 978_630, now, timeZone: 'Asia/Taipei' });
   assert.deepEqual(walked.lines, [

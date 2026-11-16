@@ -800,8 +800,13 @@ export const createController = ({ runtime, deps = {} }) => {
     throw new DoorstubError(show.cancelled ? 'sales-cancelled' : 'sales-ended', 'sales ended');
   };
 
-  /** A real show's walk-in closes when its call ends by the reader's clock: checked before signing and again right before sending. */
+  /**
+   * A real show's walk-in closes when its call ends by the reader's clock, and
+   * a cancelled show has none (a check-in would pay its organiser): checked
+   * before signing and again right before sending.
+   */
   const assertWalkInOpen = (show) => {
+    if (show.cancelled) throw new Error('the organiser cancelled this show, so it has no walk-in');
     if (callEnded(show, now())) throw new DoorstubError('call-ended', 'the call is over');
   };
 
