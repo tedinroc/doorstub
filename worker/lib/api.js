@@ -76,6 +76,11 @@ const ROUTES = {
  * @param {string[]} [deps.configErrors]
  * @param {string} [deps.runtime] 'workerd' | 'node'
  */
+const tooMany = (limited) => {
+  const seconds = Math.max(1, Math.ceil(limited.retryAfterMs / 1000));
+  return json(429, errorBody('rate-limited', `too many requests; try again in ${seconds} s`, true), { 'retry-after': String(seconds) });
+};
+
 export const handleApi = async (request, deps) => {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '');
@@ -84,10 +89,7 @@ export const handleApi = async (request, deps) => {
   if (request.method !== method) return json(405, errorBody('method-not-allowed', `use ${method}`, false), { allow: method });
   const bucket = path.slice('/api/'.length);
   const limited = deps.limiter.take(bucket, deps.clientIp ?? 'unknown');
-  if (!limited.ok) {
-    const seconds = Math.max(1, Math.ceil(limited.retryAfterMs / 1000));
-    return json(429, errorBody('rate-limited', `too many requests; try again in ${seconds} s`, true), { 'retry-after': String(seconds) });
-  }
+  if (!limited.ok) return tooMany(limited);
   let chain = null;
   const openChain = () => {
     chain ??= deps.openChain();
@@ -96,6 +98,11 @@ export const handleApi = async (request, deps) => {
   try {
     if (path === '/api/health') return json(200, await health(deps, openChain));
     const body = await readJson(request);
+    if (path === '/api/door' && body?.reserve === true) {
+      // A reservation is a KV write that needs no check-in: its own, tighter limit (one per walk-in is enough).
+      const reserveLimited = deps.limiter.take('reserve', deps.clientIp ?? 'unknown');
+      if (!reserveLimited.ok) return tooMany(reserveLimited);
+    }
     const { shows } = await deps.loadShows();
     if (path === '/api/notice') {
       return json(200, await signSeatNotice({ shows, chain: openChain(), dataKey: deps.dataKey, body, markerWaitMs: deps.markerWaitMs ?? 0, pollMs: deps.pollMs }));

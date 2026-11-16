@@ -5,10 +5,17 @@
 // rules can back them up); the door record can use a KV namespace instead
 // (binding DOOR_CLAIMS), see RUNTIME.md.
 
-/** Requests per window, per client IP. */
+/**
+ * Requests per window, per client IP. `reserve` counts the door's
+ * reservations on top of `door` (they share its 20 a minute): each new one is
+ * a KV write that needs no check-in, and a page makes one per walk-in, so 10
+ * an hour is plenty and keeps one client from spending a free KV plan's daily
+ * writes (RUNTIME.md section 5).
+ */
 export const DEFAULT_LIMITS = Object.freeze({
   notice: { max: 30, windowMs: 60_000 },
   door: { max: 20, windowMs: 60_000 },
+  reserve: { max: 10, windowMs: 3_600_000 },
   health: { max: 60, windowMs: 60_000 },
 });
 
@@ -34,16 +41,21 @@ export const createRateLimiter = ({ limits = DEFAULT_LIMITS, maxKeys = 10_000, n
   return { take };
 };
 
-/** A reservation the door never answered expires after this long (RUNTIME.md section 5). */
-export const RESERVE_TTL_SECONDS = 3 * 60 * 60;
 /** An answered check-in is remembered this long, so its claimant can come back for the link. */
 export const ANSWER_TTL_SECONDS = 60 * 60 * 24 * 120;
+/**
+ * A reservation is kept as long as an answer. A check-in's txid stays public
+ * in the Escrow's history, so a reservation that expired while its door was
+ * not answered yet (the door down, or not configured) would let anyone who
+ * asks later take the link and lock the holder out (RUNTIME.md section 5).
+ */
+export const RESERVE_TTL_SECONDS = ANSWER_TTL_SECONDS;
 
 /**
  * The door's record: one claimant per check-in, as { token, state }, where the
  * token is a hash of the claimant's claim secret (or IP; null for none) and
- * the state is 'reserved' (the page reserved the check-in before sending it;
- * expires after RESERVE_TTL_SECONDS unless answered) or 'answered'.
+ * the state is 'reserved' (the page reserved the check-in before sending it)
+ * or 'answered'; both are kept for 120 days.
  *
  *   reserve(key, token)  no record: store a reservation, 'first'; same token: 'same'; else 'taken'
  *   claim(key, token)    called once the chain checks passed. No record, or a

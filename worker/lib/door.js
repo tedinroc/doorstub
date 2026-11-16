@@ -4,7 +4,8 @@
 //    its txid, which nobody else knows yet, and reserves that txid with its
 //    `claim` secret BEFORE it sends the check-in. No chain lookup: the door
 //    stores a hash of the claim for this show and txid if nothing is stored
-//    yet (expires after 3 hours unless answered).
+//    yet (kept 120 days, like an answer). Reservations have their own per-IP
+//    limit (worker/lib/limits.js, `reserve`).
 // 2. Ask. After sending, the page asks with the same claim. The door reads the
 //    check-in from the network (so it is in the mempool or a block: the
 //    network ran every script, including the holder's signature), fetches

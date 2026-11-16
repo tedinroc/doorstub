@@ -13,7 +13,7 @@ import { buildCheckIn, p2pkhLockingBytecode } from '../../src/tx/index.js';
 import { freshKey, signWallet } from '../helpers.js';
 import { txidOf } from '../../worker/lib/crypto.js';
 import { answerDoor, claimToken } from '../../worker/lib/door.js';
-import { ANSWER_TTL_SECONDS, RESERVE_TTL_SECONDS, createKvClaims, createMemoryClaims, withFallback } from '../../worker/lib/limits.js';
+import { ANSWER_TTL_SECONDS, DEFAULT_LIMITS, RESERVE_TTL_SECONDS, createKvClaims, createMemoryClaims, withFallback } from '../../worker/lib/limits.js';
 import { parseWorkerShows } from '../../worker/lib/shows.js';
 import { decodeTransaction } from '../../worker/lib/tx.js';
 import { libauthVmCheck } from '../../worker/node/vm.js';
@@ -267,9 +267,22 @@ test('door reserve: the page reserves its check-in before sending it, so an obse
   assert.equal((await door({ category: real.categoryHex, txid: plainTxid, claim: holder })).status, 200);
   assert.equal((await door({ category: real.categoryHex, txid: plainTxid, claim: holder, reserve: true })).body.again, true);
   assert.equal((await door({ category: real.categoryHex, txid: plainTxid, claim: observer, reserve: true })).status, 409);
+
+  // Each new reservation is a KV write that needs no check-in, so reservations have their own per-IP limit
+  // (10 an hour by default; 2 here). Asking the door is not counted against it.
+  const tight = await startWorker(t, ctx, { env: { DOOR_LINKS: JSON.stringify({ 'screening-1': LINK }) }, limits: { door: { max: 20, windowMs: 60_000 }, reserve: { max: 2, windowMs: 3_600_000 } } });
+  const fresh = (i) => ({ category: real.categoryHex, txid: `${i}`.padStart(2, '0').repeat(32), claim: holder, reserve: true });
+  assert.equal((await post(tight, '/api/door', fresh(1))).status, 200);
+  assert.equal((await post(tight, '/api/door', fresh(2))).status, 200);
+  const third = await post(tight, '/api/door', fresh(3));
+  assert.equal(third.status, 429);
+  assert.equal(third.body.error.code, 'rate-limited');
+  assert.equal((await post(tight, '/api/door', { category: real.categoryHex, txid, claim: holder })).status, 200, 'the holder\'s ask still goes through');
+  assert.equal(DEFAULT_LIMITS.reserve.max, 10);
+  assert.equal(DEFAULT_LIMITS.reserve.windowMs, 3_600_000);
 });
 
-test('door reserve: no chain lookup, a 3-hour reservation unless answered, the same rules in memory and in KV, and KV trouble falls back to memory', async () => {
+test('door reserve: no chain lookup, a reservation kept as long as an answer, the same rules in memory and in KV, and KV trouble falls back to memory', async () => {
   const shows = [{ id: 'screening-1', kind: 'real', categoryHex: 'cc'.repeat(32), door: { endpoint: '/api/door' } }];
   const noChain = new Proxy({}, { get: () => () => assert.fail('a reservation never reads the chain') });
   const txid = 'dd'.repeat(32);
@@ -282,19 +295,31 @@ test('door reserve: no chain lookup, a 3-hour reservation unless answered, the s
   const memory = createMemoryClaims({ now: () => clock });
   assert.deepEqual(await reserveWith(memory, 'a1'.repeat(32)), { reserved: true, again: false });
   assert.equal(await memory.claim('door:screening-1:' + txid, other), 'taken', 'someone else, before the reservation expires');
-  clock += RESERVE_TTL_SECONDS * 1_000 - 1;
+  // The check-in's txid stays public on the Escrow's history, so an unanswered reservation (the door down or not set up
+  // yet when the page asked) must not lapse before its holder comes back: it is kept as long as an answer, 120 days.
+  assert.equal(RESERVE_TTL_SECONDS, ANSWER_TTL_SECONDS);
+  assert.equal(ANSWER_TTL_SECONDS, 120 * 24 * 3_600);
+  clock += 3 * 3_600_000;
+  assert.equal(await memory.claim('door:screening-1:' + txid, other), 'taken', 'three hours later a sweeper still gets nothing');
+  assert.equal(await memory.claim('door:screening-1:' + txid, null), 'taken');
+  clock = RESERVE_TTL_SECONDS * 1_000 - 1;
   assert.equal(await memory.reserve('door:screening-1:' + txid, other), 'taken');
-  clock += 1;
-  assert.equal(await memory.reserve('door:screening-1:' + txid, other), 'first', 'an unanswered reservation expires after 3 hours');
-  // Answered records stay.
+  assert.equal(await memory.claim('door:screening-1:' + txid, holder), 'first', 'the holder still gets the answer after the door was down for days');
+  clock = 0;
+  const unanswered = createMemoryClaims({ now: () => clock });
+  assert.equal(await unanswered.reserve('u', holder), 'first');
+  clock += RESERVE_TTL_SECONDS * 1_000;
+  assert.equal(await unanswered.reserve('u', other), 'first', 'a reservation nobody answered goes after 120 days');
+  // Answered records stay as long.
+  clock = 0;
   assert.equal(await memory.reserve('k', holder), 'first');
   assert.equal(await memory.claim('k', holder), 'first', 'the first answer to the reserving claimant');
   assert.equal(await memory.claim('k', holder), 'same');
-  clock += RESERVE_TTL_SECONDS * 1_000 * 10;
-  assert.equal(await memory.claim('k', other), 'taken', 'an answered check-in does not expire with the reservation');
+  clock += ANSWER_TTL_SECONDS * 1_000 - 1;
+  assert.equal(await memory.claim('k', other), 'taken', 'an answered check-in is kept 120 days');
   assert.equal(await memory.claim('k', null), 'taken');
 
-  // The same in a KV namespace: a hash with the state, a short TTL for a reservation, a long one once answered.
+  // The same in a KV namespace: a hash with the state, kept 120 days whether reserved or answered.
   const kv = memoryKv();
   const kvClaims = createKvClaims(kv);
   assert.deepEqual(await reserveWith(kvClaims, 'a1'.repeat(32)), { reserved: true, again: false });

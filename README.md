@@ -49,7 +49,7 @@ Every public sentence about Doorstub, the rule that makes it true and the test t
 - Sales end in the app, not on chain.
 - Buyers need BCH already. There is no card or cash door.
 - Coins sent straight to a contract address without the right token are stuck for good. Only use the app.
-- The event link of a real show is off chain. Your page reserves its check-in at Doorstub's door before sending it, so someone who sees the check-in in the mempool cannot take the link; the door reads one server and accepts an unconfirmed check-in (limit 17 there).
+- The event link of a real show is off chain. Your page reserves its check-in at Doorstub's door before sending it, so someone who sees the check-in in the mempool cannot take the link. That depends on the page's one reservation try reaching the door (it sends the check-in anyway if the try fails) and on the door's KV record having writes left; the door reads one server and accepts an unconfirmed check-in (limit 17 there).
 - What the page reads from the chain is one server's word. It cannot move money: every transaction the page sends is checked in the 2026 VM first, and the network runs the scripts again.
 
 Every contract path and 143 attack tests run in the 2026 BCH virtual machine, in standard and consensus mode, and the virtual machine refuses every attack in them.
