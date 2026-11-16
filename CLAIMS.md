@@ -119,7 +119,7 @@ The display face is Barlow Condensed, under the SIL Open Font License 1.1 (`app/
 
 ## 9. Site wording
 
-Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js`. `test/app/copy.test.js` fails when a sentence there is missing here or uses a word from section 3, and when the prior-art lines differ from section 5. `{name}` is a value the page fills in: from the chain, from `shows.json` (checked by the shows loader), from the wallet, or from the built transaction. Button words and headings ("Get a ticket", "Hand it back", "Walk in", "My tickets") make no claim and are not listed.
+Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js` and the page head and no-JavaScript line of `app/index.html` (9.7). `test/app/copy.test.js` fails when a sentence there is missing here or uses a word from section 3, and when the prior-art lines differ from section 5. `{name}` is a value the page fills in: from the chain, from `shows.json` (checked by the shows loader), from the wallet, or from the built transaction. Button words and headings ("Get a ticket", "Hand it back", "Walk in", "My tickets") make no claim and are not listed.
 
 ### 9.1 Home, banner and show cards
 
@@ -264,3 +264,13 @@ The section answers who Doorstub is for, what an organiser gains and how Doorstu
 | `Wallet connection by WizardConnect (Whiterun LLC), used under the GNU LGPL 3.0 or later and shipped as its own file.` | The library's copyright notice; the build puts it in its own `assets/wizardconnect-*.js` with the notice (`scripts/check-app-dist.js`). |
 | `Built with libauth, CashScript, Preact, qrcode and noble, all under the MIT licence.` | Their package licences. |
 | `AI coding assistance (Claude).` | Section 8. |
+
+### 9.7 Page head and no-JavaScript line
+
+The page title, the description and link-preview texts, and the one line a browser without JavaScript shows (`app/index.html`). `test/app/copy.test.js` reads them from the file and requires each to be made of sentences in this section.
+
+| Sentence | Why it is true |
+|---|---|
+| `Doorstub: tickets that refund themselves` | The page title and link-preview title: the name and the headline (section 1). |
+| `An event box office on Bitcoin Cash.` | What Doorstub is (`ARCHITECTURE.md`); it follows the headline (section 1) in the page description and link previews. |
+| `Doorstub needs JavaScript: it builds and checks every transaction in your browser.` | Shown only without JavaScript. The page builds each transaction in the browser, checks the wallet's signed reply before it sends it (`assertSignedReply`, section 4 limit 11) and checks the settles and refunds it pushes in the 2026 VM (`checkSignatureFree`). |

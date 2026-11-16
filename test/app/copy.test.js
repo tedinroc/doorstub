@@ -1,4 +1,5 @@
-// Every public sentence the site shows comes from CLAIMS.md (section 9 lists
+// Every public sentence the site shows (app/src/lib/copy.js, and the page head
+// and no-JavaScript line of app/index.html) comes from CLAIMS.md (section 9 lists
 // each one word for word, with the rule that makes it true), uses none of the
 // words CLAIMS.md section 3 rules out, and the prior-art lines are section 5's.
 import { test } from 'node:test';
@@ -19,6 +20,31 @@ test('every site sentence is in CLAIMS.md section 9, word for word', () => {
   const site = section(9);
   const missing = Object.entries(SENTENCES).filter(([, text]) => !site.includes(`\`${text}\``));
   assert.deepEqual(missing, [], `add these to CLAIMS.md section 9 (or drop them):\n${missing.map(([k, t]) => `${k}: ${t}`).join('\n')}`);
+});
+
+test('the page head and the no-JavaScript line of app/index.html are made of CLAIMS.md section 9 sentences', () => {
+  const html = readFileSync(new URL('../../app/index.html', import.meta.url), 'utf8');
+  const site = section(9);
+  // Whole entries only, longest first, so "Tickets that refund themselves." never eats into a longer entry.
+  const entries = [...site.matchAll(/`([^`]+)`/g)].map((m) => m[1]).filter((e) => !e.includes('{')).sort((a, b) => b.length - a.length);
+  const texts = {
+    title: /<title>([^<]*)<\/title>/.exec(html)?.[1],
+    noscript: /<noscript>([^<]*)<\/noscript>/.exec(html)?.[1],
+  };
+  // Every meta tag that carries words a person reads (the description and the link-preview texts).
+  for (const m of html.matchAll(/<meta (?:name|property)="([^"]+)" content="([^"]*)"/g)) {
+    if (/^(description|og:title|og:description|twitter:title|twitter:description)$/.test(m[1])) texts[m[1]] = m[2];
+  }
+  assert.deepEqual(Object.keys(texts).sort(), ['description', 'noscript', 'og:description', 'og:title', 'title']);
+  for (const [where, text] of Object.entries(texts)) {
+    assert.equal(typeof text, 'string', `${where} is in index.html`);
+    let rest = text.trim();
+    while (rest.length > 0) {
+      const hit = entries.find((e) => rest.startsWith(e));
+      assert.ok(hit !== undefined, `index.html ${where}: "${rest}" is not in CLAIMS.md section 9`);
+      rest = rest.slice(hit.length).trim();
+    }
+  }
 });
 
 test('no site sentence uses a word CLAIMS.md section 3 rules out', () => {
