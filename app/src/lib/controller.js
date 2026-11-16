@@ -362,8 +362,18 @@ export const createController = ({ runtime, deps = {} }) => {
     }
   };
 
-  /** Open the connect dialog with a fresh pairing link. `relay` 1 points the link at the other relay. */
+  /**
+   * Open the connect dialog. A pairing still waiting for its wallet is shown
+   * again as it was: a link already pasted into a wallet stays valid (it is
+   * never regenerated on a timer or on reopening). `relay` 1 starts a new
+   * pairing on the other relay.
+   */
   const connect = async ({ relay = 0 } = {}) => {
+    const w = get().wallet;
+    if (w.state === 'pairing' && w.pairing !== null && w.relay === relay && session !== null) {
+      set({ connectOpen: true });
+      return w.pairing;
+    }
     const s = ensureSession();
     clearTimeout(relaySlowTimer);
     setWallet({ state: 'pairing', pairing: null, relay, relayStatus: null, relaySlow: false, error: null });
@@ -628,11 +638,13 @@ export const createController = ({ runtime, deps = {} }) => {
     }
   };
 
+  /** Ask the door again: after a failed answer, or for a walked-in ticket after a reload (its check-in txid comes from the chain). */
   const retryDoor = async (key) => {
-    const flow = flowOf(key);
     const ticket = ticketByKey(key);
-    if (flow?.txid === undefined || ticket === undefined) return;
-    await askDoor(key, ticket.show, flow.txid);
+    const txid = flowOf(key)?.txid ?? (ticket?.spend?.path === 'checkIn' ? ticket.spend.txid : undefined);
+    if (txid === undefined || ticket === undefined || ticket.show.kind !== 'real') return;
+    if (flowOf(key) === undefined) setFlow(key, { kind: 'walkIn', step: 'door', txid });
+    await askDoor(key, ticket.show, txid);
   };
 
   // ---------------------------------------------------------------- sample B: notice, refund, money back

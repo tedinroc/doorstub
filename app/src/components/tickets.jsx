@@ -199,6 +199,13 @@ export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack
                 </div>
               </div>
             ) : null}
+            {model.state === 'walkedIn' && model.kind === 'real' && doorFlow === null ? (
+              <div class="act">
+                <button type="button" class="btn small" onClick={() => onAction('retryDoor')} data-door-again={model.key}>
+                  {LABELS.getEventLink}
+                </button>
+              </div>
+            ) : null}
             {(showHandBack || model.canWalkIn) && !actionBusy ? (
               <div class="act">
                 {model.canWalkIn ? (

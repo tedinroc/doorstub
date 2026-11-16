@@ -20,6 +20,9 @@ import { settleOpensAt } from '../../src/shows/index.js';
 import { makeSimWallet } from '../support/sim-wallet.js';
 import { stubApi } from '../support/stub-worker.js';
 import { scratchDir } from '../simnet/support.js';
+import { REAL_SHOW } from '../e2e/stage.js';
+
+const DOOR_LINK = 'https://example.org/doorstub-test-door';
 
 const waitFor = async (predicate, what, ms = 8_000) => {
   const start = Date.now();
@@ -51,9 +54,11 @@ const setup = async (t, { walletOptions = {}, behaviour = {} } = {}) => {
   t.after(() => simnet.close());
   const scratch = scratchDir('app-controller');
   t.after(scratch.cleanup);
-  const boot = await bootstrapSimnet({ server: simnet.url, dir: scratch.dir, count: 2, firstStart: '+36', refundSeatStart: '+6500' });
+  const boot = await bootstrapSimnet({ server: simnet.url, dir: scratch.dir, count: 2, firstStart: '+36', refundSeatStart: '+6500', schedule: [REAL_SHOW] });
   const secrets = JSON.parse(readFileSync(boot.secretsPath, 'utf8'));
-  const stub = stubApi({ shows: () => JSON.parse(readFileSync(boot.showsPath, 'utf8')).shows, dataPrivateKey: hexToBin(secrets.data.privateKey), behaviour });
+  const shows = () => JSON.parse(readFileSync(boot.showsPath, 'utf8')).shows;
+  const doorLinks = Object.fromEntries(shows().filter((s) => s.kind === 'real').map((s) => [s.params.category, DOOR_LINK]));
+  const stub = stubApi({ shows, dataPrivateKey: hexToBin(secrets.data.privateKey), doorLinks, behaviour });
   const wallet = makeSimWallet(walletOptions);
   const controller = createController({
     runtime: { network: 'simnet', servers: [simnet.url], apiOrigin: '', showsUrl: '/shows.json', testHooks: true },
@@ -79,11 +84,11 @@ test('controller on simnet: buy A, hand back, buy B and its refund arrives, the 
   const { controller, wallet, state, stub } = await setup(t);
   await controller.start();
   assert.equal(state().boot, 'ready');
-  await waitFor(() => state().shows.length === 3, 'all three shows verified');
+  await waitFor(() => state().shows.length === 4, 'all four shows verified');
   const onSale = controller.onSale();
-  assert.deepEqual(onSale.map((s) => s.kind), ['sample-settle', 'sample-refund-seat']);
-  const [showA, showB] = onSale;
-  await waitFor(() => state().ledgers.size === 3 && state().proof !== null, 'ledgers and proof strip');
+  assert.deepEqual(onSale.map((s) => s.kind), ['sample-settle', 'sample-refund-seat', 'real']);
+  const [showA, showB, real] = onSale;
+  await waitFor(() => state().ledgers.size === 4 && state().proof !== null, 'ledgers and proof strip');
   assert.deepEqual(state().proof.txCounts, { buy: 0, handBack: 0, checkIn: 0, settle: 0, refund: 0 });
 
   // Fund the wallet before it connects (the scan must find the coin).
@@ -136,6 +141,24 @@ test('controller on simnet: buy A, hand back, buy B and its refund arrives, the 
     return t2?.state === 'refunded' && t2.refundPath === 'refund' && t2.pending !== true;
   }, 'B refunded from the chain');
 
+  // A real show: buy, walk in (the holder's wallet signs the check-in), the door answers with the link.
+  const boughtReal = await controller.buy(real.id);
+  assert.ok(boughtReal?.key, JSON.stringify(state().flows[real.id]?.error));
+  const sentIn = await controller.walkIn(boughtReal.key);
+  assert.ok(sentIn?.txid, JSON.stringify(state().flows[boughtReal.key]?.error));
+  assert.match(wallet.log.at(-1).userPrompt, /^Doorstub: walk in with seat S-\d-1\. This pays the organiser 0\.000\d+ BCH; your ticket stays as a keepsake\.$/);
+  assert.equal(state().flows[boughtReal.key].link, DOOR_LINK);
+  assert.deepEqual(stub.calls.filter((c) => c.endpoint === 'door').map((c) => c.txid), [sentIn.txid]);
+  await waitFor(() => {
+    const t4 = state().tickets.find((x) => `${x.showId}:${x.seatHex}` === boughtReal.key);
+    return t4?.state === 'walkedIn' && t4.pending !== true;
+  }, 'walked in, from the chain');
+  // After a reload the flow is gone; the check-in txid comes from the chain and the door answers again.
+  controller.dismiss(boughtReal.key);
+  await controller.retryDoor(boughtReal.key);
+  assert.equal(state().flows[boughtReal.key].link, DOOR_LINK);
+  assert.equal(stub.calls.filter((c) => c.endpoint === 'door').at(-1).txid, sentIn.txid);
+
   // A second A ticket, then the show starts and passes its grace: the page pushes the settle itself.
   const second = await controller.buy(showA.id);
   assert.ok(second?.key, JSON.stringify(state().flows[showA.id]?.error));
@@ -149,8 +172,8 @@ test('controller on simnet: buy A, hand back, buy B and its refund arrives, the 
     return t3?.state === 'refunded' && t3.refundPath === 'settle';
   }, 'second A ticket settled');
   await waitFor(() => state().proof.txCounts.settle === 1, 'proof strip counts the settle');
-  assert.deepEqual(state().proof.txCounts, { buy: 3, handBack: 1, checkIn: 0, settle: 1, refund: 1 });
-  assert.equal(wallet.log.length, 4, 'the settle needed no approval');
+  assert.deepEqual(state().proof.txCounts, { buy: 4, handBack: 1, checkIn: 1, settle: 1, refund: 1 });
+  assert.equal(wallet.log.length, 6, 'the settle needed no approval');
 
   // After the start, the home page offers the next sample A instance, and an old buy attempt is refused with the next step.
   const next = controller.onSale().find((s) => s.kind === 'sample-settle');
@@ -203,4 +226,32 @@ test('controller stuck states: not enough BCH, a declined approval, the notice s
   stub.behaviour.down = false;
   await controller.retryRefund(bought.key);
   assert.equal(state().flows[bought.key].step, 'back');
+});
+
+test('reopening the connect dialog shows the same link while it waits for a wallet; the other relay makes a new one', async () => {
+  let pairs = 0;
+  const fakeSession = () => ({
+    wallet: null,
+    pair: async ({ relay }) => {
+      pairs += 1;
+      return { uri: `wiz://pairing-${pairs}-relay-${relay}`, qrUri: 'WIZ://X', selene: 'wiz://x', cashonize: 'https://cashonize.com/?uri=x', copy: 'wiz://x' };
+    },
+    restore: async () => false,
+    disconnect: async () => {},
+  });
+  const controller = createController({
+    runtime: { network: 'simnet', servers: ['ws://127.0.0.1:1'], apiOrigin: '', showsUrl: '/shows.json', testHooks: true },
+    deps: { createSession: fakeSession, fetchShows: async () => '{}', sleep: async () => {} },
+  });
+  const first = await controller.connect();
+  controller.closeConnect();
+  assert.equal(controller.store.get().connectOpen, false);
+  const again = await controller.connect();
+  assert.equal(again.uri, first.uri, 'a pasted link stays valid');
+  assert.equal(controller.store.get().connectOpen, true);
+  assert.equal(pairs, 1);
+  const other = await controller.connect({ relay: 1 });
+  assert.equal(pairs, 2);
+  assert.notEqual(other.uri, first.uri);
+  await controller.close();
 });

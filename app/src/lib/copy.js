@@ -146,6 +146,7 @@ export const LABELS = Object.freeze({
   cancel: 'Cancel',
   reload: 'Reload',
   openEvent: 'Open the event',
+  getEventLink: 'Get the event link',
   sample: 'Sample',
   realShow: 'Real show',
   inContract: 'in the contract',
