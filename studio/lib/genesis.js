@@ -23,7 +23,7 @@ import { confirmBroadcast } from './gate.js';
 import { loadSecrets, publicView } from './keys.js';
 import { openNetwork } from './net.js';
 import { buildSignedPayment } from './payment.js';
-import { checkPlan } from './plan.js';
+import { checkPlan, planCallFields } from './plan.js';
 import { deriveShow, paramsFromShow, readShowsJson, showFromParams, validateShowsJson } from './shows-json.js';
 
 const sum = (values) => values.reduce((a, b) => a + b, 0n);
@@ -79,6 +79,11 @@ export const genesis = async ({
   if (existing !== undefined && existing.network !== network) throw new Error(`${showsPath} is for ${existing.network}; refusing to mix in ${network} shows`);
   if (existing !== undefined && existing.origin !== plan.origin) throw new Error(`${showsPath} uses origin ${existing.origin}; the plan uses ${plan.origin}`);
   const notYet = plan.shows.filter((entry) => !existing?.shows.some((s) => s.id === entry.id));
+  // A seat letter belongs to one real show; check before anything is sent, not when shows.json is written.
+  for (const entry of notYet) {
+    const taken = entry.kind === 'real' && existing?.shows.find((s) => s.kind === 'real' && s.seatPrefix === entry.seatPrefix);
+    if (taken) throw new Error(`${entry.id}: seat letter ${entry.seatPrefix} is already used by ${taken.id} in ${showsPath}`);
+  }
   if (notYet.length === 0) {
     print(`every show in ${planPath} is already in ${showsPath}; nothing to do`);
     return { network, entries: [], txs: [], files: [], cost: 0n, sent: [], dryRun: !broadcast };
@@ -166,6 +171,7 @@ export const genesis = async ({
         subtitle: planned.subtitle,
         card: planned.card,
         startsAtEstimate: planned.startsAtEstimate,
+        ...planCallFields(planned),
         params: paramsFromShow(built.show),
         shards: planned.shards,
         genesisTxid,

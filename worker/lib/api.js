@@ -2,7 +2,8 @@
 //
 //   GET  /api/health   what is configured, and the chain tip
 //   POST /api/notice   { category, seat, txid? } -> { signature, ... }   (sample show B only)
-//   POST /api/door     { category, txid }        -> { link, ... }        (real shows only)
+//   POST /api/door     { category, txid, claim, reserve: true } -> { reserved, again }   (real shows, before the check-in is sent)
+//   POST /api/door     { category, txid, claim? }               -> { link, ... }         (real shows, after it is sent)
 //
 // Errors are { error: { code, message, retryable } } with a fitting status.
 import { equal, WorkerError } from './bytes.js';
@@ -67,7 +68,7 @@ const ROUTES = {
  * @param {() => object} deps.openChain a fresh worker chain client (closed after the request)
  * @param {Uint8Array|null} deps.dataKey
  * @param {object|null} deps.doorLinks
- * @param {{ claim }} deps.claims the door's one-claimant-per-check-in record
+ * @param {{ reserve, claim }} deps.claims the door's one-claimant-per-check-in record
  * @param {{ take }} deps.limiter
  * @param {string} deps.clientIp
  * @param {Function} [deps.vmCheck]
@@ -128,7 +129,11 @@ const health = async (deps, openChain) => {
       // Real shows whose refund notices this key could sign if it leaked (RUNTIME.md section 5): ideally none.
       alsoKeyOf: shows.filter((s) => s.kind === 'real' && dataPk !== null && equal(dataPk, s.organiserDataPk)).map((s) => s.id),
     };
-    out.door = { shows: shows.filter((s) => s.kind === 'real' && s.door !== null).map((s) => ({ id: s.id, configured: typeof deps.doorLinks?.[s.id] === 'string' })) };
+    out.door = {
+      shows: shows.filter((s) => s.kind === 'real' && s.door !== null).map((s) => ({ id: s.id, configured: typeof deps.doorLinks?.[s.id] === 'string' })),
+      // Where the one-claimant record lives: 'kv+memory' once DOOR_CLAIMS is bound on Cloudflare, else 'memory' (RUNTIME.md section 4).
+      record: deps.claims?.kind ?? 'none',
+    };
   } catch (e) {
     out.ok = false;
     out.shows = { error: e.message };

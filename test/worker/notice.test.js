@@ -12,7 +12,7 @@ import { freshKey } from '../helpers.js';
 import { buyTicket, get, post, startWorker, tipOf, unspentAt, workerSimnet } from './support.js';
 
 test('notice signer: live B seats only, verifiable, refund accepted by the simnet; every other request refused', async (t) => {
-  const ctx = await workerSimnet(t, { name: 'notice', schedule: [{ id: 'real-show', kind: 'real', title: 'Real show', card: 'A real show.', startHeight: '+300' }] });
+  const ctx = await workerSimnet(t, { name: 'notice', schedule: [{ id: 'real-show', kind: 'real', title: 'Real show', card: 'A real show.', startHeight: '+300', eventAt: '2026-11-24T13:00:00Z', durationMin: 25, seatPrefix: 'R' }] });
   const [showA] = ctx.byKind('sample-settle');
   const [showB] = ctx.byKind('sample-refund-seat');
   const [real] = ctx.byKind('real');
@@ -24,8 +24,10 @@ test('notice signer: live B seats only, verifiable, refund accepted by the simne
   assert.equal(health.body.ok, true);
   assert.equal(health.body.network, 'simnet');
   assert.equal(health.body.chain.tip, await tipOf(ctx.rpc));
-  assert.deepEqual(health.body.signer, { configured: true, shows: [{ id: showB.id, keyMatches: true }], alsoKeyOf: [real.id] }, 'the studio uses one data key today, so health names the real show it also covers');
+  assert.deepEqual(health.body.signer, { configured: true, shows: [{ id: showB.id, keyMatches: true }], alsoKeyOf: [] }, 'a real show has its own data key, which the worker never holds');
+  assert.notEqual(binToHex(real.organiserDataPk), binToHex(showB.organiserDataPk));
   assert.equal(health.body.runtime, 'node');
+  assert.deepEqual(health.body.door, { shows: [{ id: real.id, configured: false }], record: 'memory' });
 
   // A buy of sample B, still in the mempool.
   const ticket = await buyTicket(ctx.rpc, showB);
@@ -60,6 +62,11 @@ test('notice signer: live B seats only, verifiable, refund accepted by the simne
   assert.equal(after.status, 404);
   assert.equal(after.body.error.code, 'no-live-marker');
   assert.equal(after.body.error.retryable, true);
+  // With the buy's txid it signs from the buy alone (RUNTIME.md section 5: "a seat whose buy the network knows"),
+  // the same notice as before; it opens nothing, since the coin is gone and seat numbers never repeat.
+  const late = await ask({ category: showB.categoryHex, seat: ticket.seatHex, txid: ticket.txid });
+  assert.equal(late.status, 200);
+  assert.equal(late.body.signature, first.body.signature);
 
   // Refusals.
   const a = await buyTicket(ctx.rpc, showA);

@@ -3,9 +3,12 @@
 // instances every 36 blocks, and one sample-refund-seat show far in the future.
 import { binToHex, cashAddressToLockingBytecode, lockingBytecodeToAddressContents } from '@bitauth/libauth';
 import { validateShow } from '../../src/tx/index.js';
+import { EVENT_FIELDS, readEventFields } from '../../src/shows/event.js';
 import { DEFAULT_ORIGIN, NETWORKS, SHOW_KINDS, paramsFromShow, showFromParams } from './shows-json.js';
 
 export const BLOCK_SECONDS = 600;
+/** A real show's sales end (its startHeight) about this many blocks after its call ends, so a late arrival can still buy and walk in. */
+export const BLOCKS_AFTER_CALL = 6;
 
 /** Card texts (exact public wording; see CLAIMS.md section 6). */
 export const CARDS = {
@@ -47,7 +50,35 @@ export const payeePkhOf = (address) => {
 
 const estimate = (now, tip, height) => new Date(now.getTime() + (height - tip) * BLOCK_SECONDS * 1000).toISOString();
 
-const formatHeight = (height) => height.toLocaleString('en-US');
+/**
+ * The startHeight of a real show from its call: the block about
+ * `blocksAfterCall` blocks after the call ends, counted from the tip at ten
+ * minutes a block. An estimate: blocks come when they come, so plan close to
+ * the day (the studio recomputes it every time you plan).
+ */
+export const startHeightAfterCall = ({ eventAt, durationMin, tip, now = new Date(), blocksAfterCall = BLOCKS_AFTER_CALL }) => {
+  const { eventAtMs } = readEventFields({ eventAt, durationMin, seatPrefix: 'S' }, 'real');
+  if (!Number.isInteger(blocksAfterCall) || blocksAfterCall < 0) throw new Error('blocksAfterCall must be a whole number of blocks');
+  const callEnds = eventAtMs + durationMin * 60_000;
+  if (callEnds <= now.getTime()) throw new Error(`the call at ${eventAt} is over`);
+  return tip + Math.ceil((callEnds - now.getTime()) / (BLOCK_SECONDS * 1000)) + blocksAfterCall;
+};
+
+/**
+ * For a planned real show: its call and the estimated end of sales, and how
+ * many minutes after the call ends sales close (negative: before it ends).
+ */
+export const callTiming = (entry) => {
+  const callEnds = Date.parse(entry.eventAt) + entry.durationMin * 60_000;
+  const salesEnd = Date.parse(entry.startsAtEstimate);
+  return {
+    eventAt: entry.eventAt,
+    callEndsAt: new Date(callEnds).toISOString(),
+    salesEndBlock: entry.params.startHeight,
+    salesEndEstimate: entry.startsAtEstimate,
+    minutesAfterCall: Math.round((salesEnd - callEnds) / 60_000),
+  };
+};
 
 const checkedParams = (params, where) => {
   try {
@@ -63,10 +94,13 @@ const checkedParams = (params, where) => {
  * @param {object} o
  * @param {'mainnet'|'simnet'} o.network
  * @param {number} o.tip current chain tip
- * @param {object} o.studio public view of the studio keys (salesPk, dataPk, fundingAddress, identityAddress)
+ * @param {object} o.studio public view of the studio keys (salesPk, dataPk, realDataPk, fundingAddress, identityAddress);
+ *   samples get dataPk (the worker's key), real shows realDataPk (the studio's alone) as organiserDataPk
  * @param {string} o.payee organiser payee cashaddr (P2PKH)
  * @param {string|number} [o.firstStart] first sample-settle start height (absolute or "+N"); required when count > 0
- * @param {Array} [o.schedule] extra shows: { id, kind: 'real'|'sample-settle'|'sample-refund-seat', title, subtitle, card, startHeight, price, ... }
+ * @param {Array} [o.schedule] extra shows: { id, kind: 'real'|'sample-settle'|'sample-refund-seat', title, subtitle, card, startHeight, price, ... };
+ *   a real show also names eventAt (ISO UTC), durationMin and seatPrefix (src/shows/event.js), and may leave out
+ *   startHeight: it is then `blocksAfterCall` (default 6) blocks after the call ends, from the tip and `now`
  */
 export const makePlan = ({
   network,
@@ -91,10 +125,19 @@ export const makePlan = ({
   if (!Number.isInteger(tip) || tip < 0) throw new Error('tip must be the current block height');
   if (!/^https?:\/\/[^/]+$/.test(origin)) throw new Error('origin must look like https://host (no path, no trailing slash)');
   const organiserPkh = binToHex(payeePkhOf(payee));
+  // Samples use the data key the worker holds (it signs sample B's per-seat notices); real shows use a second
+  // data key that only the studio holds, so a leaked worker secret cannot refund a real show's unused tickets.
   const base = {
     organiserPk: studio.salesPk,
     organiserPkh,
     organiserDataPk: studio.dataPk,
+  };
+  const realBase = () => {
+    if (typeof studio.realDataPk !== 'string' || studio.realDataPk.length !== 66) {
+      throw new Error('real shows need the studio\'s real-show data key, and this studio file has none; run `npm run studio -- keygen --add-real-data-key`');
+    }
+    if (studio.realDataPk === studio.dataPk) throw new Error('the real-show data key must differ from the data key the worker holds');
+    return { ...base, organiserDataPk: studio.realDataPk };
   };
   const shows = [];
   const add = (entry) => {
@@ -102,6 +145,10 @@ export const makePlan = ({
     if (shows.some((s) => s.id === entry.id)) throw new Error(`${entry.id}: duplicate show id`);
     if (!SHOW_KINDS.includes(entry.kind) || entry.kind === 'proof') throw new Error(`${entry.id}: plan kinds are sample-settle, sample-refund-seat and real`);
     if (!Number.isInteger(entry.shards) || entry.shards < 1 || entry.shards > 256) throw new Error(`${entry.id}: shards must be 1-256`);
+    const call = callFields(entry, entry.id);
+    if (entry.kind === 'real' && shows.some((s) => s.kind === 'real' && s.seatPrefix === call.seatPrefix)) {
+      throw new Error(`${entry.id}: seat letter ${call.seatPrefix} is already used by another real show`);
+    }
     shows.push({ ...entry, params: checkedParams(entry.params, entry.id), startsAtEstimate: estimate(now, tip, entry.params.startHeight) });
   };
 
@@ -115,7 +162,7 @@ export const makePlan = ({
         id: `sample-a-${startHeight}`,
         kind: 'sample-settle',
         title: 'Sample show A',
-        subtitle: `Starts at block ${formatHeight(startHeight)}`,
+        subtitle: '',
         card: CARDS['sample-settle'],
         shards: Number(shards),
         door: null,
@@ -129,7 +176,7 @@ export const makePlan = ({
       id: 'sample-b',
       kind: 'sample-refund-seat',
       title: 'Sample show B',
-      subtitle: 'Refunded by its organiser right after each sale',
+      subtitle: '',
       card: CARDS['sample-refund-seat'],
       shards: Number(shards),
       door: null,
@@ -139,17 +186,23 @@ export const makePlan = ({
   for (const item of schedule) {
     const kind = item.kind ?? 'real';
     for (const key of ['id', 'title', 'card']) if (typeof item[key] !== 'string' || item[key].length === 0) throw new Error(`schedule entry needs ${key}`);
-    const startHeight = resolveHeight(item.startHeight, tip, `${item.id} startHeight`);
+    if (item.subtitle !== undefined && typeof item.subtitle !== 'string') throw new Error(`${item.id}: subtitle must be text`);
+    const call = callFields(item, item.id, kind);
+    let startHeight;
+    if (item.startHeight !== undefined) startHeight = resolveHeight(item.startHeight, tip, `${item.id} startHeight`);
+    else if (kind === 'real') startHeight = startHeightAfterCall({ eventAt: item.eventAt, durationMin: item.durationMin, tip, now, blocksAfterCall: item.blocksAfterCall });
+    else throw new Error(`${item.id}: schedule entry needs startHeight`);
     add({
       id: item.id,
       kind,
       title: item.title,
-      subtitle: item.subtitle ?? `Starts at block ${formatHeight(startHeight)}`,
+      subtitle: item.subtitle ?? '',
       card: item.card,
+      ...(kind === 'real' && { eventAt: call.eventAt, durationMin: call.durationMin, seatPrefix: call.seatPrefix }),
       shards: Number(item.shards ?? shards),
       door: kind === 'real' && item.door !== false ? { endpoint: '/api/door' } : null,
       params: {
-        ...base,
+        ...(kind === 'real' ? realBase() : base),
         price: Number(item.price ?? price),
         startHeight,
         graceBlocks: Number(item.graceBlocks ?? graceBlocks),
@@ -169,6 +222,7 @@ export const makePlan = ({
     studio: {
       salesPk: studio.salesPk,
       dataPk: studio.dataPk,
+      realDataPk: studio.realDataPk ?? null,
       fundingAddress: studio.fundingAddress,
       identityAddress: studio.identityAddress,
     },
@@ -177,17 +231,36 @@ export const makePlan = ({
   };
 };
 
+/** The call fields of a plan or schedule entry (src/shows/event.js): required for a real show, absent for the samples. */
+const callFields = (entry, id, kind = entry.kind) => {
+  try {
+    return readEventFields(entry, kind);
+  } catch (error) {
+    throw new Error(`${id}: ${error.message}`);
+  }
+};
+
 /** Check a plan read back from disk against the studio keys it will be signed with. */
 export const checkPlan = (plan, studio) => {
   if (plan.version !== 1 || !Array.isArray(plan.shows)) throw new Error('plan: not a version 1 plan');
-  if (plan.studio.salesPk !== studio.salesPk || plan.studio.dataPk !== studio.dataPk) {
+  if (plan.studio.salesPk !== studio.salesPk || plan.studio.dataPk !== studio.dataPk || (plan.studio.realDataPk ?? null) !== (studio.realDataPk ?? null)) {
     throw new Error('plan: made with other studio keys than .secrets/studio.json');
   }
+  const letters = new Set();
   for (const entry of plan.shows) {
-    if (entry.params.organiserPk !== studio.salesPk || entry.params.organiserDataPk !== studio.dataPk) {
+    const dataPk = entry.kind === 'real' ? studio.realDataPk : studio.dataPk;
+    if (entry.params.organiserPk !== studio.salesPk || entry.params.organiserDataPk !== dataPk) {
       throw new Error(`plan: ${entry.id} names keys that are not this studio's`);
+    }
+    const call = callFields(entry, `plan: ${entry.id}`);
+    if (entry.kind === 'real') {
+      if (letters.has(call.seatPrefix)) throw new Error(`plan: ${entry.id}: seat letter ${call.seatPrefix} is used twice`);
+      letters.add(call.seatPrefix);
     }
     checkedParams(entry.params, entry.id);
   }
   return plan;
 };
+
+/** The call fields a shows.json entry carries for a plan entry (none for the samples). */
+export const planCallFields = (entry) => (entry.kind === 'real' ? Object.fromEntries(EVENT_FIELDS.map((field) => [field, entry[field]])) : {});

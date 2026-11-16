@@ -5,21 +5,24 @@ import { parseArgs } from 'node:util';
 import { bootstrapSimnet } from './lib/bootstrap.js';
 import { close } from './lib/close.js';
 import { genesis } from './lib/genesis.js';
-import { DEFAULT_SECRETS_PATH, keygen, loadSecrets, publicView } from './lib/keys.js';
+import { DEFAULT_SECRETS_PATH, addRealDataKey, keygen, loadSecrets, publicView } from './lib/keys.js';
 import { openNetwork } from './lib/net.js';
-import { SAMPLE_DEFAULTS, makePlan } from './lib/plan.js';
+import { SAMPLE_DEFAULTS, callTiming, makePlan } from './lib/plan.js';
 import { writePlan } from './lib/plan-file.js';
 import { DEFAULT_ORIGIN } from './lib/shows-json.js';
 import { status } from './lib/status.js';
 
 const HELP = `Doorstub studio (organiser CLI)
 
-  keygen            create .secrets/studio.json (sales, data and identity keys); prints the funding address
+  keygen            create .secrets/studio.json (sales, data, real-show data and identity keys); prints the funding address
+                      [--add-real-data-key: add the real-show data key to a studio file made before it existed]
   plan              write studio/plan.json from a schedule and the current tip
                       --payee <cashaddr> (P2PKH) --first-start <height|+blocks> [--count ${SAMPLE_DEFAULTS.count}] [--step ${SAMPLE_DEFAULTS.step}]
                       [--price ${SAMPLE_DEFAULTS.price}] [--grace ${SAMPLE_DEFAULTS.graceBlocks}] [--shards ${SAMPLE_DEFAULTS.shards}] [--miner-fee-cap ${SAMPLE_DEFAULTS.minerFeeCap}]
                       [--hand-back-fee-bps 0] [--no-show-fee-bps 0] [--refund-seat-start <height|+blocks>] [--no-refund-seat]
                       [--schedule shows.json-like list of extra shows] [--tip <height>] [--out studio/plan.json]
+                      a real show names eventAt (ISO UTC), durationMin and seatPrefix; without startHeight its
+                      sales end 6 blocks after the call ends, estimated from the tip now (plan again on the day)
   genesis           build (and with --broadcast send) every planned show's prep and genesis;
                       writes app/public/shows.json and app/public/bcmr/<category>.json after sending
                       [--plan studio/plan.json] [--shows app/public/shows.json] [--broadcast] [--mine (simnet)]
@@ -54,6 +57,7 @@ const { values, positionals } = parseArgs({
     'no-show-fee-bps': { type: 'string' },
     'refund-seat-start': { type: 'string' },
     'no-refund-seat': { type: 'boolean' },
+    'add-real-data-key': { type: 'boolean', default: false },
     schedule: { type: 'string' },
     tip: { type: 'string' },
     out: { type: 'string', default: 'studio/plan.json' },
@@ -75,11 +79,12 @@ const showsPath = values.shows ?? 'app/public/shows.json';
 
 const commands = {
   keygen: async () => {
-    const view = keygen({ secretsPath: values.secrets });
-    console.log(`Wrote ${values.secrets} (keep it secret, back it up, never commit it).`);
+    const view = values['add-real-data-key'] ? addRealDataKey({ secretsPath: values.secrets }) : keygen({ secretsPath: values.secrets });
+    console.log(`${values['add-real-data-key'] ? 'Added the real-show data key to' : 'Wrote'} ${values.secrets} (keep it secret, back it up, never commit it).`);
     console.log(`Fund the studio at:  ${view.fundingAddress}`);
     console.log(`Sales public key:    ${view.salesPk}  (organiserPk; signs closeSales)`);
-    console.log(`Data public key:     ${view.dataPk}  (organiserDataPk; signs refund notices)`);
+    console.log(`Data public key:     ${view.dataPk}  (organiserDataPk of the samples; the worker holds it as STUDIO_DATA_KEY)`);
+    console.log(`Real-show data key:  ${view.realDataPk}  (organiserDataPk of real shows; never give it to the worker)`);
     console.log(`Identity address:    ${view.identityAddress}  (holds each show's BCMR identity output; never spend it)`);
   },
   plan: async () => {
@@ -116,7 +121,13 @@ const commands = {
     if (existsSync(values.out)) console.log(`Replacing ${values.out}.`);
     writePlan(values.out, plan);
     console.log(`Wrote ${values.out}: ${plan.shows.length} show(s) on ${network}, tip ${tip}.`);
-    for (const s of plan.shows) console.log(`  ${s.id}  ${s.kind}  start ${s.params.startHeight} (about ${s.startsAtEstimate})  ${s.shards} shards  ${s.params.price} sats`);
+    for (const s of plan.shows) {
+      console.log(`  ${s.id}  ${s.kind}  start ${s.params.startHeight} (about ${s.startsAtEstimate})  ${s.shards} shards  ${s.params.price} sats`);
+      if (s.kind !== 'real') continue;
+      const timing = callTiming(s);
+      console.log(`    call ${timing.eventAt} for ${s.durationMin} min (ends ${timing.callEndsAt}); seats ${s.seatPrefix}-<box office>-<seat>; sales end at block ${timing.salesEndBlock}, about ${timing.minutesAfterCall} min after the call ends`);
+      if (timing.minutesAfterCall < 0) console.log(`    WARNING: sales would end before the call ends; drop startHeight from the schedule so the studio computes it, or raise it`);
+    }
   },
   genesis: async () => {
     await genesis({

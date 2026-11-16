@@ -9,7 +9,7 @@
 import { createShowsCache, handleApi } from './lib/api.js';
 import { createWorkerChain } from './lib/chain.js';
 import { workerConfig } from './lib/config.js';
-import { createKvClaims, createMemoryClaims, createRateLimiter } from './lib/limits.js';
+import { createKvClaims, createMemoryClaims, createRateLimiter, withFallback } from './lib/limits.js';
 
 // Per isolate: rate-limit windows, the door record (unless KV is bound), the parsed catalogue.
 const isolate = { limiter: createRateLimiter(), claims: createMemoryClaims(), shows: new Map() };
@@ -35,7 +35,7 @@ export const onRequest = async (context) => {
         return response.text();
       }),
     openChain: () => createWorkerChain({ network: config.network, servers: config.servers }),
-    claims: env.DOOR_CLAIMS ? createKvClaims(env.DOOR_CLAIMS) : isolate.claims,
+    claims: env.DOOR_CLAIMS ? withFallback(createKvClaims(env.DOOR_CLAIMS), isolate.claims, (line) => console.log(line)) : isolate.claims,
     limiter: isolate.limiter,
     clientIp: request.headers.get('cf-connecting-ip') ?? 'unknown',
     // Under the page's 6 s request timeout (app/src/lib/api.js), so a seat whose
