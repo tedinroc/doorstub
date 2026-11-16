@@ -6,3 +6,4 @@ dist/
 .env*
 # internal build notes, never committed
 BUILD-BRIEF.md
+.claude/
