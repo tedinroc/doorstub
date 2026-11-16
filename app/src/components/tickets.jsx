@@ -52,10 +52,16 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
                 </div>
                 <div class="usd">{model.priceUsd ? say('usdAbout', { usd: model.priceUsd }) : ''}</div>
               </div>
-              <button type="button" class="btn cta" onClick={onBuy} disabled={working} data-buy={model.id}>
-                {working ? <span class="spin" aria-hidden="true" /> : null}
-                {LABELS.getTicket}
-              </button>
+              {model.onSale === false ? (
+                <p class="ended" data-sales-ended={model.id}>
+                  {say('showSalesEnded', { start: model.startBlock })}
+                </p>
+              ) : (
+                <button type="button" class="btn cta" onClick={onBuy} disabled={working} data-buy={model.id}>
+                  {working ? <span class="spin" aria-hidden="true" /> : null}
+                  {LABELS.getTicket}
+                </button>
+              )}
             </div>
             {model.sold !== null ? <div class="sold">{say('soldLine', { sold: model.sold, shards: model.shards })}</div> : null}
           </div>

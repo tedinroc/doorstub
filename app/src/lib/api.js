@@ -1,8 +1,13 @@
 // Client for the two worker endpoints the page calls (same origin in
 // production):
 //
-//   POST /api/notice { category, seat }  -> { signature }   sample-refund-seat shows only
-//   POST /api/door   { category, txid }  -> { link }        real shows, after a check-in
+//   POST /api/notice { category, seat, txid? }  -> { signature }   sample-refund-seat shows only
+//   POST /api/door   { category, txid, claim? } -> { link }        real shows, after a check-in
+//
+// `txid` on a notice is the buy, so the signer finds the seat's marker at
+// once. `claim` on the door is a random secret the page keeps for that
+// check-in: the door gives the link to one claimant per check-in, so the same
+// page can ask again (after a lost answer or a reload) and nobody else can.
 //
 // Every call has a timeout and a few retries for the answers that mean "not
 // yet" (the worker may read a Fulcrum server that has not seen our buy or
@@ -101,15 +106,15 @@ export const createApi = ({
   };
 
   return {
-    /** Ask for an 'R' notice for one seat. Resolves { signature } (hex). */
-    notice: async ({ category, seat }, options) => {
-      const json = await withRetries('/api/notice', { category, seat }, options);
+    /** Ask for an 'R' notice for one seat (`txid`: its buy, optional). Resolves { signature } (hex). */
+    notice: async ({ category, seat, txid }, options) => {
+      const json = await withRetries('/api/notice', { category, seat, ...(txid !== undefined && { txid }) }, options);
       if (typeof json.signature !== 'string' || !HEX.test(json.signature)) throw new ApiError('bad-answer', '/api/notice answered without a hex signature');
       return { signature: json.signature.toLowerCase() };
     },
-    /** Ask the door for the event link after a check-in. Resolves { link } (an https URL). */
-    door: async ({ category, txid }, { endpoint = '/api/door', ...options } = {}) => {
-      const json = await withRetries(endpoint, { category, txid }, options);
+    /** Ask the door for the event link after a check-in (`claim`: the page's secret for it, optional). Resolves { link } (an https URL). */
+    door: async ({ category, txid, claim }, { endpoint = '/api/door', ...options } = {}) => {
+      const json = await withRetries(endpoint, { category, txid, ...(claim !== undefined && { claim }) }, options);
       let url;
       try {
         url = new URL(json.link);

@@ -119,6 +119,17 @@ export const showCardModel = (show, { tip, usd = null, ledger, now = Date.now(),
   };
 };
 
+/**
+ * The shows on the page: those on sale, then any show whose sales ended while
+ * this wallet still has a ticket to watch there (held, or one this page acted
+ * on). So a sample A ticket does not vanish at the start: its card stays, and
+ * the refund arrives on it.
+ */
+export const listedShows = ({ shows, onSale, tickets, touched = new Set() }) => {
+  const watching = (show) => tickets.some((t) => t.showId === show.id && (t.state === 'held' || touched.has(`${t.showId}:${t.seatHex}`)));
+  return [...onSale, ...shows.filter((show) => !onSale.includes(show) && watching(show))];
+};
+
 /** The stamp on a finished ticket, or null while it is held. */
 export const stampOf = (state) => {
   if (state === 'walkedIn') return { text: LABELS.stampWalkedIn, tone: 'green' };

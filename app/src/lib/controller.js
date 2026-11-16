@@ -85,6 +85,23 @@ export const payoutOf = (spendTx, coinTxidHex, vout) => {
   return spendTx.outputs[index]?.valueSatoshis ?? null;
 };
 
+/** Where the page keeps its door claim secrets: the browser's storage when it allows it, else memory. */
+const defaultClaimStorage = () => {
+  try {
+    const ls = globalThis.localStorage;
+    if (ls !== undefined && ls !== null) {
+      ls.getItem('doorstub.probe');
+      return ls;
+    }
+  } catch {
+    // storage blocked (private mode, sandbox)
+  }
+  const map = new Map();
+  return { getItem: (k) => (map.has(k) ? map.get(k) : null), setItem: (k, v) => map.set(k, String(v)) };
+};
+
+const DOOR_RECORD_PREFIX = 'doorstub.door.';
+
 /** Money a hand-back returns to the buyer (every output to the buyer's address). */
 const backToBuyer = (built) => {
   const lock = built.transaction.outputs[0].lockingBytecode;
@@ -109,6 +126,9 @@ export const createController = ({ runtime, deps = {} }) => {
     sleep = sleepDefault,
     random = Math.random,
     keeper = true,
+    relayUrls,
+    claims = storage ?? defaultClaimStorage(),
+    randomBytes = (n) => globalThis.crypto.getRandomValues(new Uint8Array(n)),
     WebSocketImpl,
     now = () => Date.now(),
   } = deps;
@@ -321,6 +341,7 @@ export const createController = ({ runtime, deps = {} }) => {
     session = createSession({
       ...(dappIcon !== undefined && { dappIcon }),
       ...(storage !== undefined && { storage }),
+      ...(relayUrls !== undefined && { relayUrls }),
       initiateRelay: (cb, opts) => initiateRelay(watchRelay(cb), opts),
       onStatus: ({ state, error }) => {
         if (state === 'wrong-network') {
@@ -595,10 +616,38 @@ export const createController = ({ runtime, deps = {} }) => {
     }
   };
 
+  // The door gives the link to one claimant per check-in: this page, by a
+  // random secret it keeps for that check-in (so a retry or a reload gets the
+  // link again, and someone who only saw the txid does not).
+  const doorRecord = (txid) => {
+    try {
+      const value = JSON.parse(claims.getItem(DOOR_RECORD_PREFIX + txid) ?? 'null');
+      return value !== null && typeof value.claim === 'string' && /^[0-9a-f]{64}$/.test(value.claim) ? value : null;
+    } catch {
+      return null;
+    }
+  };
+  const saveDoorRecord = (txid, record) => {
+    try {
+      claims.setItem(DOOR_RECORD_PREFIX + txid, JSON.stringify(record));
+    } catch {
+      // storage full or blocked: the door still answers this page by its IP
+    }
+  };
+  const doorClaim = (txid) => {
+    const known = doorRecord(txid);
+    if (known !== null) return known;
+    const record = { claim: binToHex(randomBytes(32)) };
+    saveDoorRecord(txid, record);
+    return record;
+  };
+
   const askDoor = async (key, show, txid) => {
     setFlow(key, { ...flowOf(key), step: 'door', error: undefined });
     try {
-      const { link } = await api.door({ category: show.categoryHex, txid }, { endpoint: show.door?.endpoint ?? '/api/door' });
+      const record = doorClaim(txid);
+      const { link } = await api.door({ category: show.categoryHex, txid, claim: record.claim }, { endpoint: show.door?.endpoint ?? '/api/door' });
+      saveDoorRecord(txid, { ...record, link });
       setFlow(key, { ...flowOf(key), step: 'done', link, error: undefined });
     } catch (e) {
       setFlow(key, { ...flowOf(key), step: 'done', doorError: { key: 'doorDown', vars: {}, actions: ['retryDoor'], detail: e.message } });
@@ -659,7 +708,7 @@ export const createController = ({ runtime, deps = {} }) => {
     setFlow(key, { kind: 'refund', step: 'notice' });
     let signature;
     try {
-      ({ signature } = await api.notice({ category: show.categoryHex, seat: ticket.seatHex }));
+      ({ signature } = await api.notice({ category: show.categoryHex, seat: ticket.seatHex, ...(ticket.buy?.txid !== undefined && { txid: ticket.buy.txid }) }));
     } catch (e) {
       setFlow(key, { kind: 'refund', step: 'notice', error: { key: 'noticeDown', vars: {}, actions: ['retryRefund'], detail: e.message } });
       return undefined;

@@ -30,6 +30,11 @@ const LOCAL_HTTP = /^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):\d{1,5}$/;
  * the dev panel can say how to start a simnet). Only local addresses are
  * accepted, so even a development build cannot be pointed at a remote chain
  * or API by a link.
+ *
+ * Two more switches for the E2E: `relay=ws://127.0.0.1:PORT` pairs over a
+ * local WizardConnect relay (when the public ones are down), and
+ * `pagekeeper=0` stops the page from pushing settles itself, so the run can
+ * prove that the cron keeper does it.
  */
 export const resolveTestRuntime = (search = '') => {
   const q = new URLSearchParams(search);
@@ -42,6 +47,8 @@ export const resolveTestRuntime = (search = '') => {
   if (shows !== null && !/^\/[\w./-]*$/.test(shows) && !(shows.startsWith(`${api}/`) && api !== '')) {
     throw new Error('shows must be a path on this origin or on the api origin');
   }
+  const relay = q.get('relay');
+  if (relay !== null && !LOCAL_WS.test(relay)) throw new Error(`relay must be a local ws:// URL, got ${relay}`);
   return Object.freeze({
     network: 'simnet',
     servers: [fulcrum.replace(/\/$/, '')],
@@ -49,5 +56,7 @@ export const resolveTestRuntime = (search = '') => {
     showsUrl: shows ?? `${api}/shows.json`,
     testHooks: true,
     usd: q.has('usd') ? Number(q.get('usd')) : undefined,
+    ...(relay !== null && { relayUrls: Object.freeze([relay.replace(/\/$/, '')]) }),
+    ...(q.get('pagekeeper') === '0' && { pageKeeper: false }),
   });
 };

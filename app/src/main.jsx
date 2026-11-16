@@ -31,6 +31,8 @@ const controller = createController({
     fetchShows,
     fetchUsd: runtime.usd === undefined ? () => fetchUsdPerBch() : async () => null,
     dappIcon: `${globalThis.location.origin}/icon.png`,
+    keeper: runtime.pageKeeper !== false,
+    ...(runtime.relayUrls !== undefined && { relayUrls: runtime.relayUrls }),
   },
 });
 

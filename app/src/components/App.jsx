@@ -3,7 +3,7 @@ import { nextOpenInstance, showsOnSale } from '../../../src/shows/schedule.js';
 import { formatBch } from '../../../src/shows/format.js';
 import { TEST_HOOKS } from '../env.js';
 import { LABELS, say } from '../lib/copy.js';
-import { num, showCardModel, ticketModel } from '../lib/view.js';
+import { listedShows, num, showCardModel, ticketModel } from '../lib/view.js';
 import { useNow, useStore } from '../hooks.js';
 import { ConnectDialog } from './connect.jsx';
 import { Banner, CheckIt, DevPanel, Footer, Header, Hero, HowItWorks, ProofStrip } from './sections.jsx';
@@ -39,6 +39,9 @@ export const App = ({ controller, dev }) => {
       ticket: t,
       model: ticketModel(t, { tip: tip ?? undefined, now, returned: state.returned[keyOf(t)] ?? null }),
     }));
+  // This wallet's tickets shown under a show card: held ones, and any this page acted on.
+  const mineOf = (show) => tickets.filter(({ ticket }) => ticket.showId === show.id && (ticket.state === 'held' || touched.has(keyOf(ticket))));
+  const listed = tip === null ? [] : listedShows({ shows: state.shows, onSale, tickets: state.tickets, touched });
   const freshKeys = new Set(
     Object.values(state.flows)
       .filter((f) => f?.kind === 'buy' && f.step === 'done' && f.ticketKey && now - f.at < FRESH_MS + 30_000)
@@ -127,12 +130,12 @@ export const App = ({ controller, dev }) => {
                 <div class="skeleton" />
                 <div class="skeleton" />
               </div>
-            ) : state.boot === 'failed' ? null : onSale.length === 0 ? (
+            ) : state.boot === 'failed' ? null : listed.length === 0 ? (
               <div class="notice-box">{state.unverified.length > 0 && state.shows.length === 0 ? say('showUnverified') : say('showsNone')}</div>
             ) : (
-              <div class={`shows n${Math.min(onSale.length, 3)}`}>
-                {onSale.map((show) => {
-                  const mine = tickets.filter(({ ticket }) => ticket.showId === show.id && (ticket.state === 'held' || touched.has(keyOf(ticket))));
+              <div class={`shows n${Math.min(listed.length, 3)}`}>
+                {listed.map((show) => {
+                  const mine = mineOf(show);
                   return (
                     <ShowCard
                       key={show.id}

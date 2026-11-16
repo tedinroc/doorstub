@@ -1,54 +1,150 @@
 #!/usr/bin/env node
-// npm run e2e: the judge path in a real browser, on simnet.
+// npm run e2e: the judge path in a real browser, on simnet, with the real
+// worker and keeper.
 //
-// Builds the site in simnet mode, serves it with the production CSP (simnet
-// swapped in for the mainnet servers) next to the stub worker, and drives
-// headless Chrome through it while the sim wallet pairs over the PUBLIC
-// WizardConnect relay and signs (it never broadcasts; the page does, to the
-// simnet only):
-//   home (the first "Get a ticket" inside the first phone screen, no sideways
-//   scroll at 360 and 390 px) -> Get a ticket (A) -> connect dialog -> wallet
-//   joins -> buy -> ticket -> hand it back -> buy B -> the refund arrives by
-//   itself -> buy at the real show -> walk in -> door link -> a second A ticket
-//   -> mine past its grace -> the page settles it -> My tickets -> proof strip
-//   -> a phone's connect dialog -> dark mode.
-// Screenshots at 390x844 and 1440x900 go to .cache/screens/.
-//   --home   home page only (light and dark), for a quick look
-//   --quick  stop after the hand-back
-import { mkdirSync, rmSync } from 'node:fs';
+// Stage (test/e2e/stage.js): an in-process simnet; the studio's genesis on it
+// (one sample A that starts a few blocks ahead, sample B, one real show
+// whose door link is a test secret); the worker's Node adapter serving the
+// app built in simnet mode, /shows.json and the real /api/notice and
+// /api/door, with the production CSP (simnet swapped in). The sim wallet is
+// funded on simnet and pairs over the PUBLIC WizardConnect relay (one retry
+// on the other public relay; if both are down, a local relay, and the log
+// says so). It only signs; the page broadcasts, to the simnet only.
+//
+// Path, each step asserted in the DOM and in the simnet's own state:
+//   home -> Get a ticket (A) -> connect -> wallet joins -> buy A -> ticket
+//   -> hand it back -> buy B -> the refund arrives by itself (/api/notice,
+//   no second approval) -> buy the real show -> Walk in -> door link,
+//   keepsake stub -> buy A again -> mine past start + grace -> one keeper
+//   pass (worker/lib/keeper.js; the page's own settle push is switched off
+//   for this run) -> REFUNDED -> My tickets -> proof strip counts -> a phone's
+//   connect dialog -> dark mode.
+// Screenshots at 390x844 and 1440x900 go to .cache/e2e/screens/.
+//   --home   home page only (light and dark)
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import puppeteer from 'puppeteer-core';
 import { build } from 'vite';
+import { binToHex, decodeTransaction, encodeLockingBytecodeP2pkh, hexToBin } from '@bitauth/libauth';
 import { connectRpc } from '../../simnet/index.js';
+import { scripthashOf } from '../../src/chain/address.js';
+import { createWorkerChain } from '../../worker/lib/chain.js';
+import { runKeeper } from '../../worker/lib/keeper.js';
+import { parseWorkerShows, seatLabelOf } from '../../worker/lib/shows.js';
+import { libauthVmCheck } from '../../worker/node/vm.js';
 import { makeSimWallet } from '../support/sim-wallet.js';
-import { repoRoot, startStage } from './stage.js';
+import { startLocalRelay } from '../support/local-relay.js';
+import { STAGE_DOOR_LINK, repoRoot, startStage } from './stage.js';
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const SCREENS = join(repoRoot, '.cache', 'screens');
-const RUN = join(repoRoot, '.cache', 'e2e', String(Date.now()));
+const CACHE = join(repoRoot, '.cache');
+const OUT = join(CACHE, 'e2e');
+const SCREENS = join(OUT, 'screens');
+const RUN = join(OUT, 'runs', String(Date.now()));
 const SIZES = [
   { name: '390', width: 390, height: 844, deviceScaleFactor: 2 },
   { name: '1440', width: 1440, height: 900, deviceScaleFactor: 1 },
 ];
-const only = process.argv.includes('--quick');
 const homeOnly = process.argv.includes('--home');
+const PAIR_WAIT_MS = 45_000;
+const TOKEN_SATS = 1_000;
 
 const log = (...a) => console.log(`[e2e ${new Date().toISOString().slice(11, 19)}]`, ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const ok = (condition, what) => {
+  if (!condition) throw new Error(`assertion failed: ${what}`);
+  checks.push(what);
+};
+const checks = [];
+
+/** Kill any Chrome left over from an earlier run whose profile is under this repo's .cache/. */
+const killLeftoverChrome = () => {
+  try {
+    execFileSync('pkill', ['-f', `--user-data-dir=${CACHE}/`], { stdio: 'ignore' });
+    log('killed a leftover Chrome from an earlier run');
+  } catch {
+    // none running
+  }
+};
 
 mkdirSync(SCREENS, { recursive: true });
 mkdirSync(RUN, { recursive: true });
+killLeftoverChrome();
 
 log('building the site in simnet mode');
 await build({ configFile: join(repoRoot, 'app', 'vite.config.js'), root: join(repoRoot, 'app'), mode: 'simnet', logLevel: 'warn' });
 
-const stage = await startStage({ dir: join(RUN, 'studio'), root: join(repoRoot, '.cache', 'app-simnet'), csp: true });
+// A local relay is started up front (its URL must be in the page's CSP), but used only if both public relays fail.
+const localRelay = await startLocalRelay();
+const stage = await startStage({
+  dir: join(RUN, 'studio'),
+  root: join(CACHE, 'app-simnet'),
+  csp: true,
+  cspExtra: [localRelay.url],
+  firstStart: '+8',
+  count: 1,
+});
 const rpc = await connectRpc(stage.simnet.url, { clientName: 'doorstub e2e' });
 const wallet = makeSimWallet({ name: 'Sim wallet' });
+const receive = wallet.addressAt('receive', 0);
+/** The wallet's first receive addresses: the app buys to the first unused one. */
+const walletReceive = Array.from({ length: 20 }, (_, i) => wallet.addressAt('receive', i));
 let browser;
 let pairing;
 let failed = false;
 const consoleErrors = [];
+const apiAnswers = [];
+
+// ------------------------------------------------------------------ the simnet's own view (independent of the page)
+
+const chainTx = async (txid) => decodeTransaction(hexToBin(await rpc.request('blockchain.transaction.get', [txid])));
+const unspentAt = async (lockingBytecode) => rpc.request('blockchain.scripthash.listunspent', [scripthashOf(lockingBytecode), 'include_tokens']);
+const historyAt = async (lockingBytecode) => (await rpc.request('blockchain.scripthash.get_history', [scripthashOf(lockingBytecode)])).map((h) => h.tx_hash);
+const tipHeight = async () => (await rpc.request('blockchain.headers.subscribe', [])).height;
+const isUnspent = async (lockingBytecode, txid, vout) => (await unspentAt(lockingBytecode)).some((u) => u.tx_hash === txid && u.tx_pos === vout);
+const outpointOf = (input) => ({ txid: binToHex(input.outpointTransactionHash), vout: input.outpointIndex });
+const spends = (tx, txid, vout) => tx.inputs.some((i) => binToHex(i.outpointTransactionHash) === txid && i.outpointIndex === vout);
+const sameHex = (a, b) => binToHex(a) === binToHex(b);
+/** Wire-order category bytes of a show (shows.json posts display order). */
+const categoryOf = (show) => hexToBin(show.params.category);
+const escrowLock = (show) => hexToBin(show.derived.escrowLockingBytecode);
+const payeeLock = (show) => encodeLockingBytecodeP2pkh(hexToBin(show.params.organiserPkh));
+
+/** The buy's ticket and marker, read from the chain: [seat hex, value at the escrow]. */
+const checkBuyOnChain = async (show, txid, what) => {
+  const tx = await chainTx(txid);
+  const ticket = tx.outputs[1];
+  const marker = tx.outputs[2];
+  ok(ticket.token && sameHex(ticket.token.category, categoryOf(show)) && ticket.token.nft.capability === 'none', `${what}: ticket is an immutable NFT of the show's category`);
+  const c = ticket.token.nft.commitment;
+  const buyer = walletReceive.find((a) => sameHex(a.pkh, c.slice(4)));
+  ok(c.length === 24 && c[0] === 0x54 && buyer !== undefined, `${what}: ticket commitment is 'T' | seat | a pkh of the wallet's receive addresses (24 bytes)`);
+  ok(sameHex(ticket.lockingBytecode, buyer.lockingBytecode), `${what}: ticket NFT goes to that receive address (receive ${buyer.index})`);
+  const seatHex = binToHex(c.slice(1, 4));
+  ok(sameHex(marker.lockingBytecode, escrowLock(show)), `${what}: marker coin sits at the show's Escrow address`);
+  ok(marker.token && marker.token.nft.commitment[0] === 0x45 && binToHex(marker.token.nft.commitment.slice(1, 4)) === seatHex, `${what}: marker commitment is 'E' | same seat`);
+  ok(marker.valueSatoshis === BigInt(show.params.price + TOKEN_SATS), `${what}: escrow coin holds price + 1,000 sats`);
+  ok(await isUnspent(escrowLock(show), txid, 2), `${what}: the escrow coin is unspent on simnet`);
+  ok(await isUnspent(buyer.lockingBytecode, txid, 1), `${what}: the ticket NFT is unspent in the wallet on simnet`);
+  return { seatHex, value: marker.valueSatoshis, buyer };
+};
+
+/** A spend of the escrow coin (txid:2) paying `lock`: the payout at index 0, and no token unless allowed. */
+const checkSpendOnChain = async (show, buyTxid, spendTxid, { lock, minValue, keepsake = null, what }) => {
+  const tx = await chainTx(spendTxid);
+  ok(spends(tx, buyTxid, 2), `${what}: spends the escrow coin`);
+  ok(sameHex(tx.outputs[0].lockingBytecode, lock), `${what}: output 0 pays the right address`);
+  ok(tx.outputs[0].valueSatoshis >= minValue, `${what}: output 0 is at least ${minValue} sats (got ${tx.outputs[0].valueSatoshis})`);
+  const tokenOutputs = tx.outputs.filter((o) => o.token !== undefined);
+  if (keepsake !== null) {
+    ok(tokenOutputs.length === 1 && sameHex(tx.outputs[1].lockingBytecode, keepsake), `${what}: the only token output is the keepsake back to the buyer's address`);
+  } else ok(tokenOutputs.length === 0, `${what}: no output carries a token (marker burned)`);
+  ok(!(await isUnspent(escrowLock(show), buyTxid, 2)), `${what}: the escrow coin is gone on simnet`);
+  return tx;
+};
+
+// ------------------------------------------------------------------ the browser
 
 const shot = async (page, name, { selector, full = false } = {}) => {
   for (const size of SIZES) {
@@ -75,10 +171,22 @@ const click = async (page, selector) => {
   await page.$eval(selector, (el) => el.click());
 };
 
-const state = (page) => page.evaluate(() => {
-  const s = window.__doorstub.controller.store.get();
-  return JSON.parse(JSON.stringify({ flows: s.flows, wallet: { state: s.wallet.state, name: s.wallet.name }, keeper: s.keeper, proof: s.proof?.txCounts ?? null, tickets: s.tickets.map((t) => ({ key: `${t.showId}:${t.seatHex}`, state: t.state, kind: t.show.kind })) }, (k, v) => (typeof v === 'bigint' ? v.toString() : v)));
-});
+const state = (page) =>
+  page.evaluate(() => {
+    const s = window.__doorstub.controller.store.get();
+    return JSON.parse(
+      JSON.stringify(
+        {
+          flows: s.flows,
+          wallet: { state: s.wallet.state, name: s.wallet.name, relay: s.wallet.relay, uri: s.wallet.pairing?.uri ?? null },
+          keeper: s.keeper,
+          proof: s.proof?.txCounts ?? null,
+          tickets: s.tickets.map((t) => ({ key: `${t.showId}:${t.seatHex}`, state: t.state, kind: t.show.kind })),
+        },
+        (k, v) => (typeof v === 'bigint' ? v.toString() : v),
+      ),
+    );
+  });
 
 const waitState = async (page, fn, what, ms = 60_000) => {
   const start = Date.now();
@@ -93,11 +201,54 @@ const waitState = async (page, fn, what, ms = 60_000) => {
   }
 };
 
+const domText = (page, selector) => page.$eval(selector, (el) => el.textContent.trim());
+
+/** Pair the sim wallet with the page's current pairing link; true once the page says the wallet is connected. */
+const pairWith = async (page, uri, ms = PAIR_WAIT_MS) => {
+  try {
+    pairing?.close();
+  } catch {
+    // ignore
+  }
+  pairing = await wallet.pairOverRelay(uri);
+  try {
+    await waitState(page, (s) => s.wallet.state === 'connected', 'wallet_ready', ms);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const openPage = async (url) => {
+  const page = await browser.newPage();
+  page.on('console', (m) => {
+    if (m.type() === 'error') consoleErrors.push(m.text());
+  });
+  page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
+  page.on('response', async (r) => {
+    const path = new URL(r.url()).pathname;
+    if (!path.startsWith('/api/')) return;
+    let body = null;
+    try {
+      body = await r.json();
+    } catch {
+      // not JSON
+    }
+    apiAnswers.push({ path, status: r.status(), body });
+  });
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  return page;
+};
+
 try {
   const showA = stage.shows.find((s) => s.kind === 'sample-settle');
   const showB = stage.shows.find((s) => s.kind === 'sample-refund-seat');
   const real = stage.shows.find((s) => s.kind === 'real');
-  await rpc.request('simnet.fund', { address: wallet.addressAt('receive', 0).address, sats: 2_000_000, mine: true });
+  const cap = BigInt(showA.params.minerFeeCap);
+  const fund = await rpc.request('simnet.fund', { address: receive.address, sats: 2_000_000, mine: true });
+  ok(await isUnspent(receive.lockingBytecode, fund.txid, 0), 'the sim wallet is funded on simnet (2,000,000 sats)');
+  log(`tip ${await tipHeight()}; sample A starts at ${showA.params.startHeight}, settles from ${showA.params.startHeight + showA.params.graceBlocks + 1}`);
 
   browser = await puppeteer.launch({
     executablePath: CHROME,
@@ -105,18 +256,14 @@ try {
     userDataDir: join(RUN, 'chrome'),
     args: ['--no-first-run', '--no-default-browser-check', '--disable-features=Translate'],
   });
-  const page = await browser.newPage();
-  page.on('console', (m) => {
-    if (m.type() === 'error') consoleErrors.push(m.text());
-  });
-  page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
-  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
-  const url = `${stage.server.origin}/?fulcrum=${encodeURIComponent(stage.simnet.url)}&usd=208`;
+  const base = `${stage.server.origin}/?fulcrum=${encodeURIComponent(stage.simnet.url)}&usd=208&pagekeeper=0`;
   const t0 = Date.now();
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  let page = await openPage(base);
   await page.waitForSelector(`[data-buy="${showA.id}"]`, { timeout: 30_000 });
   await page.waitForSelector(`[data-buy="${showB.id}"]`, { timeout: 30_000 });
+  await page.waitForSelector(`[data-buy="${real.id}"]`, { timeout: 30_000 });
   log(`home ready in ${Date.now() - t0} ms`);
+  ok((await domText(page, `[data-show="${real.id}"]`)).includes(real.card), 'the real show card shows its card text from shows.json');
   await sleep(600);
   // The judge reaches "Get a ticket" in the first phone screen, and nothing scrolls sideways.
   for (const width of [360, 390]) {
@@ -128,8 +275,8 @@ try {
       inner: window.innerWidth,
     }));
     log(`${width} px: first "Get a ticket" ends at ${Math.round(m.buy)} px; page ${m.scroll} px wide`);
-    if (m.scroll > m.inner) throw new Error(`horizontal scroll at ${width} px: ${m.scroll} > ${m.inner}`);
-    if (m.buy > 700) throw new Error(`"Get a ticket" is below the first phone screen at ${width} px (${m.buy} px)`);
+    ok(m.scroll <= m.inner, `no horizontal scroll at ${width} px`);
+    ok(m.buy <= 700, `"Get a ticket" inside the first phone screen at ${width} px`);
   }
   await shot(page, '01-home');
   await shot(page, '01-home-full', { full: true });
@@ -137,130 +284,231 @@ try {
     await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'dark' }]);
     await shot(page, '01-home-dark');
     await shot(page, '01-home-dark-full', { full: true });
-    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+    throw Object.assign(new Error('home only'), { done: true });
   }
 
-  if (homeOnly) throw Object.assign(new Error('home only'), { done: true });
-
-  // Get a ticket (A) -> the connect dialog.
+  // ---------------------------------------------------------------- connect: public relay, one retry, then a local relay
   await click(page, `[data-buy="${showA.id}"]`);
   await page.waitForFunction(() => document.querySelector('[data-wiz-uri]')?.value?.startsWith('wiz://'), { timeout: 30_000 });
   await page.waitForSelector('[data-qr] svg', { timeout: 10_000 });
-  const uri = await page.$eval('[data-wiz-uri]', (el) => el.value);
-  log('pairing link', uri.slice(0, 40));
+  ok((await page.$eval('[data-open-selene]', (el) => el.getAttribute('href'))).startsWith('wiz://'), 'Open Selene is a raw wiz:// link');
   await shot(page, '02-connect');
-
-  // The wallet joins over the public relay; the buy continues by itself.
   const tPair = Date.now();
-  pairing = await wallet.pairOverRelay(uri);
-  await waitState(page, (s) => s.wallet.state === 'connected', 'wallet_ready over the public relay', 90_000);
-  log(`wallet connected in ${Date.now() - tPair} ms`);
+  let relayUsed = 'public relay 1';
+  let paired = await pairWith(page, await page.$eval('[data-wiz-uri]', (el) => el.value));
+  if (!paired) {
+    log('the first public relay did not pair within 45 s; one retry on the other public relay');
+    relayUsed = 'public relay 2';
+    await page.evaluate(() => window.__doorstub.controller.connect({ relay: 1 }));
+    const uri2 = await waitState(page, (s) => s.wallet.relay === 1 && s.wallet.uri, 'the second pairing link', 15_000);
+    paired = await pairWith(page, uri2);
+  }
+  if (!paired) {
+    log('PUBLIC RELAYS DOWN: both public WizardConnect relays failed; pairing over the local relay instead');
+    relayUsed = 'LOCAL relay (public relays down)';
+    await page.close();
+    page = await openPage(`${base}&relay=${encodeURIComponent(localRelay.url)}`);
+    await click(page, `[data-buy="${showA.id}"]`);
+    await page.waitForFunction(() => document.querySelector('[data-wiz-uri]')?.value?.startsWith('wiz://'), { timeout: 30_000 });
+    paired = await pairWith(page, await page.$eval('[data-wiz-uri]', (el) => el.value));
+    if (!paired) throw new Error('the wallet did not pair even over the local relay');
+  }
+  log(`wallet connected over ${relayUsed} in ${Date.now() - tPair} ms`);
+  ok((await domText(page, '[data-wallet-chip]')).length > 0, 'the header shows the connected wallet chip');
+
+  // ---------------------------------------------------------------- buy A (continues by itself after pairing)
   const keyA = await waitState(page, (s) => s.flows[showA.id]?.step === 'done' && s.flows[showA.id].ticketKey, 'buy A', 90_000);
-  log(`bought A (${keyA}) ${Date.now() - t0} ms after the page opened; prompt: ${wallet.log.at(-1).userPrompt}`);
+  const buyA = (await state(page)).flows[showA.id].txid;
+  log(`bought A (${keyA}) ${Math.round((Date.now() - t0) / 1000)} s after the page opened; prompt: ${wallet.log.at(-1).userPrompt}`);
+  ok(/^Doorstub: buy seat A-\d-1 for 0\.001 BCH\. The money waits in the show's contract\.$/.test(wallet.log.at(-1).userPrompt), 'buy prompt is the CLAIMS.md section 7 wording');
   await page.waitForSelector(`[data-ticket="${keyA}"][data-state="held"]`);
+  const a1 = await checkBuyOnChain(showA, buyA, 'buy A');
+  ok(keyA === `${showA.id}:${a1.seatHex}`, 'the ticket card is for the seat the chain shows');
   await sleep(1300);
   await shot(page, '03-ticket-a', { selector: `[data-show="${showA.id}"]` });
 
-  // Hand it back.
+  // ---------------------------------------------------------------- hand it back
   await click(page, `[data-hand-back="${keyA}"]`);
   await waitState(page, (s) => s.flows[keyA]?.step === 'done', 'hand back', 60_000);
   await page.waitForSelector(`[data-ticket="${keyA}"][data-state="handedBack"]`, { timeout: 30_000 });
+  const handBackTxid = (await state(page)).flows[keyA].txid;
   log(`handed back; prompt: ${wallet.log.at(-1).userPrompt}`);
+  ok(/^Doorstub: hand back seat A-\d-1\. 0\.\d+ BCH comes back to this wallet\.$/.test(wallet.log.at(-1).userPrompt), 'hand-back prompt is the CLAIMS.md section 7 wording');
+  const hb = await checkSpendOnChain(showA, buyA, handBackTxid, { lock: a1.buyer.lockingBytecode, minValue: a1.value - cap, what: 'hand back' });
+  ok(spends(hb, buyA, 1), 'hand back: also spends (burns) the ticket NFT');
+  ok(!(await isUnspent(a1.buyer.lockingBytecode, buyA, 1)), 'hand back: the ticket NFT left the wallet on simnet');
   await sleep(1500);
+  ok((await domText(page, `[data-ticket="${keyA}"] .stamp`)) === 'HANDED BACK', 'ticket card stamped HANDED BACK');
   await shot(page, '04-handed-back', { selector: `[data-show="${showA.id}"]` });
 
-  if (!only) {
-    // Sample B: buy, then the refund arrives with no second approval.
-    const approvals = wallet.log.length;
-    await click(page, `[data-buy="${showB.id}"]`);
-    const keyB = await waitState(page, (s) => s.flows[showB.id]?.step === 'done' && s.flows[showB.id].ticketKey, 'buy B', 60_000);
+  // ---------------------------------------------------------------- sample B: the refund arrives with no second approval
+  const approvals = wallet.log.length;
+  await click(page, `[data-buy="${showB.id}"]`);
+  const keyB = await waitState(page, (s) => s.flows[showB.id]?.step === 'done' && s.flows[showB.id].ticketKey, 'buy B', 60_000);
+  const buyB = (await state(page)).flows[showB.id].txid;
+  const b = await checkBuyOnChain(showB, buyB, 'buy B');
+  await sleep(400);
+  await shot(page, '05-b-notice', { selector: `[data-ticket="${keyB}"]` });
+  await waitState(page, (s) => s.flows[keyB]?.step === 'back', 'B refund sequence', 60_000);
+  await page.waitForSelector(`[data-ticket="${keyB}"][data-state="refunded"]`, { timeout: 30_000 });
+  const refundTxid = (await state(page)).flows[keyB].txid;
+  ok(wallet.log.length === approvals + 1, 'B: the wallet was asked once (the buy), never for the refund');
+  const notice = apiAnswers.find((a) => a.path === '/api/notice' && a.status === 200);
+  ok(notice !== undefined && /^[0-9a-f]+$/.test(notice.body.signature) && notice.body.scope === 'R' && notice.body.seat === b.seatHex, 'B: the worker signed an R notice for this seat (/api/notice 200)');
+  await checkSpendOnChain(showB, buyB, refundTxid, { lock: b.buyer.lockingBytecode, minValue: b.value - cap, what: 'B refund' });
+  ok(await isUnspent(b.buyer.lockingBytecode, buyB, 1), 'B refund: the ticket NFT stays in the wallet (refunded, not burned)');
+  await sleep(1500);
+  ok((await domText(page, `[data-ticket="${keyB}"] .stamp`)) === 'REFUNDED', 'B ticket card stamped REFUNDED');
+  log('B refunded by itself');
+  await shot(page, '06-b-refunded', { selector: `[data-ticket="${keyB}"]` });
+
+  // ---------------------------------------------------------------- the real show: buy, walk in, the door answers
+  await click(page, `[data-buy="${real.id}"]`);
+  const keyR = await waitState(page, (s) => s.flows[real.id]?.step === 'done' && s.flows[real.id].ticketKey, 'buy real', 60_000);
+  const buyR = (await state(page)).flows[real.id].txid;
+  const r = await checkBuyOnChain(real, buyR, 'buy real');
+  await page.waitForSelector(`[data-walk-in="${keyR}"]`, { timeout: 30_000 });
+  await sleep(1300);
+  await shot(page, '07-real-held', { selector: `[data-ticket="${keyR}"]` });
+  await click(page, `[data-walk-in="${keyR}"]`);
+  await waitState(page, (s) => s.flows[keyR]?.link || s.flows[keyR]?.doorError, 'door answer', 60_000);
+  const doorFlow = (await state(page)).flows[keyR];
+  ok(typeof doorFlow.link === 'string', `the door answered: ${JSON.stringify(doorFlow.doorError ?? null)}`);
+  ok(/^Doorstub: walk in with seat [A-Z]-\d-1\. This pays the organiser 0\.\d+ BCH; your ticket stays as a keepsake\.$/.test(wallet.log.at(-1).userPrompt), 'check-in prompt is the CLAIMS.md section 7 wording');
+  const checkInTxid = doorFlow.txid;
+  await checkSpendOnChain(real, buyR, checkInTxid, { lock: payeeLock(real), minValue: r.value - cap, keepsake: r.buyer.lockingBytecode, what: 'check-in' });
+  const keepsake = (await unspentAt(r.buyer.lockingBytecode)).find((u) => u.tx_hash === checkInTxid && u.tx_pos === 1);
+  ok(keepsake?.token_data?.nft?.commitment?.startsWith(`54${r.seatHex}`), 'check-in: the keepsake stub (same ticket commitment) is unspent in the wallet');
+  const workerShow = parseWorkerShows(readFileSync(stage.boot.showsPath, 'utf8'), { network: 'simnet' }).shows.find((s) => s.id === real.id);
+  const expectedLink = STAGE_DOOR_LINK.replace('{seat}', encodeURIComponent(seatLabelOf(workerShow, hexToBin(r.seatHex))));
+  ok(doorFlow.link === expectedLink, `the door link is the show's secret link for this seat (${doorFlow.link})`);
+  await page.waitForSelector(`[data-ticket="${keyR}"] [data-door-link]`, { timeout: 10_000 });
+  ok((await page.$eval(`[data-ticket="${keyR}"] [data-door-link]`, (el) => el.href)) === expectedLink, 'the page shows the door link');
+  await page.waitForSelector(`[data-ticket="${keyR}"][data-state="walkedIn"]`, { timeout: 30_000 });
+  // One claimant per check-in: someone who only knows the txid is refused; the page's own claim gets the link again.
+  const observer = await fetch(`${stage.server.origin}/api/door`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ category: real.params.category, txid: checkInTxid }) });
+  ok(observer.status === 409, `the door refuses a caller without the page's claim (${observer.status})`);
+  const claim = await page.evaluate((txid) => JSON.parse(localStorage.getItem(`doorstub.door.${txid}`)).claim, checkInTxid);
+  const again = await (await fetch(`${stage.server.origin}/api/door`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ category: real.params.category, txid: checkInTxid, claim }) })).json();
+  ok(again.again === true && again.link === expectedLink, 'the page\'s claim gets the same link again');
+  log(`walked in; door link ${doorFlow.link}`);
+  await sleep(1500);
+  ok((await domText(page, `[data-ticket="${keyR}"] .stamp`)) === 'WALKED IN', 'real ticket card stamped WALKED IN');
+  await shot(page, '08-walked-in', { selector: `[data-ticket="${keyR}"]` });
+
+  // ---------------------------------------------------------------- a second A ticket, then the cron keeper settles it
+  await click(page, `[data-buy="${showA.id}"]`);
+  const keyA2 = await waitState(page, (s) => s.flows[showA.id]?.step === 'done' && s.flows[showA.id].ticketKey !== keyA && s.flows[showA.id].ticketKey, 'second buy A', 60_000);
+  const buyA2 = (await state(page)).flows[showA.id].txid;
+  const a2 = await checkBuyOnChain(showA, buyA2, 'second buy A');
+  await page.waitForSelector(`[data-ticket="${keyA2}"][data-state="held"]`, { timeout: 30_000 });
+  await sleep(1000);
+  await shot(page, '09-a2-held', { selector: `[data-ticket="${keyA2}"]` });
+  const settleLocktime = showA.params.startHeight + showA.params.graceBlocks;
+  const mined = await rpc.request('simnet.mine', { blocks: settleLocktime - (await tipHeight()) });
+  ok(mined.height === settleLocktime, `mined to block ${settleLocktime} (start + grace); settling opens at the next block`);
+  await page.waitForSelector(`[data-sales-ended="${showA.id}"]`, { timeout: 30_000 });
+  ok((await page.$(`[data-buy="${showA.id}"]`)) === null, 'after the start, sample A offers no "Get a ticket"');
+  ok((await page.$(`[data-show="${showA.id}"] [data-ticket="${keyA2}"][data-state="held"]`)) !== null, 'after the start, the held ticket stays on its show card (it does not vanish)');
+  ok((await domText(page, `[data-sales-ended="${showA.id}"]`)) === `Sales for this show ended at block ${showA.params.startHeight.toLocaleString('en-US')}.`, 'the card says sales ended, in the CLAIMS.md 9.1 wording');
+  await sleep(2500);
+  ok((await state(page)).keeper.length === 0 && (await isUnspent(escrowLock(showA), buyA2, 2)), 'the page did not push the settle (switched off for this run): the coin waits for the keeper');
+  const { shows: keeperShows } = parseWorkerShows(readFileSync(stage.boot.showsPath, 'utf8'), { network: 'simnet' });
+  const chain = createWorkerChain({ network: 'simnet', servers: [stage.simnet.url] });
+  let report;
+  try {
+    report = await runKeeper({ shows: keeperShows, chain, dataKey: hexToBin(stage.env.STUDIO_DATA_KEY), vmCheck: libauthVmCheck });
+  } finally {
+    chain.close();
+  }
+  const settled = report.shows.find((s) => s.id === showA.id)?.actions.find((a) => a.path === 'settle');
+  ok(report.errors.length === 0, `keeper pass without errors (${JSON.stringify(report.errors)})`);
+  ok(settled?.status === 'sent' && settled.seats.includes(a2.seatHex), `the keeper sent the settle for seat ${a2.seatHex}`);
+  ok(report.sent === 1, 'the keeper sent exactly one transaction (nothing else was due)');
+  log(`keeper pass: ${report.sent} sent; settle ${settled.txid}`);
+  const st = await checkSpendOnChain(showA, buyA2, settled.txid, { lock: a2.buyer.lockingBytecode, minValue: a2.value - cap, what: 'keeper settle' });
+  ok(st.locktime === settleLocktime, 'keeper settle: locktime is start + grace');
+  ok(await isUnspent(a2.buyer.lockingBytecode, buyA2, 1), 'keeper settle: the ticket NFT stays in the wallet');
+  await page.waitForSelector(`[data-ticket="${keyA2}"][data-state="refunded"]`, { timeout: 60_000 });
+  await sleep(1500);
+  ok((await domText(page, `[data-ticket="${keyA2}"] .stamp`)) === 'REFUNDED', 'second A ticket card stamped REFUNDED');
+  await shot(page, '10-a2-refunded', { selector: `[data-ticket="${keyA2}"]` });
+
+  // ---------------------------------------------------------------- proof strip: the page's counts equal the chain's
+  const buys = [buyA, buyB, buyR, buyA2];
+  const expected = { buy: 4, handBack: 1, checkIn: 1, settle: 1, refund: 1 };
+  const histories = new Set([...(await historyAt(escrowLock(showA))), ...(await historyAt(escrowLock(showB))), ...(await historyAt(escrowLock(real)))]);
+  const ours = new Set([...buys, handBackTxid, refundTxid, checkInTxid, settled.txid]);
+  ok(histories.size === 8 && [...ours].every((t) => histories.has(t)), 'the three Escrow addresses hold exactly the 8 transactions of this run');
+  await page.waitForFunction(
+    (want) => Object.entries(want).every(([p, n]) => document.querySelector(`[data-proof="${p}"] .n`)?.textContent.trim() === String(n)),
+    { timeout: 30_000 },
+    expected,
+  );
+  ok(true, `proof strip shows ${JSON.stringify(expected)}`);
+  await shot(page, '11-proof', { selector: '#proof' });
+
+  // ---------------------------------------------------------------- My tickets
+  await click(page, '[data-wallet-chip]');
+  await page.waitForSelector('.drawer .list');
+  const want = { [keyA]: ['handedBack', 'HANDED BACK'], [keyB]: ['refunded', 'REFUNDED'], [keyR]: ['walkedIn', 'WALKED IN'], [keyA2]: ['refunded', 'REFUNDED'] };
+  for (const [key, [st2, stamp]] of Object.entries(want)) {
+    await page.waitForSelector(`.drawer [data-ticket="${key}"][data-state="${st2}"]`, { timeout: 30_000 });
+    ok((await domText(page, `.drawer [data-ticket="${key}"] .stamp`)) === stamp, `My tickets: ${key} is ${stamp}`);
+  }
+  await sleep(900);
+  await shot(page, '12-my-tickets');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => document.querySelector('.drawer .head button')?.click());
+  await shot(page, '13-full', { full: true });
+
+  // ---------------------------------------------------------------- a phone opening the connect dialog (fresh context: no remembered pairing)
+  const phoneContext = await browser.createBrowserContext();
+  try {
+    const phone = await phoneContext.newPage();
+    await phone.emulate({
+      viewport: { width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+    });
+    await phone.goto(base, { waitUntil: 'domcontentloaded' });
+    await phone.waitForSelector('[data-connect]', { timeout: 30_000 });
+    await click(phone, '[data-connect]');
+    await phone.waitForFunction(() => document.querySelector('[data-wiz-uri]')?.value?.startsWith('wiz://'), { timeout: 30_000 });
+    ok(await phone.$eval('[data-open-selene]', (el) => el.classList.contains('block') && !el.classList.contains('quiet')), 'on a phone, Open Selene is the main button');
     await sleep(500);
-    await shot(page, '05-b-notice', { selector: `[data-ticket="${keyB}"]` });
-    await waitState(page, (s) => s.flows[keyB]?.step === 'back', 'B refund sequence', 60_000);
-    await page.waitForSelector(`[data-ticket="${keyB}"][data-state="refunded"]`, { timeout: 30_000 });
-    if (wallet.log.length !== approvals + 1) throw new Error('the B refund asked the wallet for a second approval');
-    log('B refunded by itself');
-    await sleep(1500);
-    await shot(page, '06-b-refunded', { selector: `[data-ticket="${keyB}"]` });
-
-    // A real show: buy, walk in, the door answers with the link.
-    if (real) {
-      await click(page, `[data-buy="${real.id}"]`);
-      const keyR = await waitState(page, (s) => s.flows[real.id]?.step === 'done' && s.flows[real.id].ticketKey, 'buy real', 60_000);
-      await sleep(1300);
-      await shot(page, '07-real-held', { selector: `[data-ticket="${keyR}"]` });
-      await click(page, `[data-walk-in="${keyR}"]`);
-      await waitState(page, (s) => s.flows[keyR]?.link || s.flows[keyR]?.doorError, 'door answer', 60_000);
-      const door = await state(page);
-      if (!door.flows[keyR].link) throw new Error(`the door did not answer: ${JSON.stringify(door.flows[keyR])}`);
-      await page.waitForSelector(`[data-ticket="${keyR}"] [data-door-link]`, { timeout: 10_000 });
-      await page.waitForSelector(`[data-ticket="${keyR}"][data-state="walkedIn"]`, { timeout: 30_000 });
-      log(`walked in; prompt: ${wallet.log.at(-1).userPrompt}`);
-      await sleep(1500);
-      await shot(page, '08-walked-in', { selector: `[data-ticket="${keyR}"]` });
-    }
-
-    // A second A ticket, then the show passes its grace: the page settles it by itself.
-    await click(page, `[data-buy="${showA.id}"]`);
-    const keyA2 = await waitState(page, (s) => s.flows[showA.id]?.step === 'done' && s.flows[showA.id].ticketKey !== keyA && s.flows[showA.id].ticketKey, 'second buy A', 60_000);
-    const tip = (await rpc.request('blockchain.headers.subscribe', [])).height;
-    const settleAt = showA.params.startHeight + showA.params.graceBlocks + 1;
-    await rpc.request('simnet.mine', { blocks: settleAt - 1 - tip });
-    await waitState(page, (s) => s.keeper.length > 0, 'the page pushes the settle', 60_000);
-    await waitState(page, (s) => s.tickets.find((t) => t.key === keyA2)?.state === 'refunded', 'second A settled', 60_000);
-    log('the page settled the started show');
-    await sleep(1200);
-    await shot(page, '09-proof', { selector: '#proof' });
-
-    // My tickets.
-    await click(page, '[data-wallet-chip]');
-    await page.waitForSelector('.drawer .list');
-    await sleep(900);
-    await shot(page, '10-my-tickets');
-    await page.keyboard.press('Escape');
-    const final = await state(page);
-    log('proof strip', JSON.stringify(final.proof));
-    log('tickets', JSON.stringify(final.tickets.map((t) => `${t.kind}:${t.state}`)));
-    await shot(page, '11-full', { full: true });
+    await phone.screenshot({ path: join(SCREENS, '14-connect-phone-390.png') });
+    await phone.close();
+  } finally {
+    await phoneContext.close();
   }
 
-  // A phone opening the connect dialog: Open Selene is the main button, the QR is one tap away.
-  // A fresh context: the first page's remembered pairing would skip the dialog.
-  const phoneContext = await browser.createBrowserContext();
-  const phone = await phoneContext.newPage();
-  await phone.emulate({ viewport: { width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
-  await phone.goto(url, { waitUntil: 'domcontentloaded' });
-  await phone.waitForSelector('[data-connect]', { timeout: 30_000 });
-  await click(phone, '[data-connect]');
-  await phone.waitForFunction(() => document.querySelector('[data-wiz-uri]')?.value?.startsWith('wiz://'), { timeout: 30_000 });
-  await sleep(500);
-  await phone.screenshot({ path: join(SCREENS, '02-connect-phone-390.png') });
-  await phone.close();
-  await phoneContext.close();
-
-  // Dark mode.
+  // ---------------------------------------------------------------- dark mode
   await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'dark' }]);
   await page.evaluate(() => window.scrollTo(0, 0));
-  await shot(page, '12-dark');
-  await shot(page, '12-dark-full', { full: true });
+  await shot(page, '15-dark');
+  await shot(page, '15-dark-full', { full: true });
 
-  const relevant = consoleErrors.filter((e) => !/favicon|ERR_NAME_NOT_RESOLVED|api\.coin/.test(e));
-  if (relevant.length > 0) log('console errors:', relevant.slice(0, 10));
-  log(`PASS: judge path on simnet; screenshots in ${SCREENS}`);
+  const csp = consoleErrors.filter((e) => /Content Security Policy|Refused to/.test(e));
+  ok(csp.length === 0, `no CSP violations (${csp.slice(0, 3).join(' | ')})`);
+  const other = consoleErrors.filter((e) => !/favicon|ERR_NAME_NOT_RESOLVED|status of 409/.test(e) && !csp.includes(e));
+  if (other.length > 0) log('console errors (not failing):', other.slice(0, 10));
+  log(`PASS: judge path on simnet with the real worker and keeper (${checks.length} checks; wallet paired over ${relayUsed}); screenshots in .cache/e2e/screens/`);
 } catch (e) {
   if (e.done) {
-    log(`home screenshots in ${SCREENS}`);
+    log('home screenshots in .cache/e2e/screens/');
   } else {
-  failed = true;
-  console.error('E2E FAILED:', e);
-  try {
-    const pages = await browser?.pages();
-    const page = pages?.at(-1);
-    if (page) await page.screenshot({ path: join(SCREENS, 'failure.png'), fullPage: true });
-  } catch {
-    // ignore
-  }
-  if (consoleErrors.length) console.error('console errors:', consoleErrors.slice(0, 20));
+    failed = true;
+    console.error('E2E FAILED:', e);
+    console.error(`passed ${checks.length} checks before the failure; last: ${checks.at(-1)}`);
+    try {
+      const pages = await browser?.pages();
+      const page = pages?.at(-1);
+      if (page) await page.screenshot({ path: join(SCREENS, 'failure.png'), fullPage: true });
+    } catch {
+      // ignore
+    }
+    if (consoleErrors.length) console.error('console errors:', consoleErrors.slice(0, 20));
+    console.error('api answers:', JSON.stringify(apiAnswers.slice(-10)));
   }
 } finally {
   try {
@@ -269,8 +517,10 @@ try {
     // ignore
   }
   await browser?.close().catch(() => {});
+  killLeftoverChrome();
   rpc.close();
   await stage.close();
+  await localRelay.close();
   rmSync(join(RUN, 'chrome'), { recursive: true, force: true });
   process.exit(failed ? 1 : 0);
 }
