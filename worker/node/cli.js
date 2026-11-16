@@ -12,6 +12,8 @@
 //   --studio <path>/studio.json      take STUDIO_DATA_KEY from a studio secrets file (simnet runs)
 //   --dev-vars .dev.vars             KEY=VALUE file with STUDIO_DATA_KEY, DOOR_LINKS (default .dev.vars if present)
 //   --door-links '{"id":"https://..."}'
+//   --static app/dist                also serve the built site on the same origin (as Pages does)
+//   --cors                           let a dev server on another port call /api/*
 //
 // Nothing here broadcasts: the notice signer signs, the door reads.
 import { parseArgs } from 'node:util';
@@ -29,6 +31,8 @@ const { values } = parseArgs({
     studio: { type: 'string' },
     'dev-vars': { type: 'string', default: '.dev.vars' },
     'door-links': { type: 'string' },
+    static: { type: 'string' },
+    cors: { type: 'boolean', default: false },
   },
 });
 
@@ -41,7 +45,16 @@ if (values['door-links'] !== undefined) env.DOOR_LINKS = values['door-links'];
 
 const showsUrl = values['shows-url'];
 const showsPath = showsUrl === undefined ? (values.shows ?? 'app/public/shows.json') : undefined;
-const server = await startWorkerServer({ env, showsPath, showsUrl, port: Number(values.port), host: values.host, log: (line) => console.error(line) });
+const server = await startWorkerServer({
+  env,
+  showsPath,
+  showsUrl,
+  port: Number(values.port),
+  host: values.host,
+  staticRoot: values.static,
+  cors: values.cors,
+  log: (line) => console.error(line),
+});
 console.log(`doorstub worker (${server.config.network}) on ${server.url}/api  (health: ${server.url}/api/health)`);
 for (const e of server.config.errors) console.log(`config: ${e}`);
 const stop = async () => {

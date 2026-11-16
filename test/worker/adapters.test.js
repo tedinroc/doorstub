@@ -1,23 +1,35 @@
 // The Cloudflare adapters, run in Node against the simnet with Cloudflare's
 // calling conventions: the Pages Functions route (context.request, env with
-// ASSETS serving shows.json) and the cron Worker's pass (SHOWS_URL fetched).
+// ASSETS serving shows.json and a DOOR_CLAIMS KV namespace) and the cron
+// Worker's pass (SHOWS_URL fetched).
 // Neither has the libauth VM (as in workerd); the worker's rule check guards
 // what they build, and the simnet runs the VM on every broadcast.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { hexToBin } from '@bitauth/libauth';
 import { verifyRefundNotice } from '../../src/tx/index.js';
 import { onRequest } from '../../functions/api/[[route]].js';
 import cron, { runCron } from '../../worker/cron.js';
-import { buyTicket, unspentAt, workerSimnet } from './support.js';
+import { buyTicket, send, signedCheckIn, startWorker, unspentAt, workerSimnet } from './support.js';
 
 test('Pages Functions route and cron Worker, on simnet', async (t) => {
-  const ctx = await workerSimnet(t, { name: 'adapters' });
+  const ctx = await workerSimnet(t, { name: 'adapters', schedule: [{ id: 'live-call', kind: 'real', title: 'Live call', card: 'A real show.', startHeight: '+300' }] });
   const [showB] = ctx.byKind('sample-refund-seat');
+  const [real] = ctx.byKind('real');
+  const kv = new Map();
   const env = {
     DOORSTUB_NETWORK: 'simnet',
     DOORSTUB_FULCRUM: ctx.simnet.url,
     STUDIO_DATA_KEY: ctx.dataKeyHex,
+    DOOR_LINKS: JSON.stringify({ 'live-call': 'https://example.invalid/call?seat={seat}' }),
+    DOOR_CLAIMS: {
+      get: async (key) => kv.get(key) ?? null,
+      put: async (key, value) => {
+        kv.set(key, value);
+      },
+    },
     ASSETS: {
       fetch: async (request) => {
         assert.equal(new URL(request.url).pathname, '/shows.json');
@@ -40,6 +52,18 @@ test('Pages Functions route and cron Worker, on simnet', async (t) => {
   const notice = await call('/api/notice', { method: 'POST', body: JSON.stringify({ category: showB.categoryHex, seat: ticket.seatHex, txid: ticket.txid }), headers: { 'cf-connecting-ip': '203.0.113.7' } });
   assert.equal(notice.status, 200, JSON.stringify(notice.body));
   assert.equal(verifyRefundNotice({ show: showB, notice: { scope: 'R', seat: ticket.seat, signature: hexToBin(notice.body.signature) } }), true);
+
+  // The door of a real show, with the one-claimant record in the KV namespace.
+  const seat = await buyTicket(ctx.rpc, real);
+  const checkIn = await send(ctx.rpc, signedCheckIn(real, seat));
+  const walkIn = (ip) => call('/api/door', { method: 'POST', body: JSON.stringify({ category: real.categoryHex, txid: checkIn }), headers: { 'cf-connecting-ip': ip } });
+  const opened = await walkIn('203.0.113.8');
+  assert.equal(opened.status, 200, JSON.stringify(opened.body));
+  assert.equal(opened.body.link, 'https://example.invalid/call?seat=L-0-1');
+  assert.equal(opened.body.again, false);
+  assert.equal((await walkIn('203.0.113.8')).body.again, true);
+  assert.equal((await walkIn('203.0.113.9')).status, 409);
+  assert.deepEqual([...kv.keys()], [`door:live-call:${checkIn}`]);
 
   // A mainnet deployment ignores the simnet URL and refuses a simnet catalogue.
   const mainnet = await onRequest({
@@ -65,4 +89,42 @@ test('Pages Functions route and cron Worker, on simnet', async (t) => {
   await cron.scheduled({}, { ...env, SHOWS_URL: 'not a url' }, { waitUntil: (p) => waited.push(p) });
   assert.equal(waited.length, 1);
   await waited[0];
+});
+
+test('Node adapter: the site, shows.json and /api/* on one origin (as Pages serves them), CORS only when asked', async (t) => {
+  const ctx = await workerSimnet(t, { name: 'node-origin' });
+  const [showB] = ctx.byKind('sample-refund-seat');
+  const site = join(ctx.dir, 'site');
+  mkdirSync(join(site, 'assets'), { recursive: true });
+  writeFileSync(join(site, 'index.html'), '<!doctype html><title>Doorstub</title>');
+  writeFileSync(join(site, 'assets', 'app.js'), 'export {};');
+  writeFileSync(join(site, 'shows.json'), '{"stale":true}');
+  const server = await startWorker(t, ctx, { staticRoot: site, cors: true, htmlHeaders: { 'content-security-policy': "default-src 'self'" } });
+
+  const home = await fetch(`${server.url}/`);
+  assert.equal(home.status, 200);
+  assert.match(home.headers.get('content-type'), /text\/html/);
+  assert.equal(home.headers.get('content-security-policy'), "default-src 'self'");
+  assert.match(await home.text(), /Doorstub/);
+  const script = await fetch(`${server.url}/assets/app.js`);
+  assert.match(script.headers.get('content-type'), /javascript/);
+  assert.equal(script.headers.get('content-security-policy'), null);
+  assert.match(await (await fetch(`${server.url}/tickets`)).text(), /Doorstub/, 'unknown paths fall back to the page');
+  assert.equal((await fetch(`${server.url}/..%2f..%2fpackage.json`)).status, 403, 'nothing outside the site directory');
+  assert.equal((await fetch(`${server.url}/`, { method: 'POST' })).status, 405);
+
+  const shows = await fetch(`${server.url}/shows.json`);
+  assert.equal(await shows.text(), ctx.showsText, 'shows.json is the catalogue the worker reads, not a stale copy in the site');
+
+  const ticket = await buyTicket(ctx.rpc, showB);
+  const notice = await fetch(`${server.url}/api/notice`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'http://127.0.0.1:5173' }, body: JSON.stringify({ category: showB.categoryHex, seat: ticket.seatHex }) });
+  assert.equal(notice.status, 200);
+  assert.equal(notice.headers.get('access-control-allow-origin'), '*');
+  const preflight = await fetch(`${server.url}/api/notice`, { method: 'OPTIONS' });
+  assert.equal(preflight.status, 204);
+
+  const plain = await startWorker(t, ctx);
+  const apiOnly = await fetch(`${plain.url}/`);
+  assert.equal(apiOnly.status, 404);
+  assert.equal((await fetch(`${plain.url}/api/health`)).headers.get('access-control-allow-origin'), null, 'no CORS unless asked');
 });
