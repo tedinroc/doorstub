@@ -1,5 +1,5 @@
 // `studio plan`: turn a schedule into studio/plan.json (public keys only, no
-// secrets). The default catalogue (APP-BRIEF section 2): rolling sample-settle
+// secrets). The default catalogue (ARCHITECTURE.md, "Shows"): rolling sample-settle
 // instances every 36 blocks, and one sample-refund-seat show far in the future.
 import { binToHex, cashAddressToLockingBytecode, lockingBytecodeToAddressContents } from '@bitauth/libauth';
 import { validateShow } from '../../src/tx/index.js';

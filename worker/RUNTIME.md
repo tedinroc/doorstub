@@ -17,7 +17,7 @@ Tested with `wrangler dev` 3.114.17 in local mode (workerd on this Mac; no login
 - `@noble/curves` and `@noble/hashes` work (ECDSA and Schnorr sign and verify).
 - Outbound WebSockets work both ways: `new WebSocket('ws://...')` and `fetch(url, { headers: { Upgrade: 'websocket' } })` both reached a local Fulcrum (the simnet) and got `server.version` back. The worker uses the global `WebSocket` (as `src/chain/electrum.js` does in the browser and Node).
 
-So, as APP-BRIEF 5.3 planned for this case, nothing the Cloudflare adapters import touches libauth (`test/worker/runtime.test.js` walks their import graphs: only `@noble/*` packages, no `node:` modules, no Node adapter):
+So, as planned for this case, nothing the Cloudflare adapters import touches libauth (`test/worker/runtime.test.js` walks their import graphs: only `@noble/*` packages, no `node:` modules, no Node adapter):
 
 - **Crypto**: `@noble/hashes` (sha256) and `@noble/curves` (secp256k1). Notices are signed with **ECDSA, DER, low S, RFC 6979 deterministic nonces** (`OP_CHECKDATASIG` and `src/tx` `verifyRefundNotice` take it; a DER signature shorter than 70 bytes is re-made deterministically, since `src/tx`'s argument encoder takes 64, 70, 71 or 72 bytes). BCH Schnorr (not BIP-340) is only *verified* (for `'C'` notices the studio signs), written from the 2019 spec and pinned against libauth in `test/worker/crypto.test.js`.
 - **Contracts**: the Escrow and BoxOffice redeem scripts are recomputed from each show's posted parameters and the compiled artifacts (`src/tx/artifacts.js`, plain data), exactly as `src/tx/contracts.js` does; a show whose `derived` redeem script, locking bytecode or script hash differs is refused (`worker/lib/shows.js`).

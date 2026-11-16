@@ -1,7 +1,7 @@
 // A wallet that joins after @wizardconnect/dapp's 30 s key-exchange wait
 // (a pasted link in Paytaca, a slow QR scan) still pairs: the session nudges
 // the library's own "connected" handler once the key exchange completes
-// (APP-BRIEF 8, probe/src/connect.js). The REAL DappConnectionManager runs,
+// (found with Paytaca on 11/16, probe/src/connect.js). The REAL DappConnectionManager runs,
 // wired to the sim wallet in memory; only Date is mocked, so 45 s pass at once.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

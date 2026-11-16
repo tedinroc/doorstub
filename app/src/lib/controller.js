@@ -755,7 +755,7 @@ export const createController = ({ runtime, deps = {} }) => {
     return refundSeat(key);
   };
 
-  // ---------------------------------------------------------------- the page keeper (APP-BRIEF 5.4)
+  // ---------------------------------------------------------------- the page keeper (anyone can push a settle)
 
   /**
    * A show past its start plus grace with unsettled coins: build the settle

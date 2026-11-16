@@ -1,5 +1,5 @@
 // Every stuck state gets one plain sentence (a key in copy.js SENTENCES) and
-// the next step the person can take (APP-BRIEF section 3).
+// the next step the person can take.
 //
 //   describeError(error, context) -> { key, vars, actions: string[], detail? }
 //
@@ -8,7 +8,7 @@
 // 'reload', 'connect'.
 import { formatBch } from '../../../src/shows/format.js';
 
-/** Selene's refusal of a transaction it cannot check (APP-BRIEF section 8). */
+/** Selene's refusal of a transaction it cannot check (seen in the 11/16 wallet probe). */
 const COULD_NOT_VERIFY = /could not verify/i;
 
 const trimWords = (text, max = 240) => {

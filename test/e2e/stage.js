@@ -21,8 +21,7 @@ export const simnetCsp = (simnetUrl, extra = []) => {
 };
 
 /**
- * The real show on the stage: the first screening as APP-BRIEF section 8
- * describes it (card text in CLAIMS.md section 6), far enough ahead that a
+ * The real show on the stage: the first screening as planned (card text in CLAIMS.md section 6), far enough ahead that a
  * run never reaches its start.
  */
 export const REAL_SHOW = Object.freeze({

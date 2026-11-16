@@ -102,7 +102,7 @@ test('api: retries "not yet" answers, gives up on refusals, times out', async ()
   await assert.rejects(slow.door({ category: 'aa', txid: 'bb' }), (e) => e.code === 'timeout');
 });
 
-test('every stuck state has a plain sentence and a next step (APP-BRIEF section 3)', () => {
+test('every stuck state has a plain sentence and a next step', () => {
   const show = { startHeight: 977_637 };
   const cases = [
     [new WalletError('rejected', 'User rejected the request'), 'walletDeclined', ['retry'], 'Your wallet declined: “User rejected the request”. Nothing was sent.'],
