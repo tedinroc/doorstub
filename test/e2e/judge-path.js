@@ -275,6 +275,16 @@ const openPage = async (url) => {
   });
   await page.emulateTimezone(VIEWER_ZONE);
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+  // Note whether show cards were drawn from shows.json, with Get a ticket waiting, before the genesis checks passed.
+  await page.evaluateOnNewDocument(() => {
+    window.__sawWaiting = [];
+    new MutationObserver(() => {
+      for (const el of document.querySelectorAll('[data-buy-waiting]')) {
+        const id = el.getAttribute('data-buy-waiting');
+        if (!window.__sawWaiting.includes(id)) window.__sawWaiting.push(id);
+      }
+    }).observe(document, { subtree: true, childList: true, attributes: true });
+  });
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   return page;
 };
@@ -381,6 +391,8 @@ try {
   await page.waitForSelector(`[data-buy="${showB.id}"]`, { timeout: 30_000 });
   await page.waitForSelector(`[data-buy="${real.id}"]`, { timeout: 30_000 });
   log(`home ready in ${Date.now() - t0} ms`);
+  const sawWaiting = await page.evaluate(() => window.__sawWaiting);
+  ok([showA.id, showB.id, real.id].every((id) => sawWaiting.includes(id)), `the cards were drawn from shows.json first, Get a ticket waiting for the genesis check (${sawWaiting.join(', ')})`);
   ok((await domText(page, `[data-show="${real.id}"]`)).includes(real.card), 'the real show card shows its card text from shows.json');
   // The real show's call, as shows.json posts it (CONTRACT: eventAt, durationMin, seatPrefix), in the reader's own zone.
   ok(real.eventAt === REAL_SHOW.eventAt && real.durationMin === 25 && real.seatPrefix === 'S', `shows.json: the real show names its call (${real.eventAt}), 25 minutes and seat letter S`);
@@ -682,6 +694,13 @@ try {
   await page.keyboard.press('Escape');
   await page.evaluate(() => document.querySelector('.drawer .head button')?.click());
   await shot(page, '13-full', { full: true });
+
+  // ---------------------------------------------------------------- a reload keeps the finished tickets under their cards
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  for (const [show, key] of [[showA, keyA], [showB, keyB], [real, keyR]]) {
+    await page.waitForSelector(`[data-show="${show.id}"] [data-ticket="${key}"]`, { timeout: 30_000 });
+  }
+  ok(true, 'after a reload the handed-back, refunded and walked-in tickets are still under their show cards');
 
   // ---------------------------------------------------------------- a phone opening the connect dialog (fresh context: no remembered pairing)
   const phoneContext = await browser.createBrowserContext();
