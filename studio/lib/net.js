@@ -1,13 +1,15 @@
 // The studio's view of a chain: simnet (one local server) or mainnet (public
 // Fulcrum servers). Reads go to one healthy server; broadcast is reachable only
 // through the studio's gated commands (lib/gate.js), and on mainnet it sends to
-// two servers. Simnet refuses a server that reports the mainnet genesis hash.
+// two servers, of different operators when it can. Simnet refuses a server
+// that reports the mainnet genesis hash. The mainnet server list and the
+// genesis hash are the app's (src/chain/servers.js).
 import { binToHex, hexToBin } from '@bitauth/libauth';
-import { FULCRUM_SERVERS } from '../../probe/src/fulcrum.js';
+import { MAINNET_GENESIS_HASH, MAINNET_SERVERS, normaliseServers } from '../../src/chain/servers.js';
 import { connectRpc } from '../../simnet/rpc.js';
 import { lockingBytecodeOfAddress, scripthashOf } from '../../simnet/chain.js';
 
-export const MAINNET_GENESIS_HASH = '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f';
+export { MAINNET_GENESIS_HASH };
 export const DEFAULT_SIMNET_URL = 'ws://127.0.0.1:50021';
 
 /** Fulcrum token_data -> libauth token. */
@@ -76,12 +78,28 @@ const wrap = ({ network, query, broadcasters, simnet }) => {
   };
 };
 
+/** One server per operator first, then the rest, so the first two healthy servers are usually two operators. */
+const operatorsFirst = (servers) => {
+  const list = normaliseServers(servers);
+  const seen = new Set();
+  const first = [];
+  const rest = [];
+  for (const s of list) {
+    if (seen.has(s.operator)) rest.push(s);
+    else {
+      seen.add(s.operator);
+      first.push(s);
+    }
+  }
+  return [...first, ...rest];
+};
+
 /**
  * Open the network. Simnet: `server` (default ws://127.0.0.1:50021).
- * Mainnet: the public servers (or `servers`), reads read-only; `forBroadcast`
- * also opens two broadcast connections.
+ * Mainnet: the public servers (or `servers`: URLs or { url, operator }),
+ * reads read-only; `forBroadcast` also opens two broadcast connections.
  */
-export const openNetwork = async ({ network, server, servers = FULCRUM_SERVERS, forBroadcast = false }) => {
+export const openNetwork = async ({ network, server, servers = MAINNET_SERVERS, forBroadcast = false }) => {
   if (network === 'simnet') {
     const client = await connectRpc(server ?? DEFAULT_SIMNET_URL, { clientName: 'Doorstub studio' });
     const features = await client.request('server.features', []);
@@ -94,7 +112,7 @@ export const openNetwork = async ({ network, server, servers = FULCRUM_SERVERS, 
   if (network !== 'mainnet') throw new Error('network must be mainnet or simnet');
   const healthy = [];
   const errors = [];
-  for (const url of servers) {
+  for (const { url } of operatorsFirst(servers)) {
     if (healthy.length >= (forBroadcast ? 2 : 1)) break;
     try {
       const client = await connectRpc(url, { clientName: 'Doorstub studio', readOnly: !forBroadcast });

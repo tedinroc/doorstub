@@ -11,10 +11,13 @@
 // `request` only takes read methods (and `simnet.*` on the simnet). The only
 // way to send a transaction is `broadcastChecked(checked)`, which takes an
 // object made by checkTransaction (src/chain/checked.js), and only when the
-// pool was created with `allowBroadcast: true`.
+// pool was created with `allowBroadcast: true`. Before the first broadcast
+// through a connection, the server must say which chain it serves
+// (`server.features` genesis_hash): a simnet pool never sends to a mainnet
+// server, and a mainnet pool never sends to any other chain.
 import { RpcError, TransportError, openElectrum } from './electrum.js';
 import { isChecked } from './checked.js';
-import { MAINNET_SERVERS, normaliseServers } from './servers.js';
+import { MAINNET_GENESIS_HASH, MAINNET_SERVERS, normaliseServers } from './servers.js';
 import { headerFromElectrum } from './tokens.js';
 
 /** Methods `request` passes through. Subscriptions go through subscribeHeaders / subscribeScripthash. */
@@ -407,11 +410,50 @@ export const createFulcrumPool = ({
     return targets;
   };
 
+  // Connection -> promise of its chain check (see assertChain).
+  const chainChecks = new WeakMap();
+
+  /**
+   * Ask a server which chain it serves before anything is broadcast through
+   * it. A simnet pool refuses a server reporting the mainnet genesis hash, so
+   * a test or E2E run can never send to mainnet by a wrong URL; a mainnet pool
+   * refuses a server reporting any other genesis. A server that does not
+   * implement server.features (test doubles) is not refused for that: real
+   * Fulcrum servers and the simnet always answer it.
+   */
+  const assertChain = (conn) => {
+    let check = chainChecks.get(conn);
+    if (check === undefined) {
+      check = conn.request('server.features', []).then(
+        (features) => {
+          const hash = typeof features?.genesis_hash === 'string' ? features.genesis_hash.toLowerCase() : undefined;
+          if (hash === undefined) return;
+          if (network === 'simnet' && hash === MAINNET_GENESIS_HASH) {
+            throw new BroadcastError('wrong-chain', `${conn.url} serves BCH mainnet; a simnet pool never broadcasts there`);
+          }
+          if (network === 'mainnet' && hash !== MAINNET_GENESIS_HASH) {
+            throw new BroadcastError('wrong-chain', `${conn.url} does not serve BCH mainnet (genesis ${hash})`);
+          }
+        },
+        (e) => {
+          if (!(e instanceof RpcError)) throw e;
+        },
+      );
+      chainChecks.set(conn, check);
+      // A transport failure may be retried on a new connection; a wrong chain stays refused.
+      check.catch((e) => {
+        if (e?.code !== 'wrong-chain') chainChecks.delete(conn);
+      });
+    }
+    return check;
+  };
+
   /**
    * Send a checked transaction to two servers. Success if either accepts it
    * or says it already has it. Returns { txid, acceptedBy, alreadyKnown, errors }.
    * Throws BroadcastError with every server's words otherwise (`conflict` is
-   * true when an input was already spent, e.g. shard contention).
+   * true when an input was already spent, e.g. shard contention), or with
+   * code 'wrong-chain' (nothing sent anywhere) when a server serves another chain.
    */
   const broadcastChecked = async (checked) => {
     if (!allowBroadcast) throw new BroadcastError('broadcast-disabled', 'this pool was created read-only (allowBroadcast is false)');
@@ -419,12 +461,22 @@ export const createFulcrumPool = ({
       throw new BroadcastError('not-checked', 'broadcastChecked only takes a transaction returned by checkTransaction, checkSignedReply or checkSignatureFree');
     }
     const targets = await broadcastTargets(2);
-    const settled = await Promise.allSettled(targets.map((conn) => conn.request('blockchain.transaction.broadcast', [checked.hex])));
-    const acceptedBy = [];
     const errors = [];
+    const chains = await Promise.allSettled(targets.map(assertChain));
+    const wrongChain = chains.find((r) => r.status === 'rejected' && r.reason?.code === 'wrong-chain');
+    if (wrongChain !== undefined) throw wrongChain.reason;
+    const usable = targets.filter((conn, i) => {
+      const r = chains[i];
+      if (r.status === 'fulfilled') return true;
+      errors.push({ server: conn.url, message: r.reason?.message ?? String(r.reason) });
+      if (r.reason instanceof TransportError && conn === active) drop(active, r.reason);
+      return false;
+    });
+    const settled = await Promise.allSettled(usable.map((conn) => conn.request('blockchain.transaction.broadcast', [checked.hex])));
+    const acceptedBy = [];
     let alreadyKnown = false;
     settled.forEach((r, i) => {
-      const server = targets[i].url;
+      const server = usable[i].url;
       if (r.status === 'fulfilled') {
         if (typeof r.value === 'string' && r.value.toLowerCase() === checked.txid) acceptedBy.push(server);
         else errors.push({ server, message: `answered ${JSON.stringify(r.value)} instead of the txid` });
@@ -433,7 +485,7 @@ export const createFulcrumPool = ({
         acceptedBy.push(server);
       } else {
         errors.push({ server, message: r.reason?.message ?? String(r.reason) });
-        if (r.reason instanceof TransportError && targets[i] === active) drop(active, r.reason);
+        if (r.reason instanceof TransportError && usable[i] === active) drop(active, r.reason);
       }
     });
     if (acceptedBy.length > 0) return { txid: checked.txid, acceptedBy, alreadyKnown, errors };

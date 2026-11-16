@@ -3,6 +3,7 @@
 // broadcast-to-two that only takes checked transactions.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { hexToBin } from '@bitauth/libauth';
 import {
   BroadcastError,
@@ -12,6 +13,7 @@ import {
   checkSignatureFree,
   checkTransaction,
   createFulcrumPool,
+  MAINNET_GENESIS_HASH,
   isChecked,
   openElectrum,
   scripthashOf,
@@ -219,6 +221,42 @@ test('broadcastChecked: an answer lost in transit still succeeds when a server h
   assert.equal(result.txid, s.checked.txid);
   assert.equal(result.alreadyKnown, true);
   pool.close();
+});
+
+/** A server that answers server.features with `genesisHash`, else like the mini chain. */
+const featuresHandler = (chain, genesisHash) => (method, params) =>
+  method === 'server.features' ? { genesis_hash: genesisHash, protocol_max: '1.5' } : chain.handler(method, params);
+
+test('broadcastChecked: a simnet pool never sends to a server that reports the mainnet genesis', async () => {
+  const s = await settleScenario();
+  const net = makeFakeNetwork();
+  net.addServer(A, featuresHandler(s.chain, MAINNET_GENESIS_HASH));
+  net.addServer(B, featuresHandler(s.chain, 'ab'.repeat(32)));
+  const pool = createFulcrumPool({ network: 'simnet', servers: [A, B], WebSocketImpl: net.WebSocketImpl, pingIntervalMs: 0, raceWidth: 1, allowBroadcast: true });
+  await assert.rejects(pool.broadcastChecked(s.checked), (e) => e instanceof BroadcastError && e.code === 'wrong-chain' && e.message.includes(A));
+  const broadcasts = [...net.servers.values()].flatMap((srv) => srv.calls).filter((c) => c.method === 'blockchain.transaction.broadcast');
+  assert.equal(broadcasts.length, 0, 'nothing reached either server');
+  // Asked again, it is still refused (the check is remembered per connection).
+  await assert.rejects(pool.broadcastChecked(s.checked), (e) => e.code === 'wrong-chain');
+  pool.close();
+});
+
+test('broadcastChecked: a mainnet pool never sends to a server of another chain; the right chain passes', async () => {
+  const s = await settleScenario();
+  const net = makeFakeNetwork();
+  net.addServer(A, featuresHandler(s.chain, 'ab'.repeat(32)));
+  const wrong = createFulcrumPool({ network: 'mainnet', servers: [A], WebSocketImpl: net.WebSocketImpl, pingIntervalMs: 0, allowBroadcast: true });
+  await assert.rejects(wrong.broadcastChecked(s.checked), (e) => e.code === 'wrong-chain');
+  assert.equal(net.servers.get(A).calls.filter((c) => c.method === 'blockchain.transaction.broadcast').length, 0);
+  wrong.close();
+  net.addServer(B, featuresHandler(s.chain, MAINNET_GENESIS_HASH));
+  const right = createFulcrumPool({ network: 'mainnet', servers: [B], WebSocketImpl: net.WebSocketImpl, pingIntervalMs: 0, allowBroadcast: true });
+  const result = await right.broadcastChecked(s.checked);
+  assert.deepEqual(result.acceptedBy, [B]);
+  right.close();
+  // The hash is the one live mainnet Fulcrum reports (pinned 11/16).
+  const live = JSON.parse(readFileSync(new URL('../fixtures/fulcrum-live/server.features.json', import.meta.url), 'utf8'));
+  assert.equal(live.message.result.genesis_hash, MAINNET_GENESIS_HASH);
 });
 
 test('checkTransaction: refuses a transaction the VM refuses; brands only what passes', async () => {
