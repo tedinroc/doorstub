@@ -6,7 +6,7 @@
 export const BLAZE = Object.freeze({
   /** Link to the short presentation (deck or video). */
   presentationUrl: '',
-  /** Link to the public source repository. */
+  /** Link to the public source repository (planned: https://github.com/tedinroc/doorstub, once it exists). */
   sourceUrl: '',
   /** EMBER2026 CashTokens donation address (token-aware cashaddr, bitcoincash:z...). */
   donationAddress: '',

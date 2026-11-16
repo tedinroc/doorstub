@@ -6,11 +6,21 @@
 //
 // __DOORSTUB_TEST_HOOKS__ is the only switch between the two: a literal
 // `false` in production, so the bundler drops every override path.
+import { realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
 const appRoot = fileURLToPath(new URL('.', import.meta.url));
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+// node_modules may be a link to a shared install (a git worktree); the dev server must be allowed to read it.
+const modules = (() => {
+  try {
+    return realpathSync(join(repoRoot, 'node_modules'));
+  } catch {
+    return join(repoRoot, 'node_modules');
+  }
+})();
 
 export default defineConfig(({ command, mode }) => {
   const testHooks = command === 'serve' || mode === 'simnet';
@@ -28,7 +38,7 @@ export default defineConfig(({ command, mode }) => {
       host: 'localhost',
       port: 5190,
       strictPort: true,
-      fs: { allow: [repoRoot] },
+      fs: { allow: [repoRoot, modules] },
     },
     preview: { host: 'localhost', port: 5191, strictPort: true },
     build: {
