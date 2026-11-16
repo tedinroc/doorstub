@@ -86,7 +86,7 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
 const SPEND_LABEL = { handBack: LABELS.handBackTx, checkIn: LABELS.checkInTx, settle: LABELS.settleTx, refund: LABELS.refundTx };
 
 /** A ticket the wallet holds (or held): seat, money, countdown or refund track, stamp, actions. */
-export const Ticket = ({ model, flow, network, fresh, onHandBack, onWalkIn, onAction, onCancel, settleProgress }) => {
+export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack, onWalkIn, onAction, onCancel, settleProgress }) => {
   const prevState = usePrevious(model.state);
   const moneyRef = useRef(null);
   const cutRef = useCut();
@@ -95,7 +95,7 @@ export const Ticket = ({ model, flow, network, fresh, onHandBack, onWalkIn, onAc
   const rootRef = useRef(null);
   useEffect(() => {
     // A ticket just printed: bring it into view (it may sit under the fold on a phone).
-    if (!fresh || rootRef.current === null) return;
+    if (!fresh || !reveal || rootRef.current === null) return;
     const r = rootRef.current.getBoundingClientRect();
     if (r.top < 60 || r.bottom > globalThis.innerHeight) {
       rootRef.current.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'center' });

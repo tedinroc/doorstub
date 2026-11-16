@@ -30,10 +30,15 @@ export const App = ({ controller, dev }) => {
     return () => globalThis.removeEventListener?.('keydown', onKey);
   }, []);
 
-  const tickets = state.tickets.map((t) => ({
-    ticket: t,
-    model: ticketModel(t, { tip: tip ?? undefined, now, returned: state.returned[keyOf(t)] ?? null }),
-  }));
+  // Held tickets first, then the newest (a buy still in the mempool counts as newest).
+  const age = (t) => (t.buy?.height ? t.buy.height : Number.MAX_SAFE_INTEGER);
+  const tickets = [...state.tickets]
+    .sort((a, b) => (a.state === 'held') - (b.state === 'held') || age(a) - age(b))
+    .reverse()
+    .map((t) => ({
+      ticket: t,
+      model: ticketModel(t, { tip: tip ?? undefined, now, returned: state.returned[keyOf(t)] ?? null }),
+    }));
   const freshKeys = new Set(
     Object.values(state.flows)
       .filter((f) => f?.kind === 'buy' && f.step === 'done' && f.ticketKey && now - f.at < FRESH_MS + 30_000)
@@ -67,7 +72,7 @@ export const App = ({ controller, dev }) => {
     return undefined;
   };
 
-  const renderTicket = ({ ticket, model }) => {
+  const renderTicket = ({ ticket, model }, reveal = false) => {
     const key = keyOf(ticket);
     const settleAt = Number(ticket.show.startHeight) + Number(ticket.show.graceBlocks) + 1;
     const left = tip === null ? 1 : Math.max(0, settleAt - 1 - tip);
@@ -78,6 +83,7 @@ export const App = ({ controller, dev }) => {
         flow={state.flows[key]}
         network={state.network}
         fresh={freshKeys.has(key)}
+        reveal={reveal}
         settleProgress={1 - Math.min(1, left / 40)}
         onHandBack={() => controller.handBack(key)}
         onWalkIn={() => controller.walkIn(key)}
@@ -139,7 +145,7 @@ export const App = ({ controller, dev }) => {
                       {mine.length > 0 ? (
                         <>
                           <div class="slot" aria-hidden="true" />
-                          {mine.map(renderTicket)}
+                          {mine.map((t) => renderTicket(t, true))}
                         </>
                       ) : null}
                     </ShowCard>
@@ -197,7 +203,7 @@ export const App = ({ controller, dev }) => {
                 {LABELS.disconnect}
               </button>
             </p>
-            <div class="list">{tickets.length === 0 ? <div class="notice-box">{say('noTickets')}</div> : tickets.map(renderTicket)}</div>
+            <div class="list">{tickets.length === 0 ? <div class="notice-box">{say('noTickets')}</div> : tickets.map((t) => renderTicket(t))}</div>
           </div>
         </div>
       ) : null}

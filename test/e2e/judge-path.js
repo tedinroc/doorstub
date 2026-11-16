@@ -6,11 +6,15 @@
 // headless Chrome through it while the sim wallet pairs over the PUBLIC
 // WizardConnect relay and signs (it never broadcasts; the page does, to the
 // simnet only):
-//   home -> Get a ticket (A) -> connect dialog -> wallet joins -> buy -> ticket
-//   -> hand it back -> buy B -> the refund arrives by itself -> walk in at the
-//   real show -> door link -> a second A ticket -> mine past its grace -> the
-//   page settles it -> My tickets -> proof strip.
+//   home (the first "Get a ticket" inside the first phone screen, no sideways
+//   scroll at 360 and 390 px) -> Get a ticket (A) -> connect dialog -> wallet
+//   joins -> buy -> ticket -> hand it back -> buy B -> the refund arrives by
+//   itself -> buy at the real show -> walk in -> door link -> a second A ticket
+//   -> mine past its grace -> the page settles it -> My tickets -> proof strip
+//   -> a phone's connect dialog -> dark mode.
 // Screenshots at 390x844 and 1440x900 go to .cache/screens/.
+//   --home   home page only (light and dark), for a quick look
+//   --quick  stop after the hand-back
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import puppeteer from 'puppeteer-core';
@@ -114,6 +118,19 @@ try {
   await page.waitForSelector(`[data-buy="${showB.id}"]`, { timeout: 30_000 });
   log(`home ready in ${Date.now() - t0} ms`);
   await sleep(600);
+  // The judge reaches "Get a ticket" in the first phone screen, and nothing scrolls sideways.
+  for (const width of [360, 390]) {
+    await page.setViewport({ width, height: 844, deviceScaleFactor: 2 });
+    await sleep(200);
+    const m = await page.evaluate(() => ({
+      buy: document.querySelector('[data-buy]').getBoundingClientRect().bottom,
+      scroll: document.documentElement.scrollWidth,
+      inner: window.innerWidth,
+    }));
+    log(`${width} px: first "Get a ticket" ends at ${Math.round(m.buy)} px; page ${m.scroll} px wide`);
+    if (m.scroll > m.inner) throw new Error(`horizontal scroll at ${width} px: ${m.scroll} > ${m.inner}`);
+    if (m.buy > 700) throw new Error(`"Get a ticket" is below the first phone screen at ${width} px (${m.buy} px)`);
+  }
   await shot(page, '01-home');
   await shot(page, '01-home-full', { full: true });
   if (homeOnly) {
@@ -166,7 +183,7 @@ try {
     await sleep(1500);
     await shot(page, '06-b-refunded', { selector: `[data-ticket="${keyB}"]` });
 
-    // A real show: buy, walk in (confirm), the door answers.
+    // A real show: buy, walk in, the door answers with the link.
     if (real) {
       await click(page, `[data-buy="${real.id}"]`);
       const keyR = await waitState(page, (s) => s.flows[real.id]?.step === 'done' && s.flows[real.id].ticketKey, 'buy real', 60_000);
