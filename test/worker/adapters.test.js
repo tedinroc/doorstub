@@ -12,6 +12,7 @@ import { hexToBin } from '@bitauth/libauth';
 import { verifyRefundNotice } from '../../src/tx/index.js';
 import { onRequest } from '../../functions/api/[[route]].js';
 import cron, { runCron } from '../../worker/cron.js';
+import { createNodeWorker } from '../../worker/node/handler.js';
 import { buyTicket, send, signedCheckIn, startWorker, unspentAt, workerSimnet } from './support.js';
 
 test('Pages Functions route and cron Worker, on simnet', async (t) => {
@@ -122,6 +123,12 @@ test('Node adapter: the site, shows.json and /api/* on one origin (as Pages serv
   assert.equal(notice.headers.get('access-control-allow-origin'), '*');
   const preflight = await fetch(`${server.url}/api/notice`, { method: 'OPTIONS' });
   assert.equal(preflight.status, 204);
+
+  // In process, without a server: a fetch-compatible function (what an app test hands its API client).
+  const inProcess = createNodeWorker({ env: { DOORSTUB_NETWORK: 'simnet', DOORSTUB_FULCRUM: ctx.simnet.url, STUDIO_DATA_KEY: ctx.dataKeyHex }, showsText: () => ctx.showsText, markerWaitMs: 0 });
+  const direct = await inProcess.fetch('http://worker.test/api/notice', { method: 'POST', body: JSON.stringify({ category: showB.categoryHex, seat: ticket.seatHex }) });
+  assert.equal(direct.status, 200);
+  assert.equal((await direct.json()).signature, (await notice.clone().json()).signature, 'the same notice in process and over HTTP');
 
   const plain = await startWorker(t, ctx);
   const apiOnly = await fetch(`${plain.url}/`);

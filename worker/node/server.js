@@ -9,11 +9,7 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
-import { createShowsCache, handleApi } from '../lib/api.js';
-import { createWorkerChain } from '../lib/chain.js';
-import { workerConfig } from '../lib/config.js';
-import { createMemoryClaims, createRateLimiter } from '../lib/limits.js';
-import { libauthVmCheck } from './vm.js';
+import { createNodeWorker, NODE_MARKER_WAIT_MS } from './handler.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -34,6 +30,7 @@ const TYPES = {
  * @param {object} o.env worker environment (STUDIO_DATA_KEY, DOOR_LINKS, DOORSTUB_NETWORK, DOORSTUB_FULCRUM)
  * @param {string} [o.showsPath] shows.json on disk (re-read when it changes)
  * @param {string} [o.showsUrl] or its URL
+ * @param {string|Function} [o.showsText] or its text
  * @param {number} [o.port] 0 picks a free port
  * @param {string} [o.host]
  * @param {object} [o.limits] rate limits (worker/lib/limits.js DEFAULT_LIMITS)
@@ -48,10 +45,11 @@ export const startWorkerServer = async ({
   env = {},
   showsPath,
   showsUrl,
+  showsText,
   port = 8788,
   host = '127.0.0.1',
   limits,
-  markerWaitMs = 6_000,
+  markerWaitMs = NODE_MARKER_WAIT_MS,
   pollMs,
   vm = true,
   WebSocketImpl,
@@ -60,12 +58,8 @@ export const startWorkerServer = async ({
   htmlHeaders = {},
   log = () => {},
 } = {}) => {
-  if ((showsPath === undefined) === (showsUrl === undefined)) throw new Error('give exactly one of showsPath or showsUrl');
-  const config = workerConfig(env);
-  const cache = createShowsCache({ network: config.network });
-  const limiter = createRateLimiter(limits === undefined ? {} : { limits });
-  const claims = createMemoryClaims();
-  const fetchText = showsPath !== undefined ? () => readFile(showsPath, 'utf8') : async () => (await fetch(showsUrl)).text();
+  const worker = createNodeWorker({ env, showsPath, showsUrl, showsText, limits, markerWaitMs, pollMs, vm, WebSocketImpl, log });
+  const { config } = worker;
 
   const root = staticRoot === undefined ? undefined : resolve(staticRoot);
   const corsHeaders = cors ? { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET, POST, OPTIONS' } : {};
@@ -77,9 +71,9 @@ export const startWorkerServer = async ({
       res.writeHead(405, { 'content-type': 'application/json', allow: 'GET, HEAD' });
       return res.end(JSON.stringify({ error: { code: 'method-not-allowed', message: 'use GET', retryable: false } }));
     }
-    if (pathname === '/shows.json' && showsPath !== undefined) {
+    if (pathname === '/shows.json' && showsUrl === undefined) {
       res.writeHead(200, { 'content-type': TYPES['.json'], 'cache-control': 'no-store', ...corsHeaders });
-      return res.end(req.method === 'HEAD' ? undefined : await readFile(showsPath));
+      return res.end(req.method === 'HEAD' ? undefined : await worker.readShows());
     }
     if (root === undefined) {
       res.writeHead(404, { 'content-type': 'application/json' });
@@ -118,22 +112,7 @@ export const startWorkerServer = async ({
       }
       const body = ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(chunks);
       const request = new Request(`http://${req.headers.host ?? `${host}:${port}`}${req.url}`, { method: req.method, headers: req.headers, body });
-      const response = await handleApi(request, {
-        network: config.network,
-        configErrors: config.errors,
-        dataKey: config.dataKey,
-        doorLinks: config.doorLinks,
-        loadShows: () => cache(fetchText),
-        openChain: () => createWorkerChain({ network: config.network, servers: config.servers, ...(WebSocketImpl && { WebSocketImpl }) }),
-        claims,
-        limiter,
-        clientIp: req.socket.remoteAddress ?? 'unknown',
-        vmCheck: vm ? libauthVmCheck : undefined,
-        markerWaitMs,
-        pollMs,
-        runtime: 'node',
-        log,
-      });
+      const response = await worker.handle(request, { clientIp: req.socket.remoteAddress ?? 'unknown' });
       res.writeHead(response.status, { ...Object.fromEntries(response.headers), ...corsHeaders });
       return res.end(Buffer.from(await response.arrayBuffer()));
     } catch (e) {
@@ -152,6 +131,7 @@ export const startWorkerServer = async ({
     url: `http://${host}:${actual}`,
     port: actual,
     config,
+    worker,
     close: () =>
       new Promise((resolve) => {
         server.closeAllConnections?.();
