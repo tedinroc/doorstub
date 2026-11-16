@@ -337,6 +337,54 @@ test('a hand-back that loses the race to a settle says another transaction spent
   assert.equal(wallet.log.length, 2, 'the buy and the hand-back were signed; nothing else');
 });
 
+test('a relay hiccup keeps the paired wallet: a buy waits for it, a sign request the relay lost is sent again, and only a wallet that does not come back is paired anew', async (t) => {
+  const { controller, wallet, state } = await setup(t, { deps: { keeper: false, reconnectWaitMs: 1_500 } });
+  await controller.start();
+  const showA = controller.onSale().find((s) => s.kind === 'sample-settle');
+  await controller.pool.request('simnet.fund', { address: wallet.addressAt('receive', 0).address, sats: 1_000_000, mine: true });
+  await controller.connect();
+  await waitFor(() => state().wallet.state === 'connected' && state().wallet.balance !== null, 'wallet ready');
+  const paired = state().wallet.pairing.uri;
+  assert.equal(wallet.sessions.size, 1);
+
+  // The relay blips just as Get a ticket is pressed: the page says it is reconnecting and buys once the wallet is back.
+  const steps = [];
+  const unsubscribe = controller.store.subscribe((s) => steps.push(s.flows[showA.id]?.step));
+  wallet.blip({ ms: 150 });
+  assert.equal(state().wallet.state, 'reconnecting');
+  const bought = await controller.buy(showA.id);
+  unsubscribe();
+  assert.ok(bought?.key, JSON.stringify(state().flows[showA.id]));
+  assert.ok(steps.includes('reconnecting'), 'the card said it was reconnecting');
+  assert.equal(say('walletReconnecting'), 'Reconnecting to your wallet.');
+  assert.equal(state().connectOpen, false, 'no new pairing');
+  assert.equal(state().wallet.pairing.uri, paired);
+  assert.equal(wallet.sessions.size, 1);
+
+  // A sign request lost in a dropped connection (the wallet never answers it): once the relay is back, the page
+  // cancels it and sends it again, and the hand-back goes through with no click.
+  wallet.pause();
+  const handing = controller.handBack(bought.key);
+  await waitFor(() => state().flows[bought.key]?.step === 'approve', 'the hand-back waits for the wallet');
+  await new Promise((r) => setTimeout(r, 30));
+  wallet.blip({ ms: 100 });
+  await waitFor(() => wallet.cancels.length === 1, 'the lost request was cancelled');
+  await new Promise((r) => setTimeout(r, 30));
+  wallet.resume();
+  await handing;
+  const back = state().flows[bought.key];
+  assert.equal(back.error, undefined, JSON.stringify(back.error));
+  assert.equal(back.step, 'done');
+  assert.equal(state().wallet.pairing.uri, paired);
+
+  // A wallet that does not come back within the wait: only then does Get a ticket start a new pairing.
+  wallet.blip({ ms: 60_000 });
+  await controller.buy(showA.id);
+  assert.equal(state().connectOpen, true, 'the connect dialog opened after the wait');
+  assert.equal(state().pendingBuy, showA.id);
+  assert.notEqual(state().wallet.pairing?.uri ?? null, paired);
+});
+
 test('reopening the connect dialog shows the same link while it waits for a wallet; the other relay makes a new one', async () => {
   let pairs = 0;
   const fakeSession = () => ({

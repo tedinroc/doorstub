@@ -7,7 +7,7 @@ import { Barcode, FlowStatus, RefundTrack, Stamp, TxLink } from './parts.jsx';
 const BAND = { 'sample-settle': 'a', 'sample-refund-seat': 'b', real: 'real', proof: 'proof' };
 const bandStyle = (kind) => `--band: var(--band-${BAND[kind] ?? 'a'})`;
 
-const busy = (flow) => flow !== undefined && flow.error === undefined && ['preparing', 'approve', 'sending'].includes(flow.step);
+const busy = (flow) => flow !== undefined && flow.error === undefined && ['preparing', 'reconnecting', 'approve', 'sending'].includes(flow.step);
 
 /**
  * A show for sale: the box-office ticket. On a phone the price and the

@@ -161,6 +161,7 @@ Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js
 | `The wallet relay is not answering. Try the other relay.` | Shown after 10 s without a relay connection; the button pairs over the second relay. |
 | `This wallet is on {network}. Doorstub runs on Bitcoin Cash mainnet; switch the wallet to mainnet and connect again.` | The wallet session refuses a wallet on another network (`test/wallet`). |
 | `Your wallet ended the connection.` | Status line. |
+| `Reconnecting to your wallet.` | Shown while the wallet relay reconnects: the page keeps the paired session and waits up to 10 s for it before it acts (a buy starts a new pairing only if the wallet does not come back), and it sends a sign request once more if the relay dropped it (`RECONNECT_WAIT_MS`, `app/src/lib/controller.js`; `test/app/controller.test.js`). |
 | `Reading your wallet's coins from the network.` | Status line. |
 | `Connected: {name}, {balance}.` | The wallet's own name and its plain-BCH balance read from the chain. |
 | `No Doorstub ticket in this wallet yet.` | Status line. |

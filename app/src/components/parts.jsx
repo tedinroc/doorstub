@@ -166,6 +166,16 @@ export const FlowStatus = ({ flow, onAction, onCancel }) => {
       </div>
     );
   }
+  if (flow.step === 'reconnecting') {
+    return (
+      <div class="flow" role="status" data-flow="reconnecting">
+        <div class="line">
+          <span class="spin" aria-hidden="true" />
+          <span>{say('walletReconnecting')}</span>
+        </div>
+      </div>
+    );
+  }
   if (flow.step === 'approve') {
     return (
       <div class="flow" role="status" data-flow="approve">

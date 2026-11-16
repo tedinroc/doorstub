@@ -250,6 +250,8 @@ export const makeSimWallet = ({
     let open = true;
     let walletReadySent = false;
     let exchanged = !holdKeyExchange;
+    /** While a blip is on: { refuse } (true: sends fail; false: they are lost without a word). */
+    let down = null;
     const walletPublicKey = sha256.hash(flattenBinArray([relaySeed, utf8ToBin(credentials.privateKey)]));
     const held = [];
     const deliverToDapp = (msg) => {
@@ -308,6 +310,10 @@ export const makeSimWallet = ({
     Object.assign(client, {
       relay: async (msg) => {
         if (!open) throw new Error('in-process relay closed');
+        if (down !== null) {
+          if (down.refuse) throw new Error('relay publish failed: not connected');
+          return; // lost on the way, as a relay that drops a message
+        }
         setTimeout(() => handle(JSON.parse(JSON.stringify(msg))), 0);
       },
       isKeyExchangeComplete: () => open && exchanged,
@@ -322,6 +328,19 @@ export const makeSimWallet = ({
         deliverToDapp({ action: RelayMsgAction.Disconnect, reason: 'user_disconnect', message }),
       releaseHeld: () => {
         for (const msg of held.splice(0)) handle(msg);
+      },
+      /**
+       * A relay hiccup: the dapp hears "reconnecting", whatever it sends meanwhile
+       * is lost (or, with `refuse`, fails to send), and after `ms` the relay is
+       * back and says "connected" (the dapp then sends dapp_ready again).
+       */
+      blip: ({ ms = 60, refuse = false } = {}) => {
+        down = { refuse };
+        statusCallback({ client, status: RelayStatus.reconnecting('in-process blip') });
+        setTimeout(() => {
+          down = null;
+          if (open) statusCallback({ client, status: RelayStatus.connected() });
+        }, ms).unref?.();
       },
       joinLate: () => {
         if (!open || exchanged) return;
@@ -392,6 +411,10 @@ export const makeSimWallet = ({
     resume: () => {
       paused = false;
       for (const s of sessions.values()) s.releaseHeld();
+    },
+    /** A relay hiccup on every in-process session (see the session's `blip`). */
+    blip: (options) => {
+      for (const s of sessions.values()) s.blip(options);
     },
     /** Complete the key exchange of sessions opened with inProcessRelay({ holdKeyExchange: true }). */
     joinLate: () => {

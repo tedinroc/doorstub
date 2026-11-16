@@ -45,6 +45,7 @@ export const SENTENCES = Object.freeze({
   connectRelayDown: 'The wallet relay is not answering. Try the other relay.',
   walletWrongNetwork: 'This wallet is on {network}. Doorstub runs on Bitcoin Cash mainnet; switch the wallet to mainnet and connect again.',
   walletGone: 'Your wallet ended the connection.',
+  walletReconnecting: 'Reconnecting to your wallet.',
   walletScanning: "Reading your wallet's coins from the network.",
   walletConnected: 'Connected: {name}, {balance}.',
   noTickets: 'No Doorstub ticket in this wallet yet.',

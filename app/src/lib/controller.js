@@ -70,6 +70,12 @@ export const PRINT_MS = 1_100;
 export const STEP_MS = 1_300;
 /** After this long without the relay connecting, the dialog offers the other relay (ms). */
 export const RELAY_SLOW_MS = 10_000;
+/**
+ * A paired wallet whose relay hiccuped gets this long to come back before the
+ * page gives up on it (a buy then starts a new pairing; a hand-back or walk-in
+ * says the relay did not answer). The session is never thrown away for a blip.
+ */
+export const RECONNECT_WAIT_MS = 10_000;
 /** Pause before re-reading a show after a notification (several often arrive together). */
 export const LEDGER_DEBOUNCE_MS = 300;
 
@@ -153,6 +159,7 @@ export const createController = ({ runtime, deps = {} }) => {
     randomBytes = (n) => globalThis.crypto.getRandomValues(new Uint8Array(n)),
     WebSocketImpl,
     now = () => Date.now(),
+    reconnectWaitMs = RECONNECT_WAIT_MS,
   } = deps;
   const network = runtime.network;
 
@@ -202,7 +209,7 @@ export const createController = ({ runtime, deps = {} }) => {
   const setFlow = (key, flow) => set((s) => ({ flows: { ...s.flows, [key]: flow === null ? undefined : { ...flow, at: now() } } }));
   const flowOf = (key) => get().flows[key];
   const setWallet = (patch) => set((s) => ({ wallet: { ...s.wallet, ...patch } }));
-  const busyStep = (flow) => flow !== undefined && ['preparing', 'approve', 'sending', 'held', 'notice', 'sent', 'door'].includes(flow.step) && flow.error === undefined;
+  const busyStep = (flow) => flow !== undefined && ['preparing', 'reconnecting', 'approve', 'sending', 'held', 'notice', 'sent', 'door'].includes(flow.step) && flow.error === undefined;
 
   const tip = () => get().chain.tip;
 
@@ -593,6 +600,75 @@ export const createController = ({ runtime, deps = {} }) => {
     }
   };
 
+  // ---------------------------------------------------------------- relay hiccups
+
+  /**
+   * Wait until the paired wallet is back ('connected'), up to `ms`. Resolves
+   * true when it is, false when the wait ran out or the session ended.
+   */
+  const waitConnected = (ms = reconnectWaitMs) =>
+    new Promise((resolve) => {
+      if (get().wallet.state === 'connected') {
+        resolve(true);
+        return;
+      }
+      let timer = null;
+      let unsubscribe = null;
+      const done = (value) => {
+        clearTimeout(timer);
+        unsubscribe?.();
+        resolve(value);
+      };
+      unsubscribe = store.subscribe((s) => {
+        if (s.wallet.state === 'connected') done(true);
+        else if (s.wallet.state !== 'reconnecting') done(false);
+      });
+      timer = setTimeout(() => done(false), ms);
+    });
+
+  /** Show "Reconnecting to your wallet." on `key` while waiting for the relay; true once the wallet is back. */
+  const reconnectFor = async (key, kind) => {
+    setFlow(key, { ...(flowOf(key) ?? {}), kind, step: 'reconnecting', error: undefined });
+    return waitConnected();
+  };
+
+  /**
+   * session.sign, sent again once if the relay drops it: when the send fails
+   * (a 'relay' error), or when the relay went away and came back while the
+   * wallet had not answered (a request sent into a dropped connection is lost,
+   * and the wallet would never see it). Anything else is thrown as it is.
+   */
+  const signThroughRelay = async (key, kind, request) => {
+    const once = async () => {
+      const abort = new AbortController();
+      let away = get().wallet.state === 'reconnecting';
+      let lost = false;
+      const unsubscribe = store.subscribe((s) => {
+        if (s.wallet.state === 'reconnecting') away = true;
+        else if (s.wallet.state === 'connected' && away && !lost) {
+          lost = true;
+          abort.abort('The wallet relay reconnected; Doorstub sends the request again');
+        }
+      });
+      try {
+        return await session.sign(request, { signal: abort.signal });
+      } catch (e) {
+        if (lost) throw new WalletError('relay', 'the wallet relay dropped the request and came back');
+        throw e;
+      } finally {
+        unsubscribe();
+      }
+    };
+    try {
+      return await once();
+    } catch (e) {
+      if (!(e instanceof WalletError) || (e.code !== 'relay' && e.code !== 'not-connected') || session?.wallet == null) throw e;
+      if (!(await reconnectFor(key, kind))) throw e;
+      setFlow(key, { ...flowOf(key), step: 'approve' });
+      return session.sign(request);
+    }
+  };
+
   // ---------------------------------------------------------------- sign, check, send
 
   /**
@@ -610,8 +686,11 @@ export const createController = ({ runtime, deps = {} }) => {
       await rescan();
       request = buildSignRequest(built, { pathOf: pathLookup(lastScan.addresses), userPrompt: prompt });
     }
+    if (get().wallet.state === 'reconnecting' && !(await reconnectFor(key, kind))) {
+      throw new WalletError('relay', 'the wallet relay did not come back');
+    }
     setFlow(key, { ...(flowOf(key) ?? {}), kind, step: 'approve', prompt, wallet: get().wallet.name, error: undefined });
-    const signed = await session.sign(request);
+    const signed = await signThroughRelay(key, kind, request);
     setFlow(key, { ...flowOf(key), step: 'sending' });
     const checked = assertSignedReply(built, signed);
     if (beforeSend !== undefined) await beforeSend(checked);
@@ -682,6 +761,12 @@ export const createController = ({ runtime, deps = {} }) => {
   const buy = async (showId, { retrying = false, avoid = new Set(), reason } = {}) => {
     const show = showById(showId);
     if (show === undefined) return;
+    // A relay hiccup is not a lost wallet: wait for it to come back before starting a new pairing.
+    if (session?.wallet != null && get().wallet.state === 'reconnecting') {
+      if (busyStep(flowOf(showId))) return;
+      await reconnectFor(showId, 'buy');
+      setFlow(showId, null);
+    }
     if (session?.wallet == null || get().wallet.state !== 'connected') {
       set({ pendingBuy: showId });
       if (!get().connectOpen) await connect();
