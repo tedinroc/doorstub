@@ -75,7 +75,8 @@ export const Header = ({ state, ticketCount, onConnect, onOpenTickets }) => {
               ) : (
                 <>
                   {shortBch(w.balance).replace(/ BCH$/, '')}
-                  <span class="unit"> BCH</span>
+                  {/* A short number keeps its unit on a phone, so an empty wallet reads "0 BCH", not "0 Tickets". */}
+                  <span class={shortBch(w.balance).length <= 7 ? 'unit keep' : 'unit'}> BCH</span>
                 </>
               )}
             </span>

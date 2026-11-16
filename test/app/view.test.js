@@ -104,7 +104,7 @@ test('ticketModel: held ticket with a countdown and a hand-back, then each finis
   assert.equal(held.canWalkIn, false, 'no Walk in on a sample show (CLAIMS.md section 6)');
   assert.equal(held.countdown, '6 h 10 min');
   assert.equal(held.valueText, '0.001 BCH');
-  assert.match(held.lines[0], /^Your 0\.001 BCH is held by contract coin c035df\.\.\.1111:2\.$/);
+  assert.match(held.lines[0], /^Your 0\.001 BCH is held by contract coin c035df00\u20261111:2\.$/);
   assert.equal(held.barcode.length, 24 * 8, 'the barcode is the 24-byte ticket commitment');
 
   const back = ticketModel(ticket({ state: 'handedBack', spend: { txid: 'ab'.repeat(32), path: 'handBack' }, escrowUtxo: null, canAct: false }), { tip: 977_610, returned: 101_029n });

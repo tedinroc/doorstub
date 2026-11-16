@@ -192,7 +192,7 @@ button { font: inherit; color: inherit; }
 .wallet-chip.pulse { animation: chipPulse 0.9s var(--ease-out); }
 @keyframes chipPulse { 0% { transform: scale(1); } 35% { transform: scale(1.08); box-shadow: 0 0 0 6px color-mix(in srgb, var(--gold) 45%, transparent); } 100% { transform: scale(1); box-shadow: 0 0 0 0 transparent; } }
 /* Under 400 px the unit goes (the number stays whole, never cut to "0.018…"). */
-@media (max-width: 400px) { .wallet-chip { padding-left: 10px; gap: 6px; } .wallet-chip .bal .unit { display: none; } }
+@media (max-width: 400px) { .wallet-chip { padding-left: 10px; gap: 6px; } .wallet-chip .bal .unit:not(.keep) { display: none; } }
 @media (min-width: 860px) { .wallet-chip .name { display: inline; } }
 
 /* ------------------------------------------------------------ buttons */

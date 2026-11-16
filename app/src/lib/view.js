@@ -10,7 +10,6 @@ import {
   formatUsd,
   salesOpen,
   settleOpensAt,
-  shortTxid,
   showPhase,
   showSeatLabel,
   showsOnSale,
@@ -19,6 +18,9 @@ import { TOKEN_OUTPUT_SATS, encodeTicketCommitment } from '../../../src/tx/index
 import { LABELS, say } from './copy.js';
 
 export const BLOCK_MINUTES = 10;
+
+/** A txid as the page writes it everywhere: "993c586a…c10a" (8 and 4 characters, an ellipsis). */
+export const shortId = (txid) => (txid.length <= 15 ? txid : `${txid.slice(0, 8)}\u2026${txid.slice(-4)}`);
 
 /** "1,234". */
 export const num = (n) => Number(n).toLocaleString('en-US');
@@ -252,7 +254,7 @@ export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, r
   // A real show's Walk in closes when its call ends (the reader's clock); the ticket then refunds by the settle.
   const callOver = show.kind === 'real' && callOf(show, { now, timeZone })?.phase === 'over';
   if (state === 'held') {
-    if (escrowTxid !== null) lines.push(say('buyHeld', { price: formatBch(show.price), outpoint: `${shortTxid(escrowTxid)}:${escrow.vout}` }));
+    if (escrowTxid !== null) lines.push(say('buyHeld', { price: formatBch(show.price), outpoint: `${shortId(escrowTxid)}:${escrow.vout}` }));
     else lines.push(say('ticketMoney'));
     if (ticket.canAct === false && ticket.ticketUtxo !== null && ticket.ticketUtxo !== undefined) lines.push(say('movedAway'));
     else if (callOver) lines.push(say('callOverHeld'));

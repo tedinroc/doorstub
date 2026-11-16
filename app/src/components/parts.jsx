@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import QRCode from 'qrcode';
 import { EXPLORER } from '../config.js';
 import { LABELS, say } from '../lib/copy.js';
-import { refundTrack } from '../lib/view.js';
+import { refundTrack, shortId } from '../lib/view.js';
 import { copyText } from '../hooks.js';
 
 /** The Doorstub mark: a ticket stub with its notch. */
@@ -43,7 +43,7 @@ export const Barcode = ({ bits }) => {
 /** A txid as a short explorer link (plain text on simnet, where no explorer can see it). */
 export const TxLink = ({ txid, network, label, vout }) => {
   if (!txid) return null;
-  const text = `${txid.slice(0, 8)}…${txid.slice(-4)}${vout !== undefined ? `:${vout}` : ''}`;
+  const text = `${shortId(txid)}${vout !== undefined ? `:${vout}` : ''}`;
   const tag = label ? <span class="tx-label">{label} </span> : null;
   if (network !== 'mainnet') {
     return (
