@@ -2,7 +2,8 @@
 //
 //   GET  /api/health   what is configured, and the chain tip
 //   POST /api/notice   { category, seat, txid? } -> { signature, ... }   (sample show B only)
-//   POST /api/door     { category, txid }        -> { link, ... }        (real shows only)
+//   POST /api/door     { category, txid, claim, reserve: true } -> { reserved, again }   (real shows, before the check-in is sent)
+//   POST /api/door     { category, txid, claim? }               -> { link, ... }         (real shows, after it is sent)
 //
 // Errors are { error: { code, message, retryable } } with a fitting status.
 import { equal, WorkerError } from './bytes.js';
@@ -67,7 +68,7 @@ const ROUTES = {
  * @param {() => object} deps.openChain a fresh worker chain client (closed after the request)
  * @param {Uint8Array|null} deps.dataKey
  * @param {object|null} deps.doorLinks
- * @param {{ claim }} deps.claims the door's one-claimant-per-check-in record
+ * @param {{ reserve, claim }} deps.claims the door's one-claimant-per-check-in record
  * @param {{ take }} deps.limiter
  * @param {string} deps.clientIp
  * @param {Function} [deps.vmCheck]

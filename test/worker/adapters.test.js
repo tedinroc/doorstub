@@ -8,15 +8,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { hexToBin } from '@bitauth/libauth';
+import { encodeTransaction, hexToBin } from '@bitauth/libauth';
 import { verifyRefundNotice } from '../../src/tx/index.js';
 import { onRequest } from '../../functions/api/[[route]].js';
 import cron, { runCron } from '../../worker/cron.js';
+import { txidOf } from '../../worker/lib/crypto.js';
 import { createNodeWorker } from '../../worker/node/handler.js';
 import { buyTicket, send, signedCheckIn, startWorker, unspentAt, workerSimnet } from './support.js';
 
 test('Pages Functions route and cron Worker, on simnet', async (t) => {
-  const ctx = await workerSimnet(t, { name: 'adapters', schedule: [{ id: 'live-call', kind: 'real', title: 'Live call', card: 'A real show.', startHeight: '+300' }] });
+  const ctx = await workerSimnet(t, {
+    name: 'adapters',
+    schedule: [{ id: 'live-call', kind: 'real', title: 'Live call', card: 'A real show.', startHeight: '+300', eventAt: '2026-11-24T13:00:00Z', durationMin: 25, seatPrefix: 'L' }],
+  });
   const [showB] = ctx.byKind('sample-refund-seat');
   const [real] = ctx.byKind('real');
   const kv = new Map();
@@ -48,6 +52,8 @@ test('Pages Functions route and cron Worker, on simnet', async (t) => {
   assert.equal(health.body.runtime, 'workerd');
   assert.match(health.body.vm, /rule check/);
   assert.equal(health.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(health.body.signer.alsoKeyOf, [], 'the worker\'s key is not the real show\'s data key');
+  assert.deepEqual(health.body.door.shows, [{ id: 'live-call', configured: true }]);
 
   const ticket = await buyTicket(ctx.rpc, showB);
   const notice = await call('/api/notice', { method: 'POST', body: JSON.stringify({ category: showB.categoryHex, seat: ticket.seatHex, txid: ticket.txid }), headers: { 'cf-connecting-ip': '203.0.113.7' } });
@@ -65,6 +71,22 @@ test('Pages Functions route and cron Worker, on simnet', async (t) => {
   assert.equal((await walkIn('203.0.113.8')).body.again, true);
   assert.equal((await walkIn('203.0.113.9')).status, 409);
   assert.deepEqual([...kv.keys()], [`door:live-call:${checkIn}`]);
+  assert.match(kv.get(`door:live-call:${checkIn}`), /^a:[0-9a-f]{64}$/);
+
+  // Reserve, then send, then ask: the reservation lives in KV, so another isolate would see it too.
+  const claim = 'c3'.repeat(32);
+  const reserved = await buyTicket(ctx.rpc, real, { shard: 1 });
+  const signed = signedCheckIn(real, reserved);
+  const txid = txidOf(encodeTransaction(signed.transaction));
+  const door = (body, ip = '203.0.113.8') => call('/api/door', { method: 'POST', body: JSON.stringify({ category: real.categoryHex, txid, ...body }), headers: { 'cf-connecting-ip': ip } });
+  assert.deepEqual((await door({ claim, reserve: true })).body, { reserved: true, again: false });
+  assert.match(kv.get(`door:live-call:${txid}`), /^r:[0-9a-f]{64}$/);
+  assert.equal(await send(ctx.rpc, signed), txid);
+  assert.equal((await door({}, '198.51.100.20')).status, 409, 'an observer without the claim');
+  const mine = await door({ claim });
+  assert.equal(mine.status, 200, JSON.stringify(mine.body));
+  assert.equal(mine.body.seatLabel, 'L-1-1');
+  assert.equal(mine.body.again, false);
 
   // A mainnet deployment ignores the simnet URL and refuses a simnet catalogue.
   const mainnet = await onRequest({

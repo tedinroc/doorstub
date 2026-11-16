@@ -8,7 +8,9 @@
 //      and /api/notice signs an 'R' notice for a live sample B seat; the
 //      notice verifies with src/tx and the refund built from it is accepted;
 //      /api/door gives a real show's link for a check-in on the simnet (once
-//      per claimant) and refuses a hand-back.
+//      per claimant) and refuses a hand-back; a check-in the page reserved
+//      before sending it (the record in a local DOOR_CLAIMS KV namespace) is
+//      refused to an observer and answered to the reserving claim.
 //   2. The cron Worker (`wrangler dev --test-scheduled` with worker/wrangler.toml
 //      overridden by --var): one scheduled run refunds a new sample B seat and
 //      settles a sample A ticket past its start plus grace.
@@ -21,7 +23,7 @@ import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { createServer as createNetServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { hexToBin } from '@bitauth/libauth';
+import { encodeTransaction, hexToBin } from '@bitauth/libauth';
 import { startSimnet } from '../../simnet/index.js';
 import { connectRpc } from '../../simnet/rpc.js';
 import { bootstrapSimnet } from '../../studio/index.js';
@@ -29,6 +31,7 @@ import { parseShowsFile } from '../../src/shows/index.js';
 import { buildRefund, verifyRefundNotice } from '../../src/tx/index.js';
 import { checkSignatureFree, createFulcrumPool } from '../../src/chain/index.js';
 import { buyTicket, send, signedCheckIn, signedHandBack, unspentAt } from '../../test/worker/support.js';
+import { txidOf } from '../lib/crypto.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const wrangler = join(root, 'node_modules', '.bin', 'wrangler');
@@ -102,7 +105,7 @@ try {
     count: 1,
     firstStart: '+12',
     refundSeatStart: '+6500',
-    schedule: [{ id: 'live-call', kind: 'real', title: 'Live call', card: 'A real show.', startHeight: '+300' }],
+    schedule: [{ id: 'live-call', kind: 'real', title: 'Live call', card: 'A real show.', startHeight: '+300', eventAt: '2026-11-24T13:00:00Z', durationMin: 25, seatPrefix: 'L' }],
   });
   const showsText = readFileSync(boot.showsPath, 'utf8');
   const { shows } = parseShowsFile(showsText, { network: 'simnet' });
@@ -121,6 +124,7 @@ try {
       '--ip', '127.0.0.1', '--port', String(pagesPort), '--inspector-port', String(await freePort()),
       '--compatibility-date', '2024-11-11', '--show-interactive-dev-session=false',
       '--binding', 'DOORSTUB_NETWORK=simnet', `DOORSTUB_FULCRUM=${simnet.url}`, `STUDIO_DATA_KEY=${dataKeyHex}`, `DOOR_LINKS=${doorLinks}`,
+      '--kv', 'DOOR_CLAIMS', '--persist-to', join(work, 'state'),
     ],
     'pages',
   );
@@ -131,7 +135,7 @@ try {
   }, 'wrangler pages dev', 90_000).catch((e) => {
     throw new Error(`${e.message}\n${pages.log()}`);
   });
-  if (health.runtime !== 'workerd' || health.chain?.tip === undefined || health.signer?.shows?.[0]?.keyMatches !== true) {
+  if (health.runtime !== 'workerd' || health.chain?.tip === undefined || health.signer?.shows?.[0]?.keyMatches !== true || health.signer?.alsoKeyOf?.length !== 0) {
     throw new Error(`unexpected health ${JSON.stringify(health)}`);
   }
   step('pages: /api/health in workerd', { tip: health.chain.tip, signer: health.signer, vm: health.vm });
@@ -153,8 +157,8 @@ try {
 
   const holder = await buyTicket(rpc, real);
   const checkInTxid = await send(rpc, signedCheckIn(real, holder));
-  const askDoor = async (txid) => {
-    const r = await fetch(`${base}/api/door`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ category: real.categoryHex, txid }) });
+  const askDoor = async (txid, extra = {}) => {
+    const r = await fetch(`${base}/api/door`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ category: real.categoryHex, txid, ...extra }) });
     return { status: r.status, body: await r.json() };
   };
   const t1 = Date.now();
@@ -167,6 +171,22 @@ try {
   const refused = await askDoor(handBackTxid);
   if (refused.status !== 422 || refused.body.error?.code !== 'not-a-check-in') throw new Error(`door should refuse a hand-back, got ${refused.status} ${JSON.stringify(refused.body)}`);
   step('pages: /api/door answers a real check-in in workerd (again for the same caller) and refuses a hand-back', { ms: doorMs, seatLabel: opened.body.seatLabel, refused: refused.body.error.code });
+
+  // Reserve before sending (as the page does), then an observer asks first, then the page.
+  const claim = 'c3'.repeat(32);
+  const reservedTicket = await buyTicket(rpc, real, { shard: 1 });
+  const reservedCheckIn = signedCheckIn(real, reservedTicket);
+  const reservedTxid = txidOf(encodeTransaction(reservedCheckIn.transaction));
+  const t2 = Date.now();
+  const reserved = await askDoor(reservedTxid, { claim, reserve: true });
+  const reserveMs = Date.now() - t2;
+  if (reserved.status !== 200 || reserved.body.reserved !== true || reserved.body.again !== false) throw new Error(`reserve ${reserved.status} ${JSON.stringify(reserved.body)}\n${pages.log()}`);
+  await send(rpc, reservedCheckIn);
+  const observer = await askDoor(reservedTxid, { claim: 'b2'.repeat(32) });
+  if (observer.status !== 409 || observer.body.error?.code !== 'already-answered') throw new Error(`observer should get 409, got ${observer.status} ${JSON.stringify(observer.body)}`);
+  const holderAnswer = await askDoor(reservedTxid, { claim });
+  if (holderAnswer.status !== 200 || holderAnswer.body.link !== 'https://example.invalid/call?seat=L-1-1') throw new Error(`reserved door ${holderAnswer.status} ${JSON.stringify(holderAnswer.body)}\n${pages.log()}`);
+  step('pages: a reserved check-in (record in local KV) is refused to an observer and answered to the page', { reserveMs, observer: observer.status, seatLabel: holderAnswer.body.seatLabel });
   killAll();
 
   // ---------------------------------------------------------------- 2. the cron Worker in workerd
