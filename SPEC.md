@@ -10,7 +10,7 @@ This document describes the contracts in `contracts/` and the transaction builde
 - The VM is BCH 2026 (libauth `createVirtualMachineBch2026`). Every transaction in the test suite is evaluated in standard mode and in consensus (non-standard) mode.
 - Byte strings are written `a | b` for concatenation. `LE` means little-endian.
 - `P2PKH(pkh)` is `OP_DUP OP_HASH160 <pkh> OP_EQUALVERIFY OP_CHECKSIG` (25 bytes).
-- **Category byte order.** libauth, explorers and wallets show a token category in display order, which is the genesis input's txid as usually printed. The VM opcodes `OP_UTXOTOKENCATEGORY` and `OP_OUTPUTTOKENCATEGORY` push the reverse (wire order). Escrow's `category` constructor argument and the refund notice messages use **wire order**. `categoryToVmOrder()` converts.
+- **Category byte order.** libauth, explorers and wallets show a token category in display order, which is the genesis input's txid as usually printed. The VM opcodes `OP_UTXOTOKENCATEGORY` and `OP_OUTPUTTOKENCATEGORY` push the reverse (wire order). The `category` constructor argument of both contracts and the refund notice messages use **wire order**. `categoryToVmOrder()` converts.
 - Amounts are satoshis (sats). 1 BCH = 100,000,000 sats.
 
 ## 2. Tokens and commitments
@@ -30,33 +30,34 @@ One token category per show. It is created by the genesis transaction (section 5
 - **Seat id**, 3 bytes: `shard | sold(2, LE)`, where `sold` is the count *after* the sale. The first seat a shard sells is `sold = 1`. Because the shard byte never changes after genesis and `sold` only grows, seat ids never repeat, within or across shards (given a well-formed genesis, section 7).
 - `buyerPkh` is the HASH160 of the buyer's public key, taken from the buyer's wallet address.
 - Every token output carries 1,000 sats. The BCHN dust threshold of a P2PKH output with a 24-byte commitment is 723 sats; of the P2SH32 Escrow output with a marker, 753 sats.
-- A ticket is genuine for a seat while an Escrow coin with the matching marker exists. After check-in, the ticket remains as a keepsake stub with no money behind it. After a hand-back, settle or refund, the ticket (if still held) is burned or has no matching marker.
+- A ticket is genuine for a seat while a coin at the show's Escrow address carries an immutable NFT **of the show's category** with the matching marker (section 7 gives the full rule). Anyone can mint look-alike tokens of a category of their own with any bytes, and send them to either address, so a check that compares commitment bytes alone proves nothing. After check-in, the ticket remains as a keepsake stub with no money behind it. After a hand-back, settle or refund, the ticket (if still held) is burned or has no matching marker.
 
 ## 3. Contracts
 
 ### 3.1 BoxOffice
 
-Constructor (declaration order): `price` (int, sats), `organiserPk` (33-byte public key), `escrowLockingBytecode` (the show's Escrow P2SH32 locking bytecode, 35 bytes).
+Constructor (declaration order): `category` (bytes32, the show's category in **wire order**), `price` (int, sats), `organiserPk` (33-byte public key), `escrowLockingBytecode` (the show's Escrow P2SH32 locking bytecode, 35 bytes).
 
-All shards of a show share one BoxOffice address; the shard number lives in the commitment.
+All shards of a show share one BoxOffice address; the shard number lives in the commitment. The address commits to the category, so a shard of any other category can never sell here, even one a stranger sends to the address.
 
 **`buy(bytes20 buyerPkh)`**. No signature. All enforced:
 1. This input is input 0.
-2. Input 0's token is a minting NFT (`tokenCategory` is 33 bytes ending in `0x02`).
+2. Input 0's token category field is exactly `category | 0x02`: a minting NFT of this show's category.
 3. Its commitment is 4 bytes with `state = 0x01`.
 4. `seat = shard | toPaddedBytes(sold + 1, 2)`.
 5. At most 6 outputs. No output at index 3 or higher carries this category.
 6. No input other than input 0 is a minting NFT of this category (so two shards cannot be spent in one buy).
-7. Output 0: same locking bytecode as input 0, same category with minting capability, commitment `0x01 | seat` (that is, state open, same shard, `sold + 1`), value at least input 0's value.
-8. Output 1: `P2PKH(buyerPkh)`, immutable NFT of this category, commitment `'T' | seat | buyerPkh`, value at least 1,000.
-9. Output 2: `escrowLockingBytecode`, immutable NFT of this category, commitment `'E' | seat | buyerPkh`, value at least `price + 1,000`.
+7. Output 0: same locking bytecode as input 0, token category field `category | 0x02` (minting), commitment `0x01 | seat` (that is, state open, same shard, `sold + 1`), value at least input 0's value.
+8. Output 1: `P2PKH(buyerPkh)`, immutable NFT of `category`, commitment `'T' | seat | buyerPkh`, value at least 1,000.
+9. Output 2: `escrowLockingBytecode`, immutable NFT of `category`, commitment `'E' | seat | buyerPkh`, value at least `price + 1,000`.
 
-There is no seat cap (K3) beyond the 16-bit limit in section 8.
+There is no seat cap (K3) beyond the 16-bit limit in section 8. There is no time check: BCH cannot end sales on chain (section 8).
 
 **`closeSales(sig organiserSig)`**. Enforced:
 1. `checkSig(organiserSig, organiserPk)`.
-2. Let `idx = this.activeInputIndex`. Output `idx` has the same locking bytecode, the same category and capability as input `idx`, commitment `0x00 | (input idx's commitment without its first byte)`, and value at least input `idx`'s value.
-3. Every output that carries this category is at this BoxOffice's locking bytecode with a commitment whose first byte is `0x00`.
+2. Let `idx = this.activeInputIndex`. Input `idx` is a minting NFT of `category`.
+3. Output `idx` has the same locking bytecode, the same category and capability as input `idx`, commitment `0x00 | (input idx's commitment without its first byte)`, and value at least input `idx`'s value.
+4. Every output that carries this category is at this BoxOffice's locking bytecode with a commitment whose first byte is `0x00`.
 
 So minting capability can never leave the BoxOffice, and a closed shard can never reopen. Several shards can be closed in one transaction (shard `i` at input `i` comes back at output `i`). With one shard at input 0 this is exactly "output 0 = the same contract, state 0x00". It is used by "cancel also closes sales".
 
@@ -75,46 +76,55 @@ Constructor (declaration order):
 | `graceBlocks` | int | blocks after `startHeight` before unused tickets settle |
 | `handBackFeeBps` | int | hand-back fee, basis points of the coin's value |
 | `noShowFeeBps` | int | no-show fee, basis points of the coin's value |
-| `minerFeeCap` | int | the most sats a coin can lose to whoever builds the spending transaction |
+| `minerFeeCap` | int | the most sats of a coin that may go to the miner fee; whoever builds the spending transaction can burn it but cannot keep it |
 
 One Escrow address per show. Each ticket's money is one coin here, identified by its marker.
 
-Every path starts the same way (enforced): let `idx = this.activeInputIndex`; input `idx` carries an immutable NFT of `category` whose commitment is `'E' | body` with `body` 23 bytes; `seat` is the first 3 bytes of `body` and `buyerPkh` the last 20. `value` is input `idx`'s value.
+Every path starts the same way (enforced): let `idx = this.activeInputIndex` and `n = tx.inputs.length`; input `idx` carries an immutable NFT of `category` whose commitment is `'E' | body` with `body` 23 bytes; `seat` is the first 3 bytes of `body` and `buyerPkh` the last 20. `value` is input `idx`'s value.
 
-**Index rule (enforced, all paths).** The coin's money goes to output `idx`. A fee, when one is due, goes to output `idx + tx.inputs.length`. Both indexes are different for every input, so one output can never be counted by two escrow coins (no double satisfaction, in any mix of paths), and fee indexes never collide with payout indexes.
+**Index rule (enforced, all paths).** The coin's money goes to output `idx`. A fee, when one is due, goes to output `idx + n`. Both indexes are different for every input, so one output can never be counted by two escrow coins (no double satisfaction, in any mix of paths), and fee indexes never collide with payout indexes.
 
-**Fee rule (enforced, handBack and settle).** `fee = floor(value * bps / 10000)`. If `fee < 546`, it is set to 0 and no fee output is required (a smaller output would be dust and non-standard). If `fee > 0`, output `idx + tx.inputs.length` must be `P2PKH(organiserPkh)` with value at least `fee`.
+**Fee rule (enforced, handBack and settle).** `fee = floor(value * bps / 10000)`. If `fee < 546`, it is set to 0 and the coin has no fee slot (a smaller output would be dust and non-standard). If `fee > 0`, output `idx + n` must be `P2PKH(organiserPkh)`, carry no token, and hold **exactly** `fee`.
 
-**Burn rule.** "No output carries this category" means: for every output, if its token category field is non-empty, its first 32 bytes differ from `category`. This is checked over all outputs with a loop, so no output count cap is needed in Escrow.
+**Slot rule (enforced, all paths).** No path allows an output outside its slots: each coin's payout slot `idx`, its fee slot `idx + n` when it owes a fee, and (hand-back and check-in) the ticket's own slot. A payout may fall short of the coin's due by at most `minerFeeCap`; since no other output can exist, that shortfall can only be miner fee. Whoever builds the transaction chooses how much of the allowance to burn, and nobody can keep any of it (except a builder who mines the block, section 8).
+
+**Token rule (enforced, all paths).** Every payout and fee output carries no token, and so does every other output except the check-in keepsake. So the marker (and in a hand-back the ticket) is always burned, and nobody can attach tokens of another category to a buyer's refund or the organiser's payout.
 
 **`handBack(int ticketInputIndex)`**. The holder hands the ticket back. Enforced:
 1. Input `ticketInputIndex` carries an immutable NFT of `category` with commitment `'T' | body` (same seat and buyerPkh as this coin's marker) and its locking bytecode is `P2PKH(buyerPkh)`. So the buyer's own wallet must sign that input.
-2. Fee rule with `handBackFeeBps`.
-3. Output `idx` is `P2PKH(buyerPkh)` with value at least `value - fee - minerFeeCap`.
-4. No output carries this category (ticket and marker are burned).
+2. Every input is either at this Escrow's locking bytecode or carries an immutable NFT of `category` (a ticket). No plain coins. The Escrow coins are inputs `0..e-1`, where `e` is how many inputs are at this Escrow (each coin checks `idx < e`).
+3. For every input that is not at this Escrow (a ticket), its own output slot, if present, is at that input's locking bytecode and carries no token: a ticket's sats can only go back to where the ticket was.
+4. Fee rule with `handBackFeeBps`.
+5. Output `idx` is `P2PKH(buyerPkh)`, no token, value at least `value - fee - minerFeeCap`.
+6. If a fee is due, at most `n + e` outputs; if not, at most `n + idx` outputs (coins that owe a fee come first, and a fee-free coin's fee slot cannot exist).
 
 "Before the show" is **not** enforced (section 8): hand-back works as long as the escrow coin exists.
 
 **`checkIn(int ticketInputIndex)`** (K1). Enforced:
 1. The same ticket-input checks as `handBack` (so only the holder can check in).
-2. Output `idx` is `P2PKH(organiserPkh)` with value at least `value - minerFeeCap`.
-3. Output `ticketInputIndex` is `P2PKH(buyerPkh)` with an immutable NFT of `category` and the ticket's exact commitment: the keepsake stub.
-4. No other output carries this category (the marker is burned).
+2. Exactly two inputs (this coin and the ticket) and exactly two outputs.
+3. Output `idx` is `P2PKH(organiserPkh)`, no token, value at least `value - minerFeeCap`.
+4. Output `ticketInputIndex` is `P2PKH(buyerPkh)` with an immutable NFT of `category`, the ticket's exact commitment, and a value no more than the ticket input's: the keepsake stub.
+
+With both outputs pinned, the marker is burned and the holder cannot keep any of the organiser's payout.
 
 **`settle()`** (K2). Anyone can push. Enforced:
 1. `tx.time >= startHeight + graceBlocks` (`OP_CHECKLOCKTIMEVERIFY`, block height). The transaction's locktime must be at least that height, and the input's sequence number below `0xffffffff`. A transaction with locktime `L` can be mined from block `L + 1`, so settling opens at block `startHeight + graceBlocks + 1`.
-2. Fee rule with `noShowFeeBps`.
-3. Output `idx` is `P2PKH(buyerPkh)` with value at least `value - fee - minerFeeCap`.
-4. No output carries this category.
+2. Every input is a coin at this Escrow's locking bytecode.
+3. Fee rule with `noShowFeeBps`.
+4. Output `idx` is `P2PKH(buyerPkh)`, no token, value at least `value - fee - minerFeeCap` and at most `value - fee`.
+5. If a fee is due, at most `2n` outputs; if not, at most `n + idx` outputs (coins that owe a fee come first).
 
 **`refund(datasig organiserDataSig, bytes1 scope)`** (K5). Anyone can push. Enforced:
 1. `scope` is `0x43` ('C') or `0x52` ('R').
 2. The message is `'C' | category` (33 bytes, whole show) or `'R' | category | seat` (36 bytes, this seat only), with `category` in wire order.
 3. `checkDataSig(organiserDataSig, message, organiserDataPk)`. A data signature is a 64-byte Schnorr (or DER ECDSA) signature over `sha256(message)`.
-4. Output `idx` is `P2PKH(buyerPkh)` with value at least `value - minerFeeCap`.
-5. No output carries this category.
+4. Every input is a coin at this Escrow's locking bytecode, and there are at most `n` outputs.
+5. Output `idx` is `P2PKH(buyerPkh)`, no token, value at least `value - minerFeeCap` and at most `value`.
 
-The organiser key can refund money to buyers; it can never redirect it.
+The organiser key can refund money to buyers; it can never redirect it: every output of a refund is a payout to its own coin's buyer.
+
+**Why every output is accounted for.** `handBack` and `checkIn` each need a ticket input at a P2PKH address, so in a transaction whose inputs are all Escrow coins every input runs `settle` or `refund`; each pins its payout slot, a fee-owing settle pins its fee slot, a fee-free settle forbids its fee slot and everything after it, and refund forbids fee slots. In a hand-back, Escrow coins come first and pin their payout and fee slots, every other input is a ticket whose slot returns to it, and no output lies beyond the last fee slot. A check-in has two outputs, both pinned. The test suite pins each case (section 11).
 
 There is no other Escrow path. In particular there is no "organiser collects after the start" path: the organiser is paid only through `checkIn`, and through posted fees.
 
@@ -132,7 +142,9 @@ Contract inputs need no signature except `closeSales` (organiser's transaction s
 
 All builders are pure functions in `src/tx/builders.js`. A UTXO is `{ txid, vout, output }`, with `txid` in display order and `output` a libauth `Output`. Each builder returns `{ kind, transaction, sourceOutputs, walletInputIndexes, fee, ... }`. Contract inputs carry final unlocking bytecode. Inputs in `walletInputIndexes` are P2PKH coins with empty unlocking bytecode, for the owner's wallet to sign. Transactions are version 2.
 
-Sizes below are measured on a sample show with Schnorr signatures (`npm test` builds all of them).
+Every builder refuses (builder) to return a transaction with a negative output (`negative-output`), an output below its dust threshold (`dust-output`; 0 for an OP_RETURN data output), or more than 100,000 bytes with wallet inputs at their largest signed size (`tx-too-large`). Every builder checks the show against the policy (section 6) unless the caller hands it a ready `contracts` object; `buildBuy` always checks it.
+
+Sizes below are measured on a sample show (price 10,000, `minerFeeCap` 1,500) with Schnorr signatures (`npm test` builds all of them).
 
 ### 5.1 Genesis (`buildGenesis`), offline
 
@@ -143,7 +155,7 @@ Sizes below are measured on a sample show with Schnorr signatures (`npm test` bu
 | next | | optional data output (for example a BCMR OP_RETURN), 0 sats |
 | last | | change to the organiser, if at least dust |
 
-Returns an **unsigned** template plus the derived show parameters and contracts. It never signs. About 517 bytes with 4 shards.
+Returns an **unsigned** template plus the derived show parameters and contracts. It never signs. The data output must be `OP_RETURN` followed only by pushes, at most 222 bytes (builder, `bad-data-output`). About 517 bytes with 4 shards.
 
 ### 5.2 Buy (`buildBuy`)
 
@@ -154,11 +166,13 @@ Returns an **unsigned** template plus the derived show parameters and contracts.
 | 2 | more buyer coins (optional, wallet signs) | Escrow coin with marker, `price + 1,000` sats |
 | 3 | | change to the buyer, if at least dust |
 
-Funding coins must carry no tokens (builder). The buyer pays `price + 2,000` sats plus the miner fee. About 899 bytes with one buyer coin.
+Funding coins must carry no tokens, and there are at most 50 of them (builder, `too-many-inputs`; `BoxOffice.buy` loops over every input, and 50 coins use about a third of its operation-cost budget). The buyer pays `price + 2,000` sats plus the miner fee.
+
+Sales end (builder): `buildBuy` requires `currentHeight`, the chain tip (`no-height`), and refuses when `currentHeight >= startHeight` (`sales-ended`). It also takes the `notices` the app knows of and refuses once a valid `'C'` notice exists (`sales-cancelled`; a notice whose signature does not verify against `organiserDataPk` is `bad-notice`). The chain cannot enforce either rule (section 8). About 923 bytes with one buyer coin.
 
 ### 5.3 Close sales (`buildCloseSales`)
 
-Inputs `0..k-1`: shards (unlock `closeSales(sig)`); then organiser coins (wallet signs). Outputs `0..k-1`: the same shards, closed; then change. The organiser's signature comes from a caller-supplied callback `signShard({ digest, inputIndex })`; the builder holds no key. About 748 bytes for one shard.
+Inputs `0..k-1`: shards (unlock `closeSales(sig)`); then organiser coins (wallet signs). Outputs `0..k-1`: the same shards, closed; then change. The organiser's signature comes from a caller-supplied callback `signShard({ digest, inputIndex })`; the builder holds no key. About 772 bytes for one shard.
 
 ### 5.4 Hand back (`buildHandBack`)
 
@@ -166,9 +180,9 @@ Inputs `0..k-1`: shards (unlock `closeSales(sig)`); then organiser coins (wallet
 |---|---|---|---|
 | 0 | Escrow coin (unlock `handBack(1)`) | refund to `P2PKH(buyerPkh)`: `value + 1,000 - minerFee` | refund: `value - fee - minerFee` |
 | 1 | ticket at `P2PKH(buyerPkh)` (wallet signs) | | the ticket's 1,000 sats back to the buyer |
-| 2 | | | fee to `P2PKH(organiserPkh)` (index 0 + 2 inputs) |
+| 2 | | | fee to `P2PKH(organiserPkh)`, exactly `fee` (index 0 + 2 inputs) |
 
-About 914 bytes.
+About 965 bytes (1,037 with a fee).
 
 ### 5.5 Check in (`buildCheckIn`)
 
@@ -177,76 +191,104 @@ About 914 bytes.
 | 0 | Escrow coin (unlock `checkIn(1)`) | payout to `P2PKH(organiserPkh)`: `value - minerFee` |
 | 1 | ticket at `P2PKH(buyerPkh)` (wallet signs) | keepsake stub: same ticket NFT, its 1,000 sats, back to `P2PKH(buyerPkh)` |
 
-About 1,007 bytes.
+Exactly these two inputs and two outputs (enforced). About 1,058 bytes; its miner fee, counted with a 108-byte signature placeholder, is 1,066 sats at 1 sat/byte.
 
 ### 5.6 Settle (`buildSettle`), anyone
 
-Inputs `0..k-1`: Escrow coins (unlock `settle()`), sequence `0xfffffffe`; coins that owe a no-show fee come first. Locktime defaults to `startHeight + graceBlocks`. Outputs `0..k-1`: refund `value_i - fee_i - share_i` to each coin's buyer. Outputs `k..`: the fee of coin `i` at index `k + i`, for coins that owe one. The miner fee is split evenly across coins (`share_i`). About 772 bytes for one coin, plus about 760 per extra coin.
+Inputs `0..k-1`: Escrow coins (unlock `settle()`), sequence `0xfffffffe`; coins that owe a no-show fee come first (enforced). Locktime defaults to `startHeight + graceBlocks`. Outputs `0..k-1`: refund `value_i - fee_i - share_i` to each coin's buyer. Outputs `k..`: the fee of coin `i` at index `k + i`, exactly, for coins that owe one. The miner fee is split evenly across coins (`share_i`). Nothing else: no outside coin can be added (enforced). At most 100 coins per transaction (builder, `batch-too-large`). About 823 bytes for one coin (861 with a fee), plus about 813 per extra coin.
 
 ### 5.7 Refund (`buildRefund`), anyone
 
-Inputs `0..k-1`: Escrow coins (unlock `refund(sig, scope)`). Each coin uses an 'R' notice for its seat if one is given, otherwise the 'C' notice. Outputs `0..k-1`: refund `value_i - share_i` to each buyer. About 839 bytes for one coin, plus about 830 per extra coin.
+Inputs `0..k-1`: Escrow coins (unlock `refund(sig, scope)`). Each coin uses an 'R' notice for its seat if one is given, otherwise the 'C' notice. Outputs `0..k-1`: refund `value_i - share_i` to each buyer, and nothing else (enforced). At most 100 coins per transaction (builder, `batch-too-large`). About 890 bytes for one coin, plus about 880 per extra coin.
 
-## 6. Fees and dust
+## 6. Fees, dust and show policy
 
 - Miner fee rate: 1 sat per byte by default (`DEFAULT_FEE_RATE`). Builders size P2PKH unlocks at the 108-byte maximum (ECDSA) so the real fee rate is never below the target.
 - Change below the dust threshold is left to the miner.
 - Every token output: 1,000 sats.
-- Escrow paths pay the miner fee out of the coin. The builder refuses (`miner-fee-cap`) if a coin would give up more than `minerFeeCap`. The samples use `minerFeeCap = 5,000` sats; measured single-coin fees are 772-1,007 sats.
-- Hand-back and no-show fees are basis points of the coin's value (`price + 1,000` for coins made by `buy`), rounded down, and waived when under 546 sats.
+- Escrow paths pay the miner fee out of the coin, and settle and refund cannot take a fee coin from anyone else (enforced). The builder refuses (`miner-fee-cap`) if a coin would give up more than `minerFeeCap`.
+- Hand-back and no-show fees are basis points of the coin's value (`price + 1,000` for coins made by `buy`), rounded down, and waived when under 546 sats. A fee that is due is paid exactly.
+
+**Show policy (builder).** The contracts take any parameters. `validateShow`, which every builder and `verifyGenesis` call, refuses a show outside these bounds (`bad-show`, constants in `src/tx/constants.js`):
+
+| Parameter | Bound | Why |
+|---|---|---|
+| `minerFeeCap` | at least 1,200 sats | the largest single-coin Escrow transaction at 1 sat/byte is a check-in, 1,066 sats on the sample show and 1,071 with the largest parameters the policy allows; below this some path could not pay its own fee |
+| `minerFeeCap` | at most 2,000 sats and at most 20% of `price` | it is what a sender may burn from each ticket |
+| `handBackFeeBps`, `noShowFeeBps` | at most 1,000 (10%) each | the headline says unused tickets refund |
+| `price` | at least 6,000 sats | follows from the two cap bounds (1,200 is 20% of 6,000) |
+| `startHeight + graceBlocks` | below 500,000,000 | a block height, not a time |
+
+The samples use `minerFeeCap = 1,500`. Measured single-coin miner fees at 1 sat/byte: settle 823, refund 890, hand-back 973 (1,046 with a fee output), check-in 1,066.
+
+With these bounds every honest output is far above the 546-sat dust threshold. The smallest coin holds `price + 1,000 >= 7,000` sats; the smallest posted fee that is due is 546 and the largest is 10% of the coin; the miner fee is at most `minerFeeCap <= 20%` of the price. So a settle or hand-back refund is at least `0.9 x 7,000 - 1,200 = 5,100` sats, a refund at least `7,000 - 1,200 = 5,800`, and a check-in payout at least `7,000 - 1,200 = 5,800` (`test/policy.test.js` builds every path at these edges).
 
 ## 7. What a client must verify
 
-- **Genesis.** The category's genesis transaction must create exactly N minting NFTs, all at the show's BoxOffice address, with commitments `01 | i | 0000` for distinct `i`, and no other token of the category (no tickets, markers or fungible amounts). The contracts cannot see genesis; this check is what makes seat ids unique across shards and rules out pre-minted tickets or markers. A client must also recompute both addresses from the posted show parameters: the BoxOffice address commits to the Escrow address, which commits to the category, so a shard of any other category fails the check. `verifyGenesis({ show, transaction })` in `src/tx/verify.js` does all of this (`test/genesis.test.js`).
-- **Wallet signatures.** A holder's ticket input must be signed with `SIGHASH_ALL` (`0x41`, or `0x61` with `SIGHASH_UTXOS`). A signature with `SIGHASH_NONE | SIGHASH_ANYONECANPAY` can be lifted into another transaction, for example to turn a hand-back into a check-in (pinned in `test/attacks-escrow.test.js`). A client that relays a wallet's signed transaction should check the sighash byte of every wallet signature.
-- **Ticket.** A ticket is live if an Escrow coin with marker `'E' | seat | buyerPkh` exists. The NFT alone proves nothing.
+- **Genesis.** The category's genesis transaction must create exactly N minting NFTs, all at the show's BoxOffice address, with commitments `01 | i | 0000` for distinct `i`, no other token of the category (no tickets, markers or fungible amounts), and no token of any other category. The contracts cannot see genesis; this check is what makes seat ids unique across shards and rules out pre-minted tickets or markers. A client must also recompute both addresses from the posted show parameters: the BoxOffice address commits to the category and to the Escrow address, which commits to the category too. `BoxOffice.buy` refuses a shard of any other category on chain, so a planted or mis-made shard can never sell. `verifyGenesis({ show, transaction, txid })` in `src/tx/verify.js` does all of this and checks the show against the policy (`test/genesis.test.js`).
+- **Which genesis.** `verifyGenesis` checks the transaction it is given and returns its txid. Two different transactions can spend the category's parent outpoint, and only one is ever mined, so a client must take the genesis from a source independent of the show page and the organiser (its own node or indexer), require it to be confirmed on chain, and pass that txid as `txid` (the call refuses any other transaction, `genesis-txid-mismatch`). It takes the decoded transaction or its raw bytes.
+- **Shards.** Anyone can send look-alike tokens of their own category to the BoxOffice address. A client that lists coins there must keep only minting NFTs of the show's category. (`buildBuy` refuses any other coin, and `BoxOffice.buy` would fail on it.)
+- **Sales end.** BCH cannot end sales on chain. The app passes the chain tip and the cancel notices it knows of to `buildBuy`, which refuses at or after `startHeight` and after a valid `'C'` notice. At the start, or with a cancel, the organiser's app or keeper (it needs the organiser key) closes every shard with `closeSales`, and signs again if a buy spends a shard first.
+- **Wallet signatures.** A holder's ticket input must be signed with `SIGHASH_ALL` (`0x41`, or `0x61` with `SIGHASH_UTXOS`). A signature with `SIGHASH_NONE | SIGHASH_ANYONECANPAY` can be lifted into another transaction, for example to turn a hand-back into a check-in (pinned in `test/attacks-escrow.test.js`). A client should check the sighash byte of every wallet signature before sending a transaction. That check only helps if the wallet never broadcasts on its own: the app must ask with `broadcast: false`, check the reply, and send the checked transaction itself.
+- **Ticket.** A ticket is live, for a door or an app, only if all of these hold (no code implements this yet):
+  1. The Escrow address is recomputed from the posted show parameters.
+  2. A coin at that address carries an immutable NFT of the **show's category** (not just the same bytes) with commitment `'E' | seat | buyerPkh`, and holds at least `price + 1,000` sats. Only `BoxOffice.buy` can put a show-category token at the Escrow, so the category is what rules out look-alikes; the other two conditions are extra guards.
+  3. The presented ticket is an immutable NFT of the show's category with commitment `'T' | seat | buyerPkh`. To check in, it must sit at `P2PKH(buyerPkh)`; a ticket moved away keeps a live marker but cannot check in (section 8).
+
+  A door may instead evaluate the holder-signed check-in in the 2026 VM, but only with source outputs from its own UTXO lookup (not from the person at the door), and should count entry only once the network has accepted that check-in, since the same signed transaction can be shown twice before it is sent. The NFT alone proves nothing.
 
 ## 8. Limits
 
 Enforced or inherent:
 - **"Before the show" cannot be enforced.** BCH locktime is a lower bound only; there is no expiry. `handBack` and `checkIn` work as long as the escrow coin exists, even after the start. Settle becomes possible at `startHeight + graceBlocks`; after that, whoever moves first (holder or anyone settling) decides the path.
+- **Sales cannot end on chain.** `buy` has no time check, and a shard sells until it is closed. `buildBuy` refuses at or after `startHeight` and after a valid `'C'` notice, but only for clients that use it; `closeSales` needs the organiser key, so the organiser's app or keeper closes every shard at the start, and a buy already in flight can still land first. A buyer who buys late anyway can be settled at once: in settle mode they lose the posted no-show fee plus up to `minerFeeCap` (burned as miner fee); in refund mode up to `minerFeeCap`. A `'C'` notice also refunds seats sold after it was signed.
 - **Prices are in BCH.** A refund returns the same BCH, not the same dollars.
 - **Hand-backs do not free a seat.** The seat counter only grows.
 - **Per-shard limit: 32,767 seats.** `toPaddedBytes(sold + 1, 2)` fails at 32,768 (VM numbers are signed). Not a business cap; a show with N shards can sell up to 32,767 x N.
-- **Buy allows at most 6 outputs** (shard, ticket, escrow, plus 3 for change or data).
+- **Buy allows at most 6 outputs** (shard, ticket, escrow, plus 3 for change or data), and `buildBuy` takes at most 50 funding coins.
 - **A ticket moved away from `P2PKH(buyerPkh)`** can no longer check in or hand back. Settle (and any refund) still pays the original buyer.
-- **One check-in per transaction.** Each `checkIn` allows exactly one category output (its own keepsake), so two check-ins in one transaction fail. Hand-backs, settles and refunds can be batched.
-- **`minerFeeCap` is what the builder can keep, not only what miners get.** In `settle` and `refund`, which anyone can push, the pusher may send up to `minerFeeCap` of each coin to an output of their own. In `checkIn` the holder builds the transaction and may likewise keep up to `minerFeeCap` of the organiser's payout. One satoshi more fails in every path (pinned in the attack suite). Keep the cap near the real fee: the largest single-coin transaction (check-in) is 1,007 bytes, so about 1,500 sats leaves room at 1 sat/byte. The samples use 5,000.
+- **A check-in is a transaction of its own**: exactly two inputs and two outputs. Hand-backs can be batched with each other; settles and refunds can be batched together; a hand-back cannot share a transaction with a settle or a refund (settle and refund take only Escrow coins).
+- **Batches.** At most 100 coins per settle or refund transaction (builder). At the largest show parameters 100 coins are about 85,200 bytes (settle with a no-show fee) and 88,500 bytes (refund), under the 100,000-byte standard limit, at about 36% of each input's operation-cost budget. A keeper sends several transactions for a bigger show.
+- **`minerFeeCap` is a burn allowance, not a skim allowance.** Whoever builds a settle or refund (anyone), or a hand-back or check-in (the holder), sets the miner fee, up to `minerFeeCap` per coin. No path allows an output that could take the rest (pinned in the attack suite), so nobody can keep it, but a griefer can burn it, and a sender who mines the block, or has a rebate from a miner, can collect it. The policy keeps the cap between 1,200 and 2,000 sats and at most 20% of the price; the samples use 1,500.
+- **Escrow transactions take no outside coin.** Settle and refund take only Escrow coins, a check-in only its coin and ticket, and a hand-back only coins and tickets, so each coin pays its own miner fee, capped by `minerFeeCap`. If the relay fee rate ever rose above about `minerFeeCap` divided by the transaction size (for a lone check-in, 1,200 / 1,071, about 1.1 sat/byte at the minimum cap; about 1.3 for a lone refund), the builders would refuse and those coins would wait; batching spreads the fixed part of a settle or refund.
 - **Fees under 546 sats are waived**, not collected (they would be dust).
-- **The organiser key can refund (never redirect) money.** A ticket's price reaches the organiser only through a check-in the holder signs; the only other money the organiser can receive is the posted hand-back and no-show fees (0 on the samples).
-- **Coins sent to the Escrow address without a marker are unspendable.** Every path requires a marker.
-- **Fee basis points are not range-checked on chain.** The builders refuse a show with fees over 10,000 bps; the app must show the posted fees.
-- **Genesis is trusted to be well formed** (section 7). A malformed genesis (duplicate shard bytes, a `sold` field of `0x8000` or more, extra minted tokens) can give away the organiser's own money or confuse seat numbering, and one case can hurt buyers: a shard whose category differs from the Escrow's category still sells (BoxOffice does not know the Escrow's category), but no Escrow path accepts its markers, so that ticket money is locked for good. No genesis lets anyone take a buyer's money. `buildBuy` refuses such a shard and `verifyGenesis` refuses such a genesis.
+- **The organiser key can refund (never redirect) money.** A ticket's price reaches the organiser only through a check-in the holder signs; the only other money the organiser can receive is the posted hand-back and no-show fees (0 on the samples), each exactly as posted.
+- **Coins sent to the Escrow address without a marker of the show's category are unspendable.** Every path requires a marker of the show's category; look-alike tokens of another category sent there are stuck for good.
+- **Fee basis points are not range-checked on chain.** The policy refuses fees over 1,000 bps (10%), but a show deployed by hand could post more, so the app must show the posted fees.
+- **Genesis is trusted to be well formed** (section 7). A malformed genesis (duplicate shard bytes, a `sold` field of `0x8000` or more, extra minted tokens) can give away the organiser's own money or confuse seat numbering. It cannot lock or take a buyer's money: `BoxOffice` commits to the show's category, so a shard of any other category (from a genesis with two categories, or planted later by anyone) can never sell. `verifyGenesis` refuses all of these.
 - **closeSales may leave extra closed tokens at the BoxOffice.** Every category output of `closeSales` must sit at the BoxOffice in the closed state, so the organiser can park extra closed minting NFTs there with their own sats. Closed is final: they can never sell, and nothing can move them out.
-- **Plain coins sent to the BoxOffice address are unspendable** (both paths need a token).
+- **Plain coins sent to the BoxOffice address are unspendable** (both paths need a token of the show's category).
 - **Contention.** Each buy spends and recreates a shard; two buyers on the same shard at once means one wallet must sign again. Shards spread the load.
 
 ## 9. Measured sizes and budgets
 
 | Item | Bytes |
 |---|---|
-| BoxOffice compiled bytecode (no constructor pushes) | 294 |
-| Escrow compiled bytecode (no constructor pushes) | 581 |
-| BoxOffice redeem script, sample show | 367 |
-| Escrow redeem script, sample show | 681 |
+| BoxOffice compiled bytecode (no constructor pushes) | 285 |
+| Escrow compiled bytecode (no constructor pushes) | 632 |
+| BoxOffice redeem script, sample show | 391 |
+| Escrow redeem script, sample show | 732 |
 
-Largest unlocking bytecode: `refund`, 752 bytes, against the 10,000-byte standard limit. Highest operation cost measured: about 89,400 per input (refund, two coins), against a per-input budget of `(41 + unlocking length) x 800`, about 634,000 for that input. Redeem scripts above 520 bytes are valid since the May 2025 upgrade (10,000-byte pushes), and pass standard mode in the 2026 VM.
+Largest unlocking bytecode: `refund`, 803 bytes, against the 10,000-byte standard limit. Highest operation cost measured: 247,431 for one input of a 100-coin refund, against that input's budget of `(41 + unlocking length) x 800` = 679,200 (36%); 220,967 of 625,600 for a 100-coin settle with a no-show fee; 125,954 of 366,400 for the BoxOffice input of a buy with 50 funding coins (`test/limits.test.js`). Redeem scripts above 520 bytes are valid since the May 2025 upgrade (10,000-byte pushes), and pass standard mode in the 2026 VM.
 
 ## 10. Code map
 
 - `contracts/BoxOffice.cash`, `contracts/Escrow.cash`: sources. `contracts/*.json`: CashScript artifacts. `npm run compile` rebuilds both and `src/tx/artifacts.js`.
 - `src/tx/encoding.js`: commitments, seats, refund notice messages.
 - `src/tx/contracts.js`: redeem scripts, P2SH32 locking bytecode, addresses, unlocking bytecode.
-- `src/tx/builders.js`: genesis, buy, closeSales, handBack, checkIn, settle, refund.
+- `src/tx/builders.js`: genesis, buy, closeSales, handBack, checkIn, settle, refund, and `verifyRefundNotice`.
+- `src/tx/constants.js`: layout constants, the show policy bounds (section 6) and the relay and batch limits.
 - `src/tx/vm.js`: evaluates every input and the whole transaction in the 2026 VM, standard and consensus.
 - `src/tx/sign.js`: signing with test keys (tests only; builders never sign).
 - `src/tx/verify.js`: `verifyGenesis`, the client-side genesis check (section 7).
-- `test/`: `npm test` runs everything. `happy.test.js` and `sanity.test.js` cover the honest paths and the harness; `attacks-boxoffice.test.js`, `attacks-escrow.test.js` and `genesis.test.js` are the attack suite (section 11); `kit.js` builds hand-made attack transactions over made-up coins.
+- `test/`: `npm test` runs everything. `happy.test.js` and `sanity.test.js` cover the honest paths and the harness; `attacks-boxoffice.test.js`, `attacks-escrow.test.js` and `genesis.test.js` are the attack suite (section 11); `policy.test.js` covers the show policy, the sales-end guard and the builders' dust guard; `limits.test.js` measures the fee floor, the batch caps and the operation-cost budgets; `kit.js` builds hand-made attack transactions over made-up coins.
 
 ## 11. Attack suite
 
-Every attack is a hand-built transaction, usually one change away from an honest control that passes. Each case asserts that the 2026 VM rejects it in **both** standard and consensus mode, and names the input that must fail while every other input passes, so the rejection is pinned on that input's own rule rather than on a stale signature or a value error. Attacks stopped by consensus token rules (fungible amounts after genesis) assert the whole-transaction error instead. `LIMIT` cases are accepted on purpose: they pin the limits in section 8 so a behaviour change shows up as a failing test.
+Every attack is a hand-built transaction, usually one change away from an honest control that passes. Each case asserts that the 2026 VM rejects it in **both** standard and consensus mode, and names the input that must fail while every other input passes, so the rejection is pinned on that input's own rule rather than on a stale signature or a value error. Attacks stopped by consensus token rules (fungible amounts after genesis) assert the whole-transaction error instead. A few `genesis.test.js` cases are refused by `verifyGenesis` rather than the VM, because the contracts never see genesis. `LIMIT` cases are accepted on purpose: they pin the limits in section 8 so a behaviour change shows up as a failing test.
 
-Covered (brief K8 list first): extra mint (outputs 3 and 5), minting capability leaked to outputs 1 or 2, wrong category (ticket and marker), seat reuse (counter not advanced, counter rolled back, old seat re-sold, shard byte rewritten; across shards via genesis in `genesis.test.js`), buy not at input 0, two shards in one transaction, a leaked minting input, output-count overflow, double satisfaction in hand-back, check-in, settle, refund and mixed paths, fee drain one satoshi past `minerFeeCap` in every path, wrong payout or refund address in every path, ticket-marker mismatch (seat, pkh, category, capability), check-in and hand-back by a non-holder (ticket moved, or wrong key), settle one block early, fees above the posted bps, missing, short, misdirected or double-counted fee outputs, refund notices over the wrong scope, seat, shard, category, byte order or key, and replayed on another show of the same organiser, 41-byte ticket and marker commitments (the 2026 VM allows 128 bytes, so the contracts are what stop them), closeSales without the organiser key, with an empty or replayed signature, reopening, leaking, minting or spawning an open shard, and buy after closeSales.
+Counts at this commit: the three attack files hold 175 tests: 143 attacks the VM must refuse in both modes (`attacks-boxoffice` 47, `attacks-escrow` 93, `genesis` 3), 13 attacks refused before the VM (12 by `verifyGenesis`, 1 by the commitment encoder), 11 honest controls, 7 `LIMIT` pins and 1 kit self-check.
 
-Further: a ticket or marker sent to another pkh than its twin, a marker kept by the buyer or sent to another show's Escrow, ticket and marker swapped, the marker or ticket surviving a payout path, a keepsake sent elsewhere, missing, at the wrong index or re-labelled as a marker, a used keepsake replayed on another seat, two check-ins in one transaction, a check-in mixed with a hand-back or settle, a buy that also settles a coin, a settle that also mints, timestamp locktimes and final sequence numbers, wrong argument sizes and unknown function selectors, the per-shard seat limit, a hand-back signature lifted into a check-in, and coins at either address that no path can spend.
+Covered (brief K8 list first): extra mint (outputs 3 and 5), minting capability leaked to outputs 1 or 2, wrong category (ticket and marker), seat reuse (counter not advanced, counter rolled back, old seat re-sold, shard byte rewritten; across shards via genesis in `genesis.test.js`), buy not at input 0, two shards in one transaction, a leaked minting input, output-count overflow, double satisfaction in hand-back, check-in, settle, refund and mixed paths, fee drain one satoshi past `minerFeeCap` in every path, a skim inside the cap in every path (an extra output, an outside coin added to open a slot, a fee output padded above the posted fee, a fee-free coin's fee slot, a batch pusher's or organiser-buyer's payout above its own coin, the organiser cancelling and paying himself, a third output or a fat keepsake in a check-in), tokens of another category on any payout or fee output, wrong payout or refund address in every path, ticket-marker mismatch (seat, pkh, category, capability), check-in and hand-back by a non-holder (ticket moved, or wrong key), settle one block early, fees above the posted bps, missing, short, misdirected or double-counted fee outputs, refund notices over the wrong scope, seat, shard, category, byte order or key, and replayed on another show of the same organiser, 41-byte ticket and marker commitments (the 2026 VM allows 128 bytes, so the contracts are what stop them), closeSales without the organiser key, with an empty or replayed signature, reopening, leaking, minting or spawning an open shard, closeSales on a shard of another category, and buy after closeSales. Genesis: a shard of another category at the BoxOffice, a stranger planting one at a live show, a genesis that also mints a second category, and a look-alike genesis against the mined txid. A show deployed by hand with a 1,000,000-sat cap: the organiser cannot take the coin through a cancel, nor a stranger through a settle.
+
+Further: a ticket or marker sent to another pkh than its twin, a marker kept by the buyer or sent to another show's Escrow, ticket and marker swapped, the marker or ticket surviving a payout path, a keepsake sent elsewhere, missing, at the wrong index or re-labelled as a marker, a used keepsake replayed on another seat, two check-ins in one transaction, a check-in mixed with a hand-back or settle, a hand-back batched with a settle and a refund, an escrow coin after its own ticket, a buy that also settles a coin, a settle that also mints, timestamp locktimes and final sequence numbers, wrong argument sizes and unknown function selectors, the per-shard seat limit, a hand-back signature lifted into a check-in, and coins at either address that no path can spend.
