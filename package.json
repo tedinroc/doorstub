@@ -16,6 +16,9 @@
     "probe:build": "vite build probe",
     "simnet": "node simnet/cli.js",
     "studio": "node studio/cli.js",
+    "worker:dev": "node worker/node/cli.js",
+    "keeper": "node worker/node/keeper-cli.js",
+    "worker:workerd-check": "node worker/scripts/workerd-check.js",
     "fixtures:fulcrum": "node simnet/scripts/capture-fulcrum.js"
   },
   "dependencies": {
