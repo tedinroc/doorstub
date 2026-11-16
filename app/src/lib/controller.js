@@ -117,6 +117,24 @@ const defaultClaimStorage = () => {
   return { getItem: (k) => (map.has(k) ? map.get(k) : null), setItem: (k, v) => map.set(k, String(v)) };
 };
 
+/** Where the page keeps which tickets it acted on, for this tab: sessionStorage when the browser allows it, else memory. */
+const defaultTabStorage = () => {
+  try {
+    const ss = globalThis.sessionStorage;
+    if (ss !== undefined && ss !== null) {
+      ss.getItem('doorstub.probe');
+      return ss;
+    }
+  } catch {
+    // storage blocked
+  }
+  return null;
+};
+
+const TOUCHED_KEY = 'doorstub.touched';
+/** How many acted-on tickets the tab remembers (newest kept). */
+const TOUCHED_MAX = 40;
+
 const DOOR_RECORD_PREFIX = 'doorstub.door.';
 const PAID_PREFIX = 'doorstub.paid.';
 
@@ -160,6 +178,7 @@ export const createController = ({ runtime, deps = {} }) => {
     WebSocketImpl,
     now = () => Date.now(),
     reconnectWaitMs = RECONNECT_WAIT_MS,
+    tabStorage = defaultTabStorage(),
   } = deps;
   const network = runtime.network;
 
@@ -194,7 +213,25 @@ export const createController = ({ runtime, deps = {} }) => {
   let closed = false;
   const local = new Map(); // ticket key -> the app's own record, until the chain shows it
   const boughtAt = new Map(); // ticket key -> the tip when this page bought it (for the countdown bar while the buy is unconfirmed)
-  const touched = new Set(); // ticket keys this page acted on (shown under their show card)
+  // Ticket keys this page acted on (shown under their show card). Kept for the tab, so a reload keeps finished
+  // tickets under their cards (a per-viewer convenience; the page works the same without it).
+  const touched = new Set();
+  try {
+    const saved = JSON.parse(tabStorage?.getItem(TOUCHED_KEY) ?? '[]');
+    if (Array.isArray(saved)) for (const k of saved.slice(-TOUCHED_MAX)) if (typeof k === 'string' && /^[\w-]{1,80}:[0-9a-f]{4,20}$/.test(k)) touched.add(k);
+  } catch {
+    // nothing saved, or storage blocked
+  }
+  const touch = (key) => {
+    touched.delete(key);
+    touched.add(key);
+    while (touched.size > TOUCHED_MAX) touched.delete(touched.values().next().value);
+    try {
+      tabStorage?.setItem(TOUCHED_KEY, JSON.stringify([...touched]));
+    } catch {
+      // storage full or blocked: memory only
+    }
+  };
   const holding = new Set(); // sample B tickets whose refund steps are on screen: the card stays "held" until "Money back"
   const debounce = new Map();
   const settleTried = new Set();
@@ -750,7 +787,7 @@ export const createController = ({ runtime, deps = {} }) => {
   const upsertLocal = (ticket) => {
     const key = ticketKeyOf(ticket.showId, ticket.seatHex);
     local.set(key, ticket);
-    touched.add(key);
+    touch(key);
     set((s) => ({ tickets: [...s.tickets.filter((t) => ticketKeyOf(t.showId, t.seatHex) !== key), ticket], returned: { ...s.returned, [key]: ticket.returned ?? s.returned[key] ?? null } }));
   };
 
@@ -842,7 +879,7 @@ export const createController = ({ runtime, deps = {} }) => {
     const ticket = ticketByKey(key);
     if (ticket === undefined || busyStep(flowOf(key))) return undefined;
     const show = ticket.show;
-    touched.add(key);
+    touch(key);
     setFlow(key, { kind: 'handBack', step: 'preparing' });
     try {
       if (!ticket.canAct || ticket.escrowUtxo === null || ticket.ticketUtxo === null) throw new Error('this ticket cannot be handed back from this wallet');
@@ -926,7 +963,7 @@ export const createController = ({ runtime, deps = {} }) => {
     const ticket = ticketByKey(key);
     if (ticket === undefined || busyStep(flowOf(key))) return undefined;
     const show = ticket.show;
-    touched.add(key);
+    touch(key);
     setFlow(key, { kind: 'walkIn', step: 'preparing' });
     try {
       if (show.kind !== 'real') throw new Error('only a real show has a door');
@@ -977,7 +1014,7 @@ export const createController = ({ runtime, deps = {} }) => {
     const ticket = ticketByKey(key);
     if (ticket === undefined || busyStep(flowOf(key))) return undefined;
     const show = ticket.show;
-    touched.add(key);
+    touch(key);
     // Keep the card on "held" (no stamp yet) until the money is back, even if the chain is quicker.
     holding.add(key);
     if (!local.has(key)) local.set(key, ticket);

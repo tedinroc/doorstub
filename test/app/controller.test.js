@@ -412,3 +412,20 @@ test('reopening the connect dialog shows the same link while it waits for a wall
   assert.notEqual(other.uri, first.uri);
   await controller.close();
 });
+
+test('the tickets this page acted on are kept for the tab, so a reload keeps finished tickets under their cards', async () => {
+  const saved = new Map([['doorstub.touched', JSON.stringify(['sample-b:020001', 'screening-1:010001', 'bad key', 7])]]);
+  const tabStorage = { getItem: (k) => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, String(v)) };
+  const make = (deps) =>
+    createController({
+      runtime: { network: 'simnet', servers: ['ws://127.0.0.1:1'], apiOrigin: '', showsUrl: '/shows.json', testHooks: true },
+      deps: { fetchShows: async () => '{}', sleep: async () => {}, ...deps },
+    });
+  const controller = make({ tabStorage });
+  assert.deepEqual([...controller.touched()], ['sample-b:020001', 'screening-1:010001'], 'only well-formed ticket keys are read back');
+  await controller.close();
+  // Storage that throws (blocked): the page works the same, from memory.
+  const blocked = make({ tabStorage: { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } } });
+  assert.deepEqual([...blocked.touched()], []);
+  await blocked.close();
+});

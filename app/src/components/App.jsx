@@ -3,7 +3,7 @@ import { nextOpenInstance, showsOnSale } from '../../../src/shows/schedule.js';
 import { formatBch } from '../../../src/shows/format.js';
 import { TEST_HOOKS } from '../env.js';
 import { LABELS, say } from '../lib/copy.js';
-import { listedShows, num, showCardModel, ticketModel } from '../lib/view.js';
+import { listedShows, newestFirst, num, showCardModel, ticketModel } from '../lib/view.js';
 import { useNow, useStore } from '../hooks.js';
 import { ConnectDialog } from './connect.jsx';
 import { Banner, CheckIt, DevPanel, Footer, ForOrganisers, Header, Hero, HowItWorks, ProofStrip } from './sections.jsx';
@@ -43,17 +43,18 @@ export const App = ({ controller, dev }) => {
     };
   }, [drawer]);
 
-  // Held tickets first, then the newest (a buy still in the mempool counts as newest).
-  const age = (t) => (t.buy?.height ? t.buy.height : Number.MAX_SAFE_INTEGER);
-  const tickets = [...state.tickets]
-    .sort((a, b) => (a.state === 'held') - (b.state === 'held') || age(a) - age(b))
-    .reverse()
+  // Newest first, in the order this page first saw each ticket (newestFirst): a ticket keeps its place when its
+  // state changes, so the one being watched never jumps at "Money back".
+  const seen = useRef(new Map()).current;
+  const newest = newestFirst(state.tickets, seen)
     .map((t) => ({
       ticket: t,
       model: ticketModel(t, { tip: tip ?? undefined, now, returned: state.returned[keyOf(t)] ?? null, paid: (t.buy?.txid && state.paid[t.buy.txid]) ?? null }),
     }));
-  // This wallet's tickets shown under a show card: held ones, and any this page acted on.
-  const mineOf = (show) => tickets.filter(({ ticket }) => ticket.showId === show.id && (ticket.state === 'held' || touched.has(keyOf(ticket))));
+  // My tickets: held ones first, each group newest first.
+  const tickets = [...newest].sort((a, b) => (b.ticket.state === 'held') - (a.ticket.state === 'held'));
+  // This wallet's tickets shown under a show card, newest first: held ones, and any this page acted on.
+  const mineOf = (show) => newest.filter(({ ticket }) => ticket.showId === show.id && (ticket.state === 'held' || touched.has(keyOf(ticket))));
   const listed = tip === null ? [] : listedShows({ shows: state.shows, onSale, tickets: state.tickets, touched });
   const freshKeys = new Set(
     Object.values(state.flows)

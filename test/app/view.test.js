@@ -9,6 +9,7 @@ import {
   countdownText,
   etaText,
   listedShows,
+  newestFirst,
   proofModel,
   refundTrack,
   shortBch,
@@ -161,6 +162,20 @@ test('listedShows: shows on sale and an ended show this wallet watches, in shows
     listedShows({ shows, onSale, tickets: [t('sample-a-1', 'refunded'), t('sample-a-0', 'refunded')], touched: new Set(['sample-a-1:010100']) }).map((s) => s.id),
     ['sample-a-1', 'sample-a-2', 'sample-b'],
   );
+});
+
+test('newestFirst: tickets keep their place when their state changes or the list comes back in another order', () => {
+  const t = (seatHex, state, height = 0) => ({ showId: 'sample-b', seatHex, state, buy: { txid: seatHex.padEnd(64, '0'), height } });
+  const seen = new Map();
+  const keys = (list) => list.map((x) => x.seatHex);
+  // At load: by the buy's block, the mempool counting as newest.
+  assert.deepEqual(keys(newestFirst([t('020001', 'refunded', 0), t('010001', 'refunded', 977_600)], seen)), ['020001', '010001']);
+  // A second B buy while the first is still in the mempool: newest on top.
+  assert.deepEqual(keys(newestFirst([t('020001', 'refunded'), t('010001', 'refunded', 977_600), t('030001', 'held')], seen)), ['030001', '020001', '010001']);
+  // Its refund lands ("Money back") and the list comes back from the chain in another order: nothing moves.
+  assert.deepEqual(keys(newestFirst([t('030001', 'refunded'), t('010001', 'refunded', 977_600), t('020001', 'refunded')], seen)), ['030001', '020001', '010001']);
+  // Both confirm in the same block: still nothing moves.
+  assert.deepEqual(keys(newestFirst([t('020001', 'refunded', 977_601), t('030001', 'refunded', 977_601), t('010001', 'refunded', 977_600)], seen)), ['030001', '020001', '010001']);
 });
 
 // A real show as the shows loader exposes it (CONTRACT: eventAt, eventAtMs, durationMin, seatPrefix for kind "real").

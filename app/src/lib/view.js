@@ -168,6 +168,21 @@ export const listedShows = ({ shows, onSale, tickets, touched = new Set() }) => 
   return shows.filter((show) => onSale.includes(show) || watching(show));
 };
 
+/**
+ * Tickets newest first, in the order this page first saw each one. `seen`
+ * (ticket key -> sequence) is kept by the caller across renders; tickets seen
+ * together (at load) go by their buy's block, a buy still in the mempool
+ * counting as newest. A ticket keeps its place when its state changes or the
+ * list comes back in another order, so the card being watched never jumps,
+ * even when two buys of the same show tie on their block.
+ */
+export const newestFirst = (tickets, seen) => {
+  const keyOf = (t) => `${t.showId}:${t.seatHex}`;
+  const age = (t) => (t.buy?.height ? t.buy.height : Number.MAX_SAFE_INTEGER);
+  for (const t of tickets.filter((x) => !seen.has(keyOf(x))).sort((a, b) => age(a) - age(b))) seen.set(keyOf(t), seen.size);
+  return [...tickets].sort((a, b) => seen.get(keyOf(b)) - seen.get(keyOf(a)));
+};
+
 /** The stamp on a finished ticket, or null while it is held. */
 export const stampOf = (state) => {
   if (state === 'walkedIn') return { text: LABELS.stampWalkedIn, tone: 'green' };
