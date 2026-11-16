@@ -155,7 +155,7 @@ test('controller on simnet: buy A, hand back, buy B and its refund arrives, the 
   assert.ok(boughtReal?.key, JSON.stringify(state().flows[real.id]?.error));
   const sentIn = await controller.walkIn(boughtReal.key);
   assert.ok(sentIn?.txid, JSON.stringify(state().flows[boughtReal.key]?.error));
-  assert.match(wallet.log.at(-1).userPrompt, /^Doorstub: walk in with seat [A-Z]-\d-1\. This pays the organiser 0\.000\d+ BCH; your ticket stays as a keepsake\.$/);
+  assert.match(wallet.log.at(-1).userPrompt, /^Doorstub: walk in with seat S-\d-1\. This pays the organiser 0\.000\d+ BCH; your ticket stays as a keepsake\.$/);
   assert.equal(state().flows[boughtReal.key].link, DOOR_LINK);
   // The page reserved its claim first (before the check-in was sent), then asked the door with the same claim.
   const doorCalls = stub.calls.filter((c) => c.endpoint === 'reserve' || c.endpoint === 'door');
