@@ -144,6 +144,8 @@ Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js
 | `Paytaca: press Copy link, then paste it in Paytaca's WizardConnect screen. The link stays valid while this page stays open.` | The dialog never regenerates the link on a timer, and the wallet session pairs a wallet that joins after the library's 30 s wait (`test/wallet/late-join.test.js`). |
 | `Cashonize: create a wallet first, then press Open in Cashonize again.` | Cashonize drops a `?uri=` link opened before a wallet exists (seen on Cashonize web, 11/16). |
 | `Waiting for your wallet to join.` | Status line. |
+| `Next: your wallet asks you to approve {price} for {show}.` | Shown when the dialog was opened by "Get a ticket": the buy waits for the wallet and starts by itself once it joins (`pendingBuy`, `test/app/controller.test.js`), and its sign request names the seat and the price (section 7). `{price}` is the show's price, `{show}` its title. |
+| `On a phone: connect in your wallet, come back to this page, then open the wallet again to approve.` | On a phone the wallet app takes the screen; the sign request goes out from this page after the wallet joins, and a phone may pause a page left in the background, so the page should be open when it does. |
 | `The wallet relay is not answering. Try the other relay.` | Shown after 10 s without a relay connection; the button pairs over the second relay. |
 | `This wallet is on {network}. Doorstub runs on Bitcoin Cash mainnet; switch the wallet to mainnet and connect again.` | The wallet session refuses a wallet on another network (`test/wallet`). |
 | `Your wallet ended the connection.` | Status line. |
@@ -211,6 +213,7 @@ Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js
 | `If you do not use your ticket, it refunds after the show.` | C3. |
 | `The organiser's key can refund your money. It can never send it anywhere else; at most {cap} sats of your ticket can go to the network fee.` | C6. |
 | `A refund goes only to the address that bought the ticket.` | C7. |
+| `Each ticket's money is one coin at the show's Escrow contract, marked by an NFT that matches your ticket. It can leave in exactly four ways.` | `buy` sends `price + 1,000` sats to the show's Escrow with the marker `'E' \| seat \| buyerPkh`, the twin of the ticket `'T' \| seat \| buyerPkh` (`SPEC.md` section 2); Escrow has exactly four functions, `checkIn`, `handBack`, `settle` and `refund` (`SPEC.md` 3.2). |
 | `Read live from the chain: every transaction at the contract addresses of the shows on this page.` | The proof strip reads the history of each show's Escrow address from Fulcrum and classifies each spend by its path (`src/chain/ledger.js`). |
 | `No Doorstub transaction yet.` | Status line. |
 | `Both contract addresses below were recomputed in your browser from the show's posted parameters and compared with the ones on this page.` | The shows loader recomputes both contracts and refuses a show whose posted addresses differ (`src/shows/schema.js`). |
@@ -225,6 +228,17 @@ Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js
 | `Coins sent straight to a contract address without the right token are stuck for good. Only use the app.` | Section 4, limit 13. |
 | `Sales end in the app, not on chain.` | Section 4, limit 14. |
 | `Two buyers on the same box-office shard at once means one of them signs again.` | Section 4, limit 12. |
+
+### 9.5a For organisers
+
+The section answers who Doorstub is for, what an organiser gains and how Doorstub would earn. Doorstub takes no fee today: no contract path pays anyone but the buyer, the organiser payee and the network.
+
+| Sentence | Why it is true |
+|---|---|
+| `Organisers of paid online calls, classes and meetups, where people book and then do not come.` | Who the product is for (a description, not a claim about the code); the two real shows are online calls (section 6). |
+| `You are paid from the contract for each guest who walks in, the moment they check in. Check-in is final, so there is no chargeback.` | C2: `checkIn` pays the organiser payee from the ticket's coin in the same transaction; section 4, limit 8; a Bitcoin Cash payment has no chargeback. |
+| `You can post a hand-back fee and a no-show fee of up to 10% each; the contract pays them to you.` | Section 4, limit 7: the fee outputs of `handBack` and `settle` must pay the organiser payee exactly the posted fee, and the app refuses a show with either fee over 10% (1,000 bps). |
+| `Plan, not built yet: Doorstub would charge organisers a fee per show for running the keeper and the door. Today the contracts pay Doorstub nothing.` | A plan, marked as one. Neither contract has an output for Doorstub (`SPEC.md` 3.1, 3.2); the keeper and the door run for the shows on this page at no charge. |
 
 ### 9.6 Credits
 

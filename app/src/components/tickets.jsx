@@ -27,7 +27,7 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
             <div class="kicker">
               <span>Doorstub</span>
               <span class="pill">{model.sample ? LABELS.sample : LABELS.realShow}</span>
-              <span class="serial">No. {model.serial}</span>
+              {model.onSale === false ? <span class="pill ended-pill">{LABELS.ended}</span> : <span class="serial">No. {model.serial}</span>}
             </div>
             <div class="title-row">
               <div class="letter" aria-hidden="true">
@@ -65,7 +65,7 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
             </div>
             {model.sold !== null ? <div class="sold">{say('soldLine', { sold: model.sold, shards: model.shards })}</div> : null}
           </div>
-          {status ? <div class="status">{status}</div> : null}
+          <div class="status">{status}</div>
           <dl class="facts">
             {model.callLine ? (
               <div data-fact="call">
@@ -90,7 +90,7 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
           </dl>
         </article>
       </div>
-      {children}
+      {children ? <div class="col-mine">{children}</div> : null}
     </div>
   );
 };
@@ -143,7 +143,7 @@ export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack
           <div class="band" />
           <div class="face">
             <div class="kicker">
-              <span>{LABELS.admitOne}</span>
+              <span class="admit-word">{LABELS.admitOne}</span>
               <span class="show-name">{model.title}</span>
               <span class="serial">No. {model.serial}</span>
             </div>
@@ -162,7 +162,7 @@ export const Ticket = ({ model, flow, network, fresh, reveal = false, onHandBack
                 </div>
               ) : null}
             </div>
-            <div class="lines">
+            <div class="lines" aria-live="polite">
               {model.lines.map((line) => (
                 <p key={line}>{line}</p>
               ))}

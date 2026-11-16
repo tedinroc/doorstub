@@ -143,7 +143,7 @@ test('proofModel: five paths, counts and latest txids', () => {
   assert.equal(proofModel(null).total, 0);
 });
 
-test('listedShows: shows on sale, then an ended show only while this wallet has a ticket to watch there', () => {
+test('listedShows: shows on sale and an ended show this wallet watches, in shows.json order (the ended instance stays in place)', () => {
   const a1 = { id: 'sample-a-1' };
   const a2 = { id: 'sample-a-2' };
   const b = { id: 'sample-b' };
@@ -153,13 +153,13 @@ test('listedShows: shows on sale, then an ended show only while this wallet has 
   const t = (showId, state, seatHex = '010100') => ({ showId, state, seatHex });
   // Nothing held: only the shows on sale.
   assert.deepEqual(listedShows({ shows, onSale, tickets: [] }).map((s) => s.id), ['sample-a-2', 'sample-b']);
-  // A held ticket of a show that started: its card stays, after the shows on sale (so "Get a ticket" stays first).
-  assert.deepEqual(listedShows({ shows, onSale, tickets: [t('sample-a-1', 'held')] }).map((s) => s.id), ['sample-a-2', 'sample-b', 'sample-a-1']);
+  // A held ticket of a show that started: its card stays where it was, and the next instance comes right after it.
+  assert.deepEqual(listedShows({ shows, onSale, tickets: [t('sample-a-1', 'held')] }).map((s) => s.id), ['sample-a-1', 'sample-a-2', 'sample-b']);
   // Once refunded it stays only if this page acted on it (the judge watches the refund land), not for old tickets.
   assert.deepEqual(listedShows({ shows, onSale, tickets: [t('sample-a-1', 'refunded'), t('sample-a-0', 'refunded')] }).map((s) => s.id), ['sample-a-2', 'sample-b']);
   assert.deepEqual(
     listedShows({ shows, onSale, tickets: [t('sample-a-1', 'refunded'), t('sample-a-0', 'refunded')], touched: new Set(['sample-a-1:010100']) }).map((s) => s.id),
-    ['sample-a-2', 'sample-b', 'sample-a-1'],
+    ['sample-a-1', 'sample-a-2', 'sample-b'],
   );
 });
 

@@ -10,7 +10,7 @@ import { CopyButton } from './parts.jsx';
  * button on a phone), Open in Cashonize, and Copy link for Paytaca. The link
  * is never regenerated on a timer, so a pasted link keeps working.
  */
-export const ConnectDialog = ({ open, wallet, onClose, onOtherRelay }) => {
+export const ConnectDialog = ({ open, wallet, pending = null, onClose, onOtherRelay }) => {
   const ref = useRef(null);
   const [qr, setQr] = useState('');
   const phone = isPhone();
@@ -75,8 +75,14 @@ export const ConnectDialog = ({ open, wallet, onClose, onOtherRelay }) => {
               {LABELS.connect}
             </h2>
             <p class="intro">{say('connectIntro')}</p>
+            {pending !== null ? (
+              <div class="next" data-connect-next>
+                <p>{say('connectNext', { price: pending.price, show: pending.title })}</p>
+                {phone ? <p class="phone-note">{say('connectPhone')}</p> : null}
+              </div>
+            ) : null}
             {showQr ? (
-              <div class="qr" aria-label="QR code" data-qr>
+              <div class="qr" role="img" aria-label={LABELS.wizQr} data-qr>
                 {qr ? <div dangerouslySetInnerHTML={{ __html: qr }} style="width:100%;height:100%" /> : <span class="wait">…</span>}
               </div>
             ) : null}

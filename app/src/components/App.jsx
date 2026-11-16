@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { nextOpenInstance, showsOnSale } from '../../../src/shows/schedule.js';
 import { formatBch } from '../../../src/shows/format.js';
 import { TEST_HOOKS } from '../env.js';
@@ -6,7 +6,7 @@ import { LABELS, say } from '../lib/copy.js';
 import { listedShows, num, showCardModel, ticketModel } from '../lib/view.js';
 import { useNow, useStore } from '../hooks.js';
 import { ConnectDialog } from './connect.jsx';
-import { Banner, CheckIt, DevPanel, Footer, Header, Hero, HowItWorks, ProofStrip } from './sections.jsx';
+import { Banner, CheckIt, DevPanel, Footer, ForOrganisers, Header, Hero, HowItWorks, ProofStrip } from './sections.jsx';
 import { ShowCard, Ticket } from './tickets.jsx';
 
 const keyOf = (t) => `${t.showId}:${t.seatHex}`;
@@ -29,6 +29,19 @@ export const App = ({ controller, dev }) => {
     globalThis.addEventListener?.('keydown', onKey);
     return () => globalThis.removeEventListener?.('keydown', onKey);
   }, []);
+
+  // My tickets is a modal drawer: focus goes into it, the page behind is inert, and focus returns to the chip.
+  const drawerClose = useRef(null);
+  useEffect(() => {
+    if (!drawer || typeof document === 'undefined') return undefined;
+    const behind = [...document.querySelectorAll('.blaze, header.top, main, footer.foot')];
+    for (const el of behind) el.setAttribute('inert', '');
+    drawerClose.current?.focus();
+    return () => {
+      for (const el of behind) el.removeAttribute('inert');
+      document.querySelector('[data-wallet-chip]')?.focus();
+    };
+  }, [drawer]);
 
   // Held tickets first, then the newest (a buy still in the mempool counts as newest).
   const age = (t) => (t.buy?.height ? t.buy.height : Number.MAX_SAFE_INTEGER);
@@ -94,6 +107,7 @@ export const App = ({ controller, dev }) => {
   };
 
   const walletNotice = state.wallet.error && !state.connectOpen && state.wallet.state !== 'connected' ? state.wallet.error : null;
+  const pendingShow = state.pendingBuy === null ? undefined : state.shows.find((s) => s.id === state.pendingBuy);
 
   return (
     <>
@@ -130,7 +144,7 @@ export const App = ({ controller, dev }) => {
             ) : state.boot === 'failed' ? null : listed.length === 0 ? (
               <div class="notice-box">{state.unverified.length > 0 && state.shows.length === 0 ? say('showUnverified') : say('showsNone')}</div>
             ) : (
-              <div class={`shows n${Math.min(listed.length, 3)}`}>
+              <div class={`shows n${Math.min(listed.length, 4)}`}>
                 {listed.map((show) => {
                   const mine = mineOf(show);
                   return (
@@ -160,6 +174,7 @@ export const App = ({ controller, dev }) => {
           </div>
         </section>
         <ProofStrip state={state} />
+        <ForOrganisers />
         <HowItWorks cap={cap} />
         <CheckIt state={state} shows={onSale.length > 0 ? onSale : state.shows.slice(0, 3)} />
       </main>
@@ -167,6 +182,7 @@ export const App = ({ controller, dev }) => {
       <ConnectDialog
         open={state.connectOpen}
         wallet={state.wallet}
+        pending={pendingShow === undefined ? null : { title: pendingShow.title, price: formatBch(pendingShow.price) }}
         onClose={() => controller.closeConnect()}
         onOtherRelay={() => controller.connect({ relay: (state.wallet.relay + 1) % 2 })}
       />
@@ -183,7 +199,7 @@ export const App = ({ controller, dev }) => {
           <div class="inner">
             <div class="head">
               <h2 class="display">{LABELS.myTickets}</h2>
-              <button type="button" class="btn quiet small" onClick={() => setDrawer(false)}>
+              <button type="button" class="btn quiet small" ref={drawerClose} onClick={() => setDrawer(false)}>
                 {LABELS.close}
               </button>
             </div>
