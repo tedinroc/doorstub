@@ -20,29 +20,57 @@ export const BLOCK_MINUTES = 10;
 /** "1,234". */
 export const num = (n) => Number(n).toLocaleString('en-US');
 
+/** A balance for the header chip: at most 4 decimals, rounded down ("0.0189 BCH"). */
+export const shortBch = (sats) => {
+  const s = typeof sats === 'bigint' ? sats : BigInt(sats);
+  return formatBch((s / 10_000n) * 10_000n);
+};
+
 /** Basis points as a percentage: 0 -> "0%", 150 -> "1.5%". */
 export const bpsText = (bps) => `${Number((Number(bps) / 100).toFixed(2))}%`;
 
-/** About how long until a block `blocks` from now: "in about 40 min", "in about 5 h 50 min", "in about 3 days", "now". */
+/** How long until a block `blocks` from now, at ten minutes a block: "in 40 min", "in 5 h 50 min", "in 3 days", "now". Callers say "about". */
 export const etaText = (blocks) => {
   const b = Math.max(0, Math.round(Number(blocks)));
   if (b === 0) return 'now';
   const minutes = b * BLOCK_MINUTES;
-  if (minutes < 60) return `in about ${minutes} min`;
+  if (minutes < 60) return `in ${minutes} min`;
   if (minutes < 48 * 60) {
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
-    return m === 0 ? `in about ${h} h` : `in about ${h} h ${m} min`;
+    return m === 0 ? `in ${h} h` : `in ${h} h ${m} min`;
   }
-  return `in about ${Math.round(minutes / (24 * 60))} days`;
+  return `in ${Math.round(minutes / (24 * 60))} days`;
 };
 
-/** "14:30" today, "Tue 14:30" another day (the reader's own time zone). */
-export const clockText = (date, { now = Date.now(), locale, timeZone } = {}) => {
-  const time = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', ...(timeZone && { timeZone }) });
-  const day = (d) => d.toLocaleDateString(locale, { year: 'numeric', month: 'numeric', day: 'numeric', ...(timeZone && { timeZone }) });
-  if (day(date) === day(new Date(now))) return time;
-  return `${date.toLocaleDateString(locale, { weekday: 'short', ...(timeZone && { timeZone }) })} ${time}`;
+/** A short countdown for the ticket: "5 h 40 min", "40 min", "3 days", "now". */
+export const countdownText = (blocks) => etaText(blocks).replace(/^in /, '');
+
+/**
+ * "Tue 24 Nov, 21:00 GMT+8": always English (the page is English), in the
+ * reader's own time zone, with the zone named. Built from parts so no
+ * browser locale can mix in its own words ("上午06:06").
+ */
+export const clockText = (date, { timeZone } = {}) => {
+  const parts = {};
+  try {
+    const format = new Intl.DateTimeFormat('en-GB', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+      timeZoneName: 'shortOffset',
+      ...(timeZone && { timeZone }),
+    });
+    for (const p of format.formatToParts(date)) parts[p.type] = p.value;
+  } catch {
+    // An engine without shortOffset: UTC, named as such.
+    return `${date.toUTCString().slice(0, 11).replace(',', '')}, ${date.toISOString().slice(11, 16)} UTC`;
+  }
+  const zone = (parts.timeZoneName ?? 'UTC').replace(/^GMT$|^GMT\+0$|^UTC$/, 'UTC');
+  return `${parts.weekday} ${parts.day} ${parts.month}, ${parts.hour}:${parts.minute} ${zone}`;
 };
 
 /** Block, local time and ETA for a future height. */
@@ -68,7 +96,8 @@ export const showCardModel = (show, { tip, usd = null, ledger, now = Date.now(),
     kind: show.kind,
     letter: show.seatPrefix,
     title: show.title,
-    subtitle: show.subtitle,
+    // The studio's default subtitle repeats the start block, which the card already shows with its time.
+    subtitle: /^Starts at block /.test(show.subtitle ?? '') ? '' : show.subtitle,
     card: show.card,
     sample: isSample(show),
     priceBch: formatBch(show.price),
@@ -80,7 +109,9 @@ export const showCardModel = (show, { tip, usd = null, ledger, now = Date.now(),
     onSale: salesOpen(show, tip),
     startBlock: start.block,
     startEta: start.eta,
+    startTime: start.time,
     settleBlock: settle.block,
+    settleTime: settle.time,
     sold: ledger?.seatCounts?.sold ?? null,
     shards: show.shards,
     serial: show.categoryHex.slice(0, 8).toUpperCase(),
@@ -155,7 +186,7 @@ export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, r
     stamp: stampOf(state),
     lines,
     value,
-    valueText: amountText(value),
+    valueText: formatBch(show.price),
     buyTxid,
     spendTxid: ticket.spend?.txid ?? null,
     refundPath: ticket.refundPath ?? null,
@@ -168,6 +199,7 @@ export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, r
       ? say('showSettles', { settle: settleWhen.block, time: settleWhen.time, eta: settleWhen.eta })
       : null,
     settleBlocksLeft: tip === undefined ? null : Math.max(0, settleAt - 1 - tip),
+    countdown: tip === undefined ? null : countdownText(Math.max(0, settleAt - tip)),
     barcode: commitmentBits(encodeTicketCommitment(seatBytes, buyerPkh)),
     serial: (buyTxid ?? ticket.seatHex).slice(0, 8).toUpperCase(),
     confirmed: (ticket.buy?.height ?? 0) > 0,

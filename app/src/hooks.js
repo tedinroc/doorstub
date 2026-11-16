@@ -26,6 +26,27 @@ export const usePrevious = (value) => {
   return ref.current;
 };
 
+/**
+ * The tear line of a ticket: sets --cut (px from the top) on the article to
+ * where its `.stub` starts, so the two notches sit exactly on the
+ * perforation whatever the text above it wraps to.
+ */
+export const useCut = () => {
+  const ref = useRef(null);
+  useEffect(() => {
+    const article = ref.current;
+    const stub = article?.querySelector(':scope > .stub');
+    if (!article || !stub) return undefined;
+    const place = () => article.style.setProperty('--cut', `${stub.offsetTop}px`);
+    place();
+    if (typeof ResizeObserver !== 'function') return undefined;
+    const observer = new ResizeObserver(place);
+    observer.observe(article);
+    return () => observer.disconnect();
+  }, []);
+  return ref;
+};
+
 export const reducedMotion = () => {
   try {
     return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;

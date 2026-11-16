@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { formatBch } from '../../../src/shows/format.js';
 import { BLAZE, CONTRACT_FILES, EXPLORER, WIZARDCONNECT_SOURCE } from '../config.js';
 import { LABELS, PRIOR_ART, SENTENCES, say } from '../lib/copy.js';
-import { etaText, num, proofModel, showCardModel } from '../lib/view.js';
+import { num, proofModel, shortBch, showCardModel } from '../lib/view.js';
 import { usePrevious } from '../hooks.js';
 import { CopyButton, Logo, TxLink } from './parts.jsx';
 
@@ -12,33 +12,35 @@ const ext = { target: '_blank', rel: 'noopener noreferrer' };
 export const Banner = () => (
   <div class="blaze" role="region" aria-label="BCH BLAZE 2026">
     <div class="wrap">
-      <strong>
+      <strong class="blaze-mark">
         BCH BLAZE <span class="flame">2026</span>
       </strong>
-      {BLAZE.presentationUrl ? (
-        <a href={BLAZE.presentationUrl} {...ext}>
-          {LABELS.presentation}
-        </a>
-      ) : (
-        <span class="soon">{LABELS.presentation}</span>
-      )}
-      {BLAZE.sourceUrl ? (
-        <a href={BLAZE.sourceUrl} {...ext}>
-          {LABELS.source}
-        </a>
-      ) : (
-        <span class="soon">{LABELS.source}</span>
-      )}
-      <span class="donate">
-        {LABELS.donations}
-        {BLAZE.donationAddress ? (
-          <>
-            <code title={BLAZE.donationAddress}>{BLAZE.donationAddress.replace(/^bitcoincash:/, '').slice(0, 10)}…</code>
-            <CopyButton text={BLAZE.donationAddress} class="chip-btn" label="Copy" />
-          </>
+      <span class="blaze-links">
+        {BLAZE.presentationUrl ? (
+          <a href={BLAZE.presentationUrl} {...ext}>
+            {LABELS.presentation}
+          </a>
         ) : (
-          <span class="soon">…</span>
+          <span class="soon">{LABELS.presentation}</span>
         )}
+        {BLAZE.sourceUrl ? (
+          <a href={BLAZE.sourceUrl} {...ext}>
+            {LABELS.source}
+          </a>
+        ) : (
+          <span class="soon">{LABELS.source}</span>
+        )}
+        <span class="donate">
+          <span>{LABELS.donations}</span>
+          {BLAZE.donationAddress ? (
+            <>
+              <code title={BLAZE.donationAddress}>{BLAZE.donationAddress.replace(/^bitcoincash:/, '').slice(0, 8)}…</code>
+              <CopyButton text={BLAZE.donationAddress} class="chip-btn" label={LABELS.copy} />
+            </>
+          ) : (
+            <span class="soon">…</span>
+          )}
+        </span>
       </span>
       <span class="line">{say('blazeLine')}</span>
     </div>
@@ -49,6 +51,7 @@ export const Header = ({ state, ticketCount, onConnect, onOpenTickets }) => {
   const w = state.wallet;
   const connected = w.state === 'connected' || w.state === 'reconnecting';
   const chain = state.chain.status;
+  const tip = state.chain.tip;
   return (
     <header class="top">
       <div class="wrap">
@@ -56,15 +59,19 @@ export const Header = ({ state, ticketCount, onConnect, onOpenTickets }) => {
           <Logo />
           <b>Doorstub</b>
         </a>
-        <span class={`chain-dot${chain === 'connected' ? ' on' : chain === 'down' ? ' down' : ''}`} title={state.chain.server ?? ''} aria-hidden="true" />
+        <span class="chain" title={state.chain.server ?? ''}>
+          <span class={`chain-dot${chain === 'connected' ? ' on' : chain === 'down' ? ' down' : ''}`} aria-hidden="true" />
+          <span class="tip">{tip === null ? '' : `${LABELS.block} ${num(tip)}`}</span>
+        </span>
         {state.network !== 'mainnet' ? <span class="net-pill">SIMNET</span> : null}
         <span class="spacer" />
         {connected ? (
           <button type="button" class="wallet-chip" data-wallet-chip onClick={onOpenTickets} aria-label={`${LABELS.myTickets}: ${ticketCount}`}>
             <span class="name">{w.name}</span>
-            <span class="bal">{w.balance === null ? '…' : formatBch(w.balance)}</span>
+            <span class="bal">{w.balance === null ? '…' : shortBch(w.balance)}</span>
             <span class="count">
-              {LABELS.myTickets} {ticketCount}
+              <span class="word">{LABELS.myTickets}</span>
+              <span class="n">{ticketCount}</span>
             </span>
           </button>
         ) : (
@@ -77,52 +84,29 @@ export const Header = ({ state, ticketCount, onConnect, onOpenTickets }) => {
   );
 };
 
-export const Hero = ({ state, nextA }) => {
-  const proof = state.proof;
-  const tip = state.chain.tip;
+/** "Tickets that refund themselves." in four words, the third in red. */
+const h = SENTENCES.headline.replace(/\.$/, '').split(' ');
+
+export const Hero = ({ state }) => {
   const cap = state.shows[0]?.minerFeeCap ?? 1500n;
   return (
     <section class="hero" id="top">
       <div class="wrap">
-        <div class="grid">
-          <div>
-            <h1 class="display">
-              <span class="row">Tickets that</span>
-              <span class="row">
-                <span class="refund">refund</span> themselves<span class="dot">.</span>
-              </span>
-              <span class="sr-only">{say('headline')}</span>
-            </h1>
-            <p class="sub">{say('subline')}</p>
-            <p class="fine">
-              {say('smallPrint', { cap: num(cap) })} {say('keeperLine')}
-            </p>
-          </div>
-          <LiveBoard tip={tip} proof={proof} nextA={nextA} chain={state.chain.status} />
+        <h1 class="display">
+          <span class="row">{`${h[0]} ${h[1]} `}</span>
+          <span class="row">
+            <span class="refund">{h[2]}</span> {h[3]}
+            <span class="dot">.</span>
+          </span>
+        </h1>
+        <div class="hero-foot">
+          <p class="sub">{say('subline')}</p>
+          <p class="fine">
+            {say('smallPrint', { cap: num(cap) })} {say('keeperLine')}
+          </p>
         </div>
       </div>
     </section>
-  );
-};
-
-/** Live numbers from the chain, next to the headline. */
-const LiveBoard = ({ tip, proof, nextA, chain }) => {
-  const seats = proof?.seatCounts;
-  return (
-    <aside class="live-board ticket-shadow" aria-label={LABELS.liveNow}>
-      <div class="ticket" style="--band: var(--band-b)">
-        <div class="band" />
-        <div class="face">
-          <div class="kicker">
-            <span class={`chain-dot${chain === 'connected' ? ' on' : ''}`} aria-hidden="true" /> <span>{LABELS.liveNow}</span>
-          </div>
-          <div class="live-tip display">{tip === null ? '…' : num(tip)}</div>
-          <p class="live-line">{tip === null ? '' : say('liveTip', { tip: num(tip) })}</p>
-          {nextA && tip !== null ? <p class="live-line">{say('liveNext', { start: num(nextA.startHeight), eta: etaText(Number(nextA.startHeight) - tip) })}</p> : null}
-          {seats && seats.sold > 0 ? <p class="live-line">{say('liveSeats', { ...seats })}</p> : null}
-        </div>
-      </div>
-    </aside>
   );
 };
 

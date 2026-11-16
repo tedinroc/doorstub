@@ -4,7 +4,7 @@
 //   describeError(error, context) -> { key, vars, actions: string[], detail? }
 //
 // Actions are ids the UI turns into buttons: 'retry' (do the same again),
-// 'openWallet' (the wallet's deep link), 'otherRelay', 'nextInstance',
+// 'retryDoor', 'retryRefund', 'nextInstance',
 // 'reload', 'connect'.
 import { formatBch } from '../../../src/shows/format.js';
 
@@ -33,9 +33,9 @@ export const describeError = (error, context = {}) => {
   if (name === 'WalletError') {
     switch (code) {
       case 'timeout':
-        return { key: 'walletTimeout', vars: {}, actions: ['retry', 'openWallet'] };
+        return { key: 'walletTimeout', vars: {}, actions: ['retry'] };
       case 'busy':
-        return { key: 'walletBusy', vars: {}, actions: ['openWallet'] };
+        return { key: 'walletBusy', vars: {}, actions: [] };
       case 'relay':
         return { key: 'walletRelay', vars: {}, actions: ['retry'] };
       case 'not-connected':

@@ -27,6 +27,7 @@ const SIZES = [
   { name: '1440', width: 1440, height: 900, deviceScaleFactor: 1 },
 ];
 const only = process.argv.includes('--quick');
+const homeOnly = process.argv.includes('--home');
 
 const log = (...a) => console.log(`[e2e ${new Date().toISOString().slice(11, 19)}]`, ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -62,6 +63,12 @@ const shot = async (page, name, { selector, full = false } = {}) => {
     await page.screenshot({ path: join(SCREENS, `${name}-${size.name}.png`), fullPage: full });
   }
   await page.setViewport({ width: SIZES[0].width, height: SIZES[0].height, deviceScaleFactor: 2 });
+};
+
+/** A DOM click (immune to the print animation moving the element under the mouse). */
+const click = async (page, selector) => {
+  await page.waitForSelector(selector, { timeout: 30_000 });
+  await page.$eval(selector, (el) => el.click());
 };
 
 const state = (page) => page.evaluate(() => {
@@ -109,9 +116,17 @@ try {
   await sleep(600);
   await shot(page, '01-home');
   await shot(page, '01-home-full', { full: true });
+  if (homeOnly) {
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'dark' }]);
+    await shot(page, '01-home-dark');
+    await shot(page, '01-home-dark-full', { full: true });
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+  }
+
+  if (homeOnly) throw Object.assign(new Error('home only'), { done: true });
 
   // Get a ticket (A) -> the connect dialog.
-  await page.click(`[data-buy="${showA.id}"]`);
+  await click(page, `[data-buy="${showA.id}"]`);
   await page.waitForFunction(() => document.querySelector('[data-wiz-uri]')?.value?.startsWith('wiz://'), { timeout: 30_000 });
   await page.waitForSelector('[data-qr] svg', { timeout: 10_000 });
   const uri = await page.$eval('[data-wiz-uri]', (el) => el.value);
@@ -130,7 +145,7 @@ try {
   await shot(page, '03-ticket-a', { selector: `[data-show="${showA.id}"]` });
 
   // Hand it back.
-  await page.click(`[data-hand-back="${keyA}"]`);
+  await click(page, `[data-hand-back="${keyA}"]`);
   await waitState(page, (s) => s.flows[keyA]?.step === 'done', 'hand back', 60_000);
   await page.waitForSelector(`[data-ticket="${keyA}"][data-state="handedBack"]`, { timeout: 30_000 });
   log(`handed back; prompt: ${wallet.log.at(-1).userPrompt}`);
@@ -140,7 +155,7 @@ try {
   if (!only) {
     // Sample B: buy, then the refund arrives with no second approval.
     const approvals = wallet.log.length;
-    await page.click(`[data-buy="${showB.id}"]`);
+    await click(page, `[data-buy="${showB.id}"]`);
     const keyB = await waitState(page, (s) => s.flows[showB.id]?.step === 'done' && s.flows[showB.id].ticketKey, 'buy B', 60_000);
     await sleep(500);
     await shot(page, '05-b-notice', { selector: `[data-ticket="${keyB}"]` });
@@ -153,15 +168,15 @@ try {
 
     // A real show: buy, walk in (confirm), the door answers.
     if (real) {
-      await page.click(`[data-buy="${real.id}"]`);
+      await click(page, `[data-buy="${real.id}"]`);
       const keyR = await waitState(page, (s) => s.flows[real.id]?.step === 'done' && s.flows[real.id].ticketKey, 'buy real', 60_000);
-      await page.waitForSelector(`[data-walk-in="${keyR}"]`);
-      await page.click(`[data-walk-in="${keyR}"]`);
-      await sleep(400);
-      await shot(page, '07-walk-in-confirm', { selector: `[data-ticket="${keyR}"]` });
-      const confirm = await page.$$(`[data-ticket="${keyR}"] [role="alertdialog"] button`);
-      await confirm[0].click();
+      await sleep(1300);
+      await shot(page, '07-real-held', { selector: `[data-ticket="${keyR}"]` });
+      await click(page, `[data-walk-in="${keyR}"]`);
       await waitState(page, (s) => s.flows[keyR]?.link || s.flows[keyR]?.doorError, 'door answer', 60_000);
+      const door = await state(page);
+      if (!door.flows[keyR].link) throw new Error(`the door did not answer: ${JSON.stringify(door.flows[keyR])}`);
+      await page.waitForSelector(`[data-ticket="${keyR}"] [data-door-link]`, { timeout: 10_000 });
       await page.waitForSelector(`[data-ticket="${keyR}"][data-state="walkedIn"]`, { timeout: 30_000 });
       log(`walked in; prompt: ${wallet.log.at(-1).userPrompt}`);
       await sleep(1500);
@@ -169,7 +184,7 @@ try {
     }
 
     // A second A ticket, then the show passes its grace: the page settles it by itself.
-    await page.click(`[data-buy="${showA.id}"]`);
+    await click(page, `[data-buy="${showA.id}"]`);
     const keyA2 = await waitState(page, (s) => s.flows[showA.id]?.step === 'done' && s.flows[showA.id].ticketKey !== keyA && s.flows[showA.id].ticketKey, 'second buy A', 60_000);
     const tip = (await rpc.request('blockchain.headers.subscribe', [])).height;
     const settleAt = showA.params.startHeight + showA.params.graceBlocks + 1;
@@ -181,7 +196,7 @@ try {
     await shot(page, '09-proof', { selector: '#proof' });
 
     // My tickets.
-    await page.click('[data-wallet-chip]');
+    await click(page, '[data-wallet-chip]');
     await page.waitForSelector('.drawer .list');
     await sleep(900);
     await shot(page, '10-my-tickets');
@@ -197,7 +212,7 @@ try {
   await phone.emulate({ viewport: { width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
   await phone.goto(url, { waitUntil: 'domcontentloaded' });
   await phone.waitForSelector('[data-connect]', { timeout: 30_000 });
-  await phone.click('[data-connect]');
+  await click(phone, '[data-connect]');
   await phone.waitForFunction(() => document.querySelector('[data-wiz-uri]')?.value?.startsWith('wiz://'), { timeout: 30_000 });
   await sleep(500);
   await phone.screenshot({ path: join(SCREENS, '02-connect-phone-390.png') });
@@ -213,6 +228,9 @@ try {
   if (relevant.length > 0) log('console errors:', relevant.slice(0, 10));
   log(`PASS: judge path on simnet; screenshots in ${SCREENS}`);
 } catch (e) {
+  if (e.done) {
+    log(`home screenshots in ${SCREENS}`);
+  } else {
   failed = true;
   console.error('E2E FAILED:', e);
   try {
@@ -223,6 +241,7 @@ try {
     // ignore
   }
   if (consoleErrors.length) console.error('console errors:', consoleErrors.slice(0, 20));
+  }
 } finally {
   try {
     pairing?.close();

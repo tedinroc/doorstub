@@ -3,7 +3,7 @@ import { nextOpenInstance, showsOnSale } from '../../../src/shows/schedule.js';
 import { formatBch } from '../../../src/shows/format.js';
 import { TEST_HOOKS } from '../env.js';
 import { LABELS, say } from '../lib/copy.js';
-import { showCardModel, ticketModel } from '../lib/view.js';
+import { num, showCardModel, ticketModel } from '../lib/view.js';
 import { useNow, useStore } from '../hooks.js';
 import { ConnectDialog } from './connect.jsx';
 import { Banner, CheckIt, DevPanel, Footer, Header, Hero, HowItWorks, ProofStrip } from './sections.jsx';
@@ -94,7 +94,7 @@ export const App = ({ controller, dev }) => {
       <Banner />
       <Header state={state} ticketCount={state.tickets.length} onConnect={() => controller.connect()} onOpenTickets={() => setDrawer(true)} />
       <main>
-        <Hero state={state} nextA={nextA} />
+        <Hero state={state} />
         <section class="section" id="shows" aria-label={LABELS.getTicket}>
           <div class="wrap">
             {state.bootError ? (
@@ -116,7 +116,7 @@ export const App = ({ controller, dev }) => {
               </div>
             ) : null}
             {state.boot === 'loading' || (state.boot === 'ready' && tip === null) ? (
-              <div class="shows two" aria-busy="true">
+              <div class="shows n2" aria-busy="true">
                 <p class="sr-only">{say('showsChecking')}</p>
                 <div class="skeleton" />
                 <div class="skeleton" />
@@ -124,7 +124,7 @@ export const App = ({ controller, dev }) => {
             ) : state.boot === 'failed' ? null : onSale.length === 0 ? (
               <div class="notice-box">{state.unverified.length > 0 && state.shows.length === 0 ? say('showUnverified') : say('showsNone')}</div>
             ) : (
-              <div class={`shows${onSale.length > 1 ? ' two' : ''}`}>
+              <div class={`shows n${Math.min(onSale.length, 3)}`}>
                 {onSale.map((show) => {
                   const mine = tickets.filter(({ ticket }) => ticket.showId === show.id && (ticket.state === 'held' || touched.has(keyOf(ticket))));
                   return (
@@ -147,6 +147,9 @@ export const App = ({ controller, dev }) => {
                 })}
               </div>
             )}
+            <p class="fine-after">
+              {say('smallPrint', { cap: num(cap) })} {say('keeperLine')}
+            </p>
             {TEST_HOOKS ? <DevPanel state={state} dev={dev} /> : null}
           </div>
         </section>

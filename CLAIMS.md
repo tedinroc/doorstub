@@ -104,3 +104,121 @@ What the app asks the wallet to show on its confirm screen (`userPrompt`, `src/s
 ## 8. Credits
 
 AI coding assistance (Claude).
+
+## 9. Site wording
+
+Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js`. `test/app/copy.test.js` fails when a sentence there is missing here or uses a word from section 3, and when the prior-art lines differ from section 5. `{name}` is a value the page fills in: from the chain, from `shows.json` (checked by the shows loader), from the wallet, or from the built transaction. Button words and headings ("Get a ticket", "Hand it back", "Walk in", "My tickets") make no claim and are not listed.
+
+### 9.1 Home, banner and show cards
+
+| Sentence | Why it is true |
+|---|---|
+| `Tickets that refund themselves.` | Section 1. |
+| `The organiser is paid for each guest who walks in. Every other ticket refunds.` | Section 1. |
+| `Refunds return the same BCH, minus a network fee of at most {cap} sats and any fee the organiser posted on the show page.` | Section 1 small print; `{cap}` is the show's `minerFeeCap`. |
+| `Someone has to send the refund transaction. Anyone can, without a key, and Doorstub's keeper does it for you.` | Section 1 small print. The page itself pushes the settle of any show past its grace (APP-BRIEF 5.4, `test/app/controller.test.js`) and the sample B refund; the cron keeper is the backup *(worker lane, this round)*. |
+| `Works with your own wallet over WizardConnect. Doorstub never holds your money or your keys.` | C10. |
+| `Built from scratch during BCH BLAZE 2026, starting 15 Nov; no earlier code.` | The repository's first commit is from 15 Nov 2026; nothing older was copied in (BUILD-BRIEF hard rules). |
+| `Block {start}, about {time} ({eta}).` | `startHeight` from the show; the time is the tip plus ten minutes a block, in the reader's own time zone with the zone named. |
+| `about {usd}` | Today's rate from a public price source; hidden when none answers (section 3, "dollar amounts as a promise"). |
+| `{sold} sold on {shards} box-office shards` | Seats counted from the markers at the show's Escrow address (`src/chain/ledger.js`). |
+| `Settling opens at block {settle}, about {time} ({eta}); the refund follows once the keeper or this page sends it.` | C3: `settle` opens at `startHeight + graceBlocks + 1`. |
+| `Hand-back fee {handBack}. No-show fee {noShow}. Network fee cap {cap} sats per ticket.` | Section 4, limits 6 and 7; the values are the posted parameters, recomputed into the Escrow address by the shows loader. |
+| `Sales for this show ended at block {start}.` | Section 4, limit 14: `buildBuy` refuses at or after `startHeight`. |
+| `Checking every show's genesis transaction on chain.` | Section 4, limit 10 (`verifyShowGenesis`). |
+| `No show is on sale right now.` | Status line. |
+| `The show list did not load.` | Status line. |
+| `Doorstub could not verify this show's genesis on chain, so it is not on sale.` | Section 4, limit 10: the app refuses a show whose genesis fails the check. |
+
+### 9.2 Connecting a wallet
+
+| Sentence | Why it is true |
+|---|---|
+| `Scan the code with your wallet, or open a wallet on this device.` | The dialog shows the WizardConnect QR code and the Selene and Cashonize links. |
+| `Signing tested with Selene, Paytaca and Cashonize.` | C10's rule: the 11/16 sign-only probe passed buy, hand-back and check-in on all three (Schnorr, sighash `0x61`). OPTN is untested and not named. |
+| `Paytaca: press Copy link, then paste it in Paytaca's WizardConnect screen. The link stays valid while this page stays open.` | The dialog never regenerates the link on a timer, and the wallet session pairs a wallet that joins after the library's 30 s wait (`test/wallet/late-join.test.js`). |
+| `Cashonize: create a wallet first, then press Open in Cashonize again.` | Cashonize drops a `?uri=` link opened before a wallet exists (APP-BRIEF section 8). |
+| `Waiting for your wallet to join.` | Status line. |
+| `The wallet relay is not answering. Try the other relay.` | Shown after 10 s without a relay connection; the button pairs over the second relay. |
+| `This wallet is on {network}. Doorstub runs on Bitcoin Cash mainnet; switch the wallet to mainnet and connect again.` | The wallet session refuses a wallet on another network (`test/wallet`). |
+| `Your wallet ended the connection.` | Status line. |
+| `Reading your wallet's coins from the network.` | Status line. |
+| `Connected: {name}, {balance}.` | The wallet's own name and its plain-BCH balance read from the chain. |
+| `No Doorstub ticket in this wallet yet.` | Status line. |
+
+### 9.3 Buying, approving and stuck states
+
+"Nothing was sent" is true because every request asks the wallet with `broadcast: false` and the page sends only a reply that passed `checkSignedReply` (section 4, limit 11).
+
+| Sentence | Why it is true |
+|---|---|
+| `Picking a box-office shard and the coins to pay with.` | Status line. |
+| `Approve in {wallet}. It shows: “{prompt}”` | `{prompt}` is the exact `userPrompt` sent with the request (section 7). |
+| `Checking your wallet's signature, then sending the transaction.` | `checkSignedReply`, then `broadcastChecked`. |
+| `Your {price} is held by contract coin {outpoint}.` | C1; `{outpoint}` is the buy's Escrow output. |
+| `Someone bought on the same box-office shard at the same moment. Please approve once more.` | Section 4, limit 12; the app rebuilds on another shard. |
+| `You need about {need} for this ticket; your wallet has {have} in plain BCH.` | `{need}` is the price, the two token outputs and the network fee; `{have}` is the wallet's plain coins. |
+| `Your wallet holds only token coins here. A ticket needs plain BCH to pay.` | `buildBuy` takes only coins without tokens. |
+| `Your wallet declined: “{reason}”. Nothing was sent.` | `{reason}` is the wallet's own words. |
+| `Your wallet could not verify this transaction. Nothing was sent.` | Selene's refusal "Wallet could not verify transaction" in plain words. |
+| `Your wallet did not answer in time. Nothing was sent.` | Status line. |
+| `Another approval is already waiting in your wallet.` | The session sends one request at a time. |
+| `Could not reach your wallet through the relay. Nothing was sent.` | Status line. |
+| `Your wallet's reply did not pass Doorstub's checks, so it was not sent.` | `checkSignedReply` refused it. |
+| `The network refused the transaction: “{words}”` | `{words}` is the server's own error text. |
+| `No Bitcoin Cash server answered. Doorstub keeps trying.` | The pool retries with back-off. |
+| `Sales for this show are closed.` | No open box-office shard of the show's category on chain. |
+| `Something went wrong: {message}` | Any other error, with its text. |
+
+### 9.4 Tickets
+
+| Sentence | Why it is true |
+|---|---|
+| `Your ticket money waits in a contract, not with the organiser.` | C1. |
+| `Until you walk in or the show settles, you can hand your ticket back for your money, minus the hand-back fee shown on the show page.` | C4. |
+| `Your ticket is an NFT in your own wallet. After check-in it stays there as a keepsake stub with no money behind it.` | C8. |
+| `Handed back. {amount} came back to your wallet.` | `{amount}` is the sum of the hand-back's outputs to the buyer's address (C4). |
+| `Refunded by the settle after the show: {amount} to the address that bought it.` | C3, C7; `{amount}` is the settle's output at the coin's index. |
+| `Refunded under the organiser's refund notice: {amount} to the address that bought it.` | C6, C7; `{amount}` is the refund's output at the coin's index. |
+| `Walked in. Your ticket stays in your wallet as a keepsake stub with no money behind it.` | C8. |
+| `Check-in is final. Once you check in, the organiser has the money.` | Section 4, limit 8. |
+| `Your check-in is on chain. Asking the door for your event link.` | Shown after the check-in was accepted by a server. |
+| `The door answered with your event link.` | The door verifies the check-in on chain before it answers (APP-BRIEF 5.3); the page opens only an `https:` link. |
+| `Your check-in is on chain. The door did not answer yet; try again in a moment.` | The check-in was accepted; only the door's answer is missing. |
+| `The refund-notice service did not answer. Doorstub's keeper sends this refund within minutes, with no approval from you.` | The cron keeper runs every 5 minutes and refunds every live sample B marker with a fresh notice; a refund needs no key (C5, C6) *(worker lane, this round)*. |
+| `A ticket moved away from the buyer's address can no longer check in or hand back. Settle still refunds the original buyer.` | Section 4, limit 5. |
+| `This ticket's contract coin is not in the show's history yet.` | Status line. |
+| `This page sent the settle for {show}: {count} {coins}. Anyone can send it; it needs no key.` | C3: `settle` takes no signature; the page builds it, checks it in the VM and sends it (APP-BRIEF 5.4). |
+
+### 9.5 How it works, proof strip, check it yourself
+
+| Sentence | Why it is true |
+|---|---|
+| `The organiser is paid when you check in, and your own wallet signs the check-in.` | C2. |
+| `If you do not use your ticket, it refunds after the show.` | C3. |
+| `The organiser's key can refund your money. It can never send it anywhere else; at most {cap} sats of your ticket can go to the network fee.` | C6. |
+| `A refund goes only to the address that bought the ticket.` | C7. |
+| `Read live from the chain: every transaction at the contract addresses of the shows on this page.` | The proof strip reads the history of each show's Escrow address from Fulcrum and classifies each spend by its path (`src/chain/ledger.js`). |
+| `No Doorstub transaction yet.` | Status line. |
+| `Both contract addresses below were recomputed in your browser from the show's posted parameters and compared with the ones on this page.` | The shows loader recomputes both contracts and refuses a show whose posted addresses differ (`src/shows/schema.js`). |
+| `Genesis {txid} is confirmed at block {height} and passed Doorstub's genesis check.` | `verifyShowGenesis`: fetched by txid, hash-checked, `verifyGenesis`, confirmed. |
+| `Every contract path and 143 attack tests run in the 2026 BCH virtual machine, in standard and consensus mode, and the virtual machine refuses every attack in them.` | C9. |
+| `Prices are in BCH. A refund returns the same BCH, not the same dollars.` | Section 4, limit 1. |
+| `"Before the show" cannot be enforced. Hand-back and check-in work for as long as the ticket's money is still in the contract, even after the start.` | Section 4, limit 2. |
+| `Hand-backs do not free a seat.` | Section 4, limit 3. |
+| `The organiser key can refund money but never redirect it.` | Section 4, limit 4. |
+| `A ticket moved away from the buyer's address can no longer check in or hand back.` | Section 4, limit 5. |
+| `Buyers need BCH already. There is no card or cash door.` | Section 4, limit 9. |
+| `Coins sent straight to a contract address without the right token are stuck for good. Only use the app.` | Section 4, limit 13. |
+| `Sales end in the app, not on chain.` | Section 4, limit 14. |
+| `Two buyers on the same box-office shard at once means one of them signs again.` | Section 4, limit 12. |
+
+### 9.6 Credits
+
+| Sentence | Why it is true |
+|---|---|
+| `Doorstub is not a new idea, and we say so.` | Section 5. |
+| `What Doorstub adds on Bitcoin Cash, stated modestly: one escrow coin per ticket identified by a marker NFT, a check-in that the holder's own wallet signs and that leaves the ticket as a keepsake, a no-show settle that anyone can push, per-seat and whole-show refund notices, and parallel box-office shards so many buyers can buy at once.` | Section 5. |
+| `Wallet connection by WizardConnect (Whiterun LLC), used under the GNU LGPL 3.0 or later and shipped as its own file.` | The library's copyright notice; the build puts it in its own `assets/wizardconnect-*.js` with the notice (`scripts/check-app-dist.js`). |
+| `Built with libauth, CashScript, Preact, qrcode and noble, all under the MIT licence.` | Their package licences. |
+| `AI coding assistance (Claude).` | Section 8. |

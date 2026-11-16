@@ -1,6 +1,6 @@
 // Every sentence the site shows, in one place.
 //
-// CLAIMS.md is the source for every public sentence (its section 8, "Site
+// CLAIMS.md is the source for every public sentence (its section 9, "Site
 // wording", lists each template below with the rule that makes it true).
 // test/app/copy.test.js fails when a sentence here is missing from CLAIMS.md
 // word for word, or uses a word CLAIMS.md section 3 rules out.
@@ -18,10 +18,10 @@ export const SENTENCES = Object.freeze({
   blazeLine: 'Built from scratch during BCH BLAZE 2026, starting 15 Nov; no earlier code.',
 
   // Show cards
-  showStarts: 'Block {start}, about {time} your time ({eta}).',
+  showStarts: 'Block {start}, about {time} ({eta}).',
   usdAbout: 'about {usd}',
   soldLine: '{sold} sold on {shards} box-office shards',
-  showSettles: 'Settling opens at block {settle}, about {time} your time ({eta}); the refund follows once the keeper or this page sends it.',
+  showSettles: 'Settling opens at block {settle}, about {time} ({eta}); the refund follows once the keeper or this page sends it.',
   showFees: 'Hand-back fee {handBack}. No-show fee {noShow}. Network fee cap {cap} sats per ticket.',
   showSalesEnded: 'Sales for this show ended at block {start}.',
   showsChecking: "Checking every show's genesis transaction on chain.",
@@ -66,11 +66,11 @@ export const SENTENCES = Object.freeze({
   ticketHandBack: 'Until you walk in or the show settles, you can hand your ticket back for your money, minus the hand-back fee shown on the show page.',
   ticketNft: 'Your ticket is an NFT in your own wallet. After check-in it stays there as a keepsake stub with no money behind it.',
   handBackDone: 'Handed back. {amount} came back to your wallet.',
-  refundDone: 'Refunded. {amount} came back to your wallet.',
   settleDone: 'Refunded by the settle after the show: {amount} to the address that bought it.',
   noticeDone: "Refunded under the organiser's refund notice: {amount} to the address that bought it.",
   walkedIn: 'Walked in. Your ticket stays in your wallet as a keepsake stub with no money behind it.',
   checkInFinal: 'Check-in is final. Once you check in, the organiser has the money.',
+  doorAsking: 'Your check-in is on chain. Asking the door for your event link.',
   doorAnswered: 'The door answered with your event link.',
   doorDown: 'Your check-in is on chain. The door did not answer yet; try again in a moment.',
   noticeDown: "The refund-notice service did not answer. Doorstub's keeper sends this refund within minutes, with no approval from you.",
@@ -110,9 +110,6 @@ export const SENTENCES = Object.freeze({
   wizardCredit: 'Wallet connection by WizardConnect (Whiterun LLC), used under the GNU LGPL 3.0 or later and shipped as its own file.',
   libsCredit: 'Built with libauth, CashScript, Preact, qrcode and noble, all under the MIT licence.',
   aiCredit: 'AI coding assistance (Claude).',
-  liveTip: 'Bitcoin Cash block {tip}.',
-  liveNext: 'The next sample show A starts at block {start} ({eta}).',
-  liveSeats: '{sold} tickets sold so far: {walkedIn} walked in, {handedBack} handed back, {refunded} refunded, {held} still held.',
 });
 
 /** Prior art, exactly as CLAIMS.md section 5 words it. */
@@ -136,14 +133,12 @@ export const LABELS = Object.freeze({
   myTickets: 'My tickets',
   handBack: 'Hand it back',
   walkIn: 'Walk in',
-  walkInNow: 'Walk in now',
-  notYet: 'Not yet',
   tryAgain: 'Try again',
-  sendAgain: 'Send again',
   openSelene: 'Open Selene',
   openCashonize: 'Open in Cashonize',
   copyLink: 'Copy link',
   copied: 'Copied',
+  copy: 'Copy',
   otherRelay: 'Use the other relay',
   showQr: 'Show the QR code',
   close: 'Close',
@@ -151,11 +146,13 @@ export const LABELS = Object.freeze({
   reload: 'Reload',
   openEvent: 'Open the event',
   sample: 'Sample',
+  realShow: 'Real show',
+  inContract: 'in the contract',
+  settleIn: 'Settling opens in',
+  block: 'Block',
   admitOne: 'Admit one',
   seat: 'Seat',
-  price: 'Price',
   starts: 'Starts',
-  settles: 'Settles',
   refundsLabel: 'Refunds',
   fees: 'Fees',
   buyTx: 'Buy',
@@ -171,10 +168,8 @@ export const LABELS = Object.freeze({
   postedFees: 'Posted fees',
   contractSource: 'Contract source',
   testsLabel: 'Tests',
-  liveNow: 'Live now',
   refresh: 'Refresh',
   yourTicket: 'Your ticket',
-  stub: 'Stub',
   howItWorks: 'How it works',
   onMainnet: 'On mainnet',
   onSimnet: 'On simnet',

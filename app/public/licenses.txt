@@ -15,4 +15,5 @@ MIT licence
   https://opensource.org/licenses/MIT
 
 nostr-tools (used by WizardConnect for its relay transport)
-  See its package for its licence: https://github.com/nbd-wtf/nostr-tools
+  Released under the Unlicense (public domain): https://unlicense.org
+  https://github.com/nbd-wtf/nostr-tools

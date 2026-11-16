@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { bchNumber } from '../../../src/shows/format.js';
 import { LABELS, say } from '../lib/copy.js';
-import { flyCoin, usePrevious } from '../hooks.js';
+import { flyCoin, reducedMotion, useCut, usePrevious } from '../hooks.js';
 import { Barcode, FlowStatus, RefundTrack, Stamp, TxLink } from './parts.jsx';
 
 const BAND = { 'sample-settle': 'a', 'sample-refund-seat': 'b', real: 'real', proof: 'proof' };
@@ -9,25 +9,31 @@ const bandStyle = (kind) => `--band: var(--band-${BAND[kind] ?? 'a'})`;
 
 const busy = (flow) => flow !== undefined && flow.error === undefined && ['preparing', 'approve', 'sending'].includes(flow.step);
 
-/** A show for sale: the box-office ticket with its tear-off stub and the button. */
+/**
+ * A show for sale: the box-office ticket. On a phone the price and the
+ * button sit right under the show's words (the judge reaches "Get a ticket"
+ * in one screen); from 720 px the stub with the price tears off on the right.
+ */
 export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) => {
   const working = busy(flow);
+  const cutRef = useCut();
+  const status = flow !== undefined && flow.step !== 'done' ? <FlowStatus flow={flow} onAction={onAction} onCancel={onCancel} /> : null;
   return (
-    <div class="show-col" data-show={model.id}>
+    <div class={`show-col kind-${BAND[model.kind] ?? 'a'}`} data-show={model.id}>
       <div class="ticket-shadow">
-        <article class="ticket wide show" style={bandStyle(model.kind)} aria-labelledby={`t-${model.id}`}>
+        <article ref={cutRef} class="ticket wide show" style={bandStyle(model.kind)} aria-labelledby={`t-${model.id}`}>
           <div class="band" />
           <div class="face">
             <div class="kicker">
               <span>Doorstub</span>
-              {model.sample ? <span class="pill sample">{LABELS.sample}</span> : null}
+              <span class="pill">{model.sample ? LABELS.sample : LABELS.realShow}</span>
               <span class="serial">No. {model.serial}</span>
             </div>
             <div class="title-row">
               <div class="letter" aria-hidden="true">
                 {model.letter}
               </div>
-              <div>
+              <div class="titles">
                 <h3 class="display" id={`t-${model.id}`}>
                   {model.title}
                 </h3>
@@ -35,39 +41,41 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
               </div>
             </div>
             <p class="card-text">{model.card}</p>
-            <dl class="facts">
-              <div>
-                <dt>{LABELS.starts}</dt>
-                <dd>{model.startLine}</dd>
-              </div>
-              {model.kind !== 'sample-refund-seat' ? (
-                <div>
-                  <dt>{LABELS.refundsLabel}</dt>
-                  <dd>{model.settleLine}</dd>
-                </div>
-              ) : null}
-              <div>
-                <dt>{LABELS.fees}</dt>
-                <dd>{model.feesLine}</dd>
-              </div>
-            </dl>
-            {flow?.step !== 'done' ? <FlowStatus flow={flow} onAction={onAction} onCancel={onCancel} /> : null}
           </div>
           <div class="stub">
             <div class="admit">{LABELS.admitOne}</div>
-            <div class="price">
-              {bchNumber(model.priceSats)}
-              <small>BCH</small>
-            </div>
-            <div class="usd">{model.priceUsd ? say('usdAbout', { usd: model.priceUsd }) : ''}</div>
-            <div class="cta">
-              <button type="button" class="btn block" onClick={onBuy} disabled={working} data-buy={model.id}>
+            <div class="buy-row">
+              <div class="price-box">
+                <div class="price">
+                  {bchNumber(model.priceSats)}
+                  <small>BCH</small>
+                </div>
+                <div class="usd">{model.priceUsd ? say('usdAbout', { usd: model.priceUsd }) : ''}</div>
+              </div>
+              <button type="button" class="btn cta" onClick={onBuy} disabled={working} data-buy={model.id}>
                 {working ? <span class="spin" aria-hidden="true" /> : null}
                 {LABELS.getTicket}
               </button>
             </div>
             {model.sold !== null ? <div class="sold">{say('soldLine', { sold: model.sold, shards: model.shards })}</div> : null}
           </div>
+          {status ? <div class="status">{status}</div> : null}
+          <dl class="facts">
+            <div>
+              <dt>{LABELS.starts}</dt>
+              <dd>{model.startLine}</dd>
+            </div>
+            {model.kind !== 'sample-refund-seat' ? (
+              <div>
+                <dt>{LABELS.refundsLabel}</dt>
+                <dd>{model.settleLine}</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>{LABELS.fees}</dt>
+              <dd>{model.feesLine}</dd>
+            </div>
+          </dl>
         </article>
       </div>
       {children}
@@ -77,13 +85,22 @@ export const ShowCard = ({ model, flow, onBuy, onAction, onCancel, children }) =
 
 const SPEND_LABEL = { handBack: LABELS.handBackTx, checkIn: LABELS.checkInTx, settle: LABELS.settleTx, refund: LABELS.refundTx };
 
-/** A ticket the wallet holds (or held): seat, money, stamp, actions. */
+/** A ticket the wallet holds (or held): seat, money, countdown or refund track, stamp, actions. */
 export const Ticket = ({ model, flow, network, fresh, onHandBack, onWalkIn, onAction, onCancel, settleProgress }) => {
   const prevState = usePrevious(model.state);
   const moneyRef = useRef(null);
-  const [confirming, setConfirming] = useState(false);
+  const cutRef = useCut();
   const justStamped = prevState !== undefined && prevState !== model.state && model.stamp !== null;
   const [thud, setThud] = useState(false);
+  const rootRef = useRef(null);
+  useEffect(() => {
+    // A ticket just printed: bring it into view (it may sit under the fold on a phone).
+    if (!fresh || rootRef.current === null) return;
+    const r = rootRef.current.getBoundingClientRect();
+    if (r.top < 60 || r.bottom > globalThis.innerHeight) {
+      rootRef.current.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'center' });
+    }
+  }, []);
   useEffect(() => {
     if (!justStamped) return;
     setThud(true);
@@ -97,16 +114,24 @@ export const Ticket = ({ model, flow, network, fresh, onHandBack, onWalkIn, onAc
   const actionBusy = busy(flow) || (refundRunning && flow.error === undefined && flow.step !== 'back');
   const showHandBack = model.canHandBack && !actionBusy && !(model.autoRefund && refundRunning && flow.error === undefined);
   const doorFlow = flow?.kind === 'walkIn' ? flow : null;
-  const spendLabel = SPEND_LABEL[model.state === 'refunded' ? model.refundPath ?? 'refund' : model.state === 'handedBack' ? 'handBack' : model.state === 'walkedIn' ? 'checkIn' : ''] ?? null;
+  const spendKind = model.state === 'refunded' ? model.refundPath ?? 'refund' : model.state === 'handedBack' ? 'handBack' : model.state === 'walkedIn' ? 'checkIn' : '';
+  const spendLabel = SPEND_LABEL[spendKind] ?? null;
+  const showCountdown = held && model.settleLine && !model.autoRefund && model.countdown !== null;
 
   return (
-    <div class={`printed${fresh ? ' fresh' : ''}`} data-ticket={model.key} data-state={model.state}>
+    <div ref={rootRef} class={`printed${fresh ? ' fresh' : ''}`} data-ticket={model.key} data-state={model.state}>
       <div class="ticket-shadow">
-        <article class={`ticket mine${held ? '' : ' done'}${thud ? ' stamped' : ''}`} style={bandStyle(model.kind)} aria-label={`${LABELS.yourTicket} ${model.seat}`}>
+        <article
+          ref={cutRef}
+          class={`ticket mine${held ? '' : ' done'}${thud ? ' stamped' : ''}`}
+          style={bandStyle(model.kind)}
+          aria-label={`${LABELS.yourTicket} ${model.seat}`}
+        >
           <div class="band" />
           <div class="face">
             <div class="kicker">
               <span>{LABELS.admitOne}</span>
+              <span class="show-name">{model.title}</span>
               <span class="serial">No. {model.serial}</span>
             </div>
             <div class="seat-row">
@@ -116,47 +141,50 @@ export const Ticket = ({ model, flow, network, fresh, onHandBack, onWalkIn, onAc
                   {model.seat}
                 </div>
               </div>
-              <div class="show-name">{model.title}</div>
+              {held && model.valueText ? (
+                <div class="held-value">
+                  <span class="coin-mark" aria-hidden="true" />
+                  <b>{model.valueText}</b>
+                  <span>{LABELS.inContract}</span>
+                </div>
+              ) : null}
             </div>
             <div class="lines">
               {model.lines.map((line) => (
-                <p key={line}>
-                  {held && line.startsWith('Your ') ? <span class="coin-mark" aria-hidden="true" /> : null}
-                  {line}
-                </p>
+                <p key={line}>{line}</p>
               ))}
-              {held && model.canHandBack && !model.autoRefund ? <p>{say('ticketHandBack')}</p> : null}
             </div>
-            {held && model.settleLine && !model.autoRefund ? (
+            {showCountdown ? (
               <div class="countdown">
+                <div class="cd-head">
+                  <span class="cd-l">{LABELS.settleIn}</span>
+                  <span class="cd-n display">{model.countdown}</span>
+                </div>
                 <div class="bar" aria-hidden="true">
-                  <i style={`width:${Math.round((settleProgress ?? 0) * 100)}%`} />
+                  <i style={`width:${Math.max(3, Math.round((settleProgress ?? 0) * 100))}%`} />
                 </div>
                 <p>{model.settleLine}</p>
               </div>
             ) : null}
             {model.autoRefund && (refundRunning || !held) ? <RefundTrack step={held ? flow?.step ?? 'held' : 'back'} /> : null}
-            {flow?.step === 'back' && flow.returned !== undefined ? null : null}
-            {flow !== undefined && flow.step !== 'done' && flow.kind !== 'refund' ? <FlowStatus flow={flow} onAction={onAction} onCancel={onCancel} /> : null}
+            {flow !== undefined && flow.step !== 'done' && flow.kind !== 'refund' && flow.step !== 'door' ? (
+              <FlowStatus flow={flow} onAction={onAction} onCancel={onCancel} />
+            ) : null}
             {refundRunning && flow.error !== undefined ? <FlowStatus flow={flow} onAction={onAction} onCancel={onCancel} /> : null}
             {doorFlow?.step === 'door' ? (
               <div class="flow" role="status">
                 <div class="line">
                   <span class="spin" aria-hidden="true" />
-                  <span>{say('walkedIn')}</span>
+                  <span>{say('doorAsking')}</span>
                 </div>
               </div>
             ) : null}
             {doorFlow?.link ? (
-              <div class="flow" role="status">
-                <div class="line">
-                  <span>{say('doorAnswered')}</span>
-                </div>
-                <div class="actions">
-                  <a class="btn small" href={doorFlow.link} target="_blank" rel="noopener noreferrer">
-                    {LABELS.openEvent}
-                  </a>
-                </div>
+              <div class="door" role="status">
+                <p>{say('doorAnswered')}</p>
+                <a class="btn" href={doorFlow.link} target="_blank" rel="noopener noreferrer" data-door-link>
+                  {LABELS.openEvent} ↗
+                </a>
               </div>
             ) : null}
             {doorFlow?.doorError ? (
@@ -171,40 +199,19 @@ export const Ticket = ({ model, flow, network, fresh, onHandBack, onWalkIn, onAc
                 </div>
               </div>
             ) : null}
-            {confirming && model.canWalkIn ? (
-              <div class="flow" role="alertdialog" aria-label={LABELS.walkIn}>
-                <div class="line">
-                  <span>{say('checkInFinal')}</span>
-                </div>
-                <div class="actions">
-                  <button
-                    type="button"
-                    class="btn small"
-                    onClick={() => {
-                      setConfirming(false);
-                      onWalkIn();
-                    }}
-                  >
-                    {LABELS.walkInNow}
-                  </button>
-                  <button type="button" class="btn quiet small" onClick={() => setConfirming(false)}>
-                    {LABELS.notYet}
-                  </button>
-                </div>
-              </div>
-            ) : null}
-            {(showHandBack || model.canWalkIn) && !confirming && !actionBusy ? (
+            {(showHandBack || model.canWalkIn) && !actionBusy ? (
               <div class="act">
                 {model.canWalkIn ? (
-                  <button type="button" class="btn small" onClick={() => setConfirming(true)} data-walk-in={model.key}>
+                  <button type="button" class="btn small" onClick={onWalkIn} data-walk-in={model.key}>
                     {LABELS.walkIn}
                   </button>
                 ) : null}
                 {showHandBack ? (
-                  <button type="button" class="btn ghost small" onClick={onHandBack} data-hand-back={model.key}>
+                  <button type="button" class={`btn small ${model.canWalkIn ? 'ghost' : 'ghost'}`} onClick={onHandBack} data-hand-back={model.key}>
                     {LABELS.handBack}
                   </button>
                 ) : null}
+                {model.canWalkIn ? <p class="act-note">{say('checkInFinal')}</p> : null}
               </div>
             ) : null}
             <div class="links">
