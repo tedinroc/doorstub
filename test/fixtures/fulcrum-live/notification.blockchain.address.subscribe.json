@@ -1,0 +1,14 @@
+{
+  "method": "blockchain.address.subscribe",
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:04:15.675Z",
+  "note": "server notification (no id)",
+  "message": {
+    "jsonrpc": "2.0",
+    "method": "blockchain.address.subscribe",
+    "params": [
+      "bitcoincash:rw70zpal3n9l2q8eaehxpnqhja39lt49e9kwh0vqh5x25zx99dsc5eppfqw5a",
+      "bd2dff3112cf374164b218aa08a8b7d5d3c642a64286c58da1832ca9256e21fc"
+    ]
+  }
+}

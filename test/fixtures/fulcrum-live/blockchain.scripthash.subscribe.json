@@ -1,0 +1,13 @@
+{
+  "method": "blockchain.scripthash.subscribe",
+  "params": [
+    "b59874846daa5fcc7ac0c7f4426d5bec681a4242b9021b0687260a6282500b1f"
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "message": {
+    "id": 702,
+    "jsonrpc": "2.0",
+    "result": "f526182700a354d47f359a60d4a33a7b99320261a38d38375119629ef0e8e7d1"
+  }
+}

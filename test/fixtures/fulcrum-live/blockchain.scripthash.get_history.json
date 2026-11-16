@@ -1,0 +1,18 @@
+{
+  "method": "blockchain.scripthash.get_history",
+  "params": [
+    "b59874846daa5fcc7ac0c7f4426d5bec681a4242b9021b0687260a6282500b1f"
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "message": {
+    "id": 701,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "height": 977579,
+        "tx_hash": "fdac791db778ff37640e7741a8578b30db95b0b963bd1b45ff5eeab271720944"
+      }
+    ]
+  }
+}

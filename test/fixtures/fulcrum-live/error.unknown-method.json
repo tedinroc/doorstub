@@ -1,0 +1,14 @@
+{
+  "method": "no.such.method",
+  "params": [],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "message": {
+    "error": {
+      "code": -32601,
+      "message": "Unsupported request: no.such.method"
+    },
+    "id": 7,
+    "jsonrpc": "2.0"
+  }
+}

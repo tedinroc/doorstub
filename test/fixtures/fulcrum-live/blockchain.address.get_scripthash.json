@@ -1,0 +1,13 @@
+{
+  "method": "blockchain.address.get_scripthash",
+  "params": [
+    "bitcoincash:zr52wdhvf2qz77wqq6a0k7fgzhqvzw5jqvxx7k2td0"
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "message": {
+    "id": 699,
+    "jsonrpc": "2.0",
+    "result": "b59874846daa5fcc7ac0c7f4426d5bec681a4242b9021b0687260a6282500b1f"
+  }
+}

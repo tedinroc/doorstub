@@ -1,0 +1,25 @@
+{
+  "method": "blockchain.scripthash.listunspent",
+  "params": [
+    "b59874846daa5fcc7ac0c7f4426d5bec681a4242b9021b0687260a6282500b1f",
+    "include_tokens"
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "message": {
+    "id": 700,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "height": 977579,
+        "token_data": {
+          "amount": "20",
+          "category": "2469acc5afa4b10cb5b5c04afb89c3a3ffd61c5da9c01e26d00951cae2a02544"
+        },
+        "tx_hash": "fdac791db778ff37640e7741a8578b30db95b0b963bd1b45ff5eeab271720944",
+        "tx_pos": 1,
+        "value": 1000
+      }
+    ]
+  }
+}

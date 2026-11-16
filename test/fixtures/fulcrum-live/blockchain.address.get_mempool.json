@@ -1,0 +1,19 @@
+{
+  "method": "blockchain.address.get_mempool",
+  "params": [
+    "bitcoincash:rw70zpal3n9l2q8eaehxpnqhja39lt49e9kwh0vqh5x25zx99dsc5eppfqw5a"
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "message": {
+    "id": 713,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "fee": 999,
+        "height": 0,
+        "tx_hash": "005cbb39161a416007f3f5dd63bab9aca6a944ab3e492cfe2437eacfcd4a7af2"
+      }
+    ]
+  }
+}

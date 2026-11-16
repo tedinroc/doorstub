@@ -1,0 +1,30 @@
+{
+  "method": "blockchain.address.listunspent",
+  "params": [
+    "bitcoincash:rwmyzj4gr3xatylp8cm0s9mddx57ke64kzqrf5qfnes6eh8ek0sjx77t5yxzt",
+    "tokens_only"
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "note": "address holding NFTs with commitments; trimmed",
+  "message": {
+    "id": 710,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "height": 0,
+        "token_data": {
+          "amount": "0",
+          "category": "be0d0d8324e8cda41d34b85bd203ce2482256eb337a0ad0fea82c2ddd7306c88",
+          "nft": {
+            "capability": "mutable",
+            "commitment": "f0a9fa6a00000100226e1d0054510000"
+          }
+        },
+        "tx_hash": "005cbb39161a416007f3f5dd63bab9aca6a944ab3e492cfe2437eacfcd4a7af2",
+        "tx_pos": 1,
+        "value": 138400
+      }
+    ]
+  }
+}

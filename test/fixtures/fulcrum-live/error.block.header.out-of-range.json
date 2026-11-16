@@ -1,0 +1,16 @@
+{
+  "method": "blockchain.block.header",
+  "params": [
+    978579
+  ],
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:00:58.038Z",
+  "message": {
+    "error": {
+      "code": 1,
+      "message": "Height 978579 is out of range"
+    },
+    "id": 6,
+    "jsonrpc": "2.0"
+  }
+}

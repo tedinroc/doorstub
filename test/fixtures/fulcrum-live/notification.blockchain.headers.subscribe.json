@@ -1,0 +1,16 @@
+{
+  "method": "blockchain.headers.subscribe",
+  "server": "wss://blackie.c3-soft.com:50004",
+  "capturedAt": "2026-11-16T07:04:14.971Z",
+  "note": "server notification (no id)",
+  "message": {
+    "jsonrpc": "2.0",
+    "method": "blockchain.headers.subscribe",
+    "params": [
+      {
+        "height": 977580,
+        "hex": "0000902717766b6b03fb0dd66d0f126a1ab920f386381458fd008a01000000000000000067decaf8ed9c74427159eaf40f056fec9f89dfaf2071d8c57179468248e4c7b7cdaafa6af33602188edf2047"
+      }
+    ]
+  }
+}
