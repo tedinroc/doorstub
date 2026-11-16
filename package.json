@@ -24,7 +24,8 @@
     "e2e": "node test/e2e/judge-path.js",
     "worker:dev": "node worker/node/cli.js",
     "keeper": "node worker/node/keeper-cli.js",
-    "worker:workerd-check": "node worker/scripts/workerd-check.js"
+    "worker:workerd-check": "node worker/scripts/workerd-check.js",
+    "check:hygiene": "node scripts/check-hygiene.js"
   },
   "dependencies": {
     "@bitauth/libauth": "3.1.0-next.8",

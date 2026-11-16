@@ -45,6 +45,38 @@ test('api: notice and door answers, checked before use', async () => {
   await assert.rejects(http.door({ category: 'aa', txid: 'bb' }), /not an https link/);
 });
 
+test('api: the optional buy txid (notice) and claim secret (door) go in the body only when given', async () => {
+  const bodies = [];
+  const api = createApi({
+    sleep: noSleep,
+    fetchImpl: async (url, init) => {
+      bodies.push(JSON.parse(init.body));
+      return url.endsWith('/api/notice') ? json(200, { signature: 'ab'.repeat(64) }) : json(200, { link: 'https://meet.example.org/x' });
+    },
+  });
+  await api.notice({ category: 'aa', seat: '010100', txid: 'cc'.repeat(32) });
+  await api.door({ category: 'aa', txid: 'bb', claim: 'dd'.repeat(32) });
+  await api.door({ category: 'aa', txid: 'bb' });
+  assert.deepEqual(bodies, [
+    { category: 'aa', seat: '010100', txid: 'cc'.repeat(32) },
+    { category: 'aa', txid: 'bb', claim: 'dd'.repeat(32) },
+    { category: 'aa', txid: 'bb' },
+  ]);
+});
+
+test('runtime: the E2E switches (a local relay, the page keeper off) accept only local relays', () => {
+  const r = resolveTestRuntime('?fulcrum=ws://127.0.0.1:50021&relay=ws://127.0.0.1:7777&pagekeeper=0');
+  assert.deepEqual(r.relayUrls, ['ws://127.0.0.1:7777']);
+  assert.equal(r.pageKeeper, false);
+  const plain = resolveTestRuntime('?fulcrum=ws://127.0.0.1:50021');
+  assert.equal(plain.relayUrls, undefined);
+  assert.equal(plain.pageKeeper, undefined);
+  assert.throws(() => resolveTestRuntime('?fulcrum=ws://127.0.0.1:50021&relay=wss://relay.example.org:443'), /relay must be a local ws/);
+  // Production never reads the query string at all.
+  assert.equal(PRODUCTION_RUNTIME.relayUrls, undefined);
+  assert.equal(PRODUCTION_RUNTIME.pageKeeper, undefined);
+});
+
 test('api: retries "not yet" answers, gives up on refusals, times out', async () => {
   let n = 0;
   const flaky = createApi({ sleep: noSleep, fetchImpl: async () => (++n < 3 ? json(404, { error: 'no marker yet' }) : json(200, { signature: 'cd'.repeat(64) })) });

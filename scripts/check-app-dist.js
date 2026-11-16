@@ -9,6 +9,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { forbiddenWords } from './hygiene-words.js';
 
 const dist = fileURLToPath(new URL('../app/dist', import.meta.url));
 if (!existsSync(dist)) {
@@ -41,6 +42,8 @@ const forbid = (needle, why) => {
 forbid('must be a local ws:// URL', 'the simnet runtime resolver');
 forbid('must be a local http:// origin', 'the simnet runtime resolver');
 forbid('shows must be a path', 'the simnet runtime resolver');
+forbid('relay must be a local', 'the simnet runtime resolver');
+forbid('pagekeeper', 'the E2E switch for the page keeper');
 forbid('simnet.fund', 'the simnet dev helpers');
 forbid('simnet.mine', 'the simnet dev helpers');
 forbid('__doorstub', 'the E2E handle');
@@ -51,7 +54,7 @@ forbid(/localhost:\d/, 'a local address');
 forbid(/\?fulcrum=|[?&]api=/, 'a URL override');
 // Hygiene.
 forbid(/\/Users\/|\/home\/[a-z]/, 'an absolute local path');
-// Other handles are checked from a word list kept out of the repository.
+for (const word of forbiddenWords()) forbid(word.pattern, word.why);
 forbid(/[A-Za-z0-9._%+-]+@(?!media|keyframes|font-face|supports|import|charset|layer|container|property|namespace|page)[A-Za-z0-9-]+\.(?:com|net|org|io|dev|cash|app)\b/, 'an e-mail address');
 
 const need = (needle, why) => {
