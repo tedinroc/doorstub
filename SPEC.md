@@ -157,6 +157,10 @@ Sizes below are measured on a sample show (price 10,000, `minerFeeCap` 1,500) wi
 
 Returns an **unsigned** template plus the derived show parameters and contracts. It never signs. The data output must be `OP_RETURN` followed only by pushes, at most 222 bytes (builder, `bad-data-output`). About 517 bytes with 4 shards.
 
+**Identity output (optional, `identityLockingBytecode`).** When given, output 0 is a plain 1,000-sat coin to that locking bytecode and the shards move to outputs `1..N` (`shardVouts` in the result says where). BCMR wallets follow output 0 from the category's parent transaction (the authbase) and read the token's metadata from the transaction whose output 0 is still unspent (the authhead). Without this output, output 0 is shard 0, which every buy on that shard spends: the metadata would disappear after the first sale on shard 0, and a buyer could add a `BCMR` OP_RETURN to a buy (outputs 3 to 5 are free) and publish their own name and icon for the show's tickets. The studio always passes its identity key here and never spends that coin, so the genesis stays the authhead. The contracts and `verifyGenesis` do not depend on where the shards sit.
+
+**Studio genesis (`studio/`, section 10).** For each show the studio first sends a prep transaction (studio coins to the studio address at output 0, change at output 1 funding the next prep), so the genesis input is output 0 of a known transaction; its txid is the category. The genesis carries `OP_RETURN 'BCMR' <sha256 of the registry file> <uri>`, with the uri `<origin host>/bcmr/<category>.json` (no `https://`, which BCMR assumes), and the registry parses each NFT into its type (`'T'` ticket or `'E'` marker), box-office letter, seat number and buyer key hash.
+
 ### 5.2 Buy (`buildBuy`)
 
 | | Inputs | Outputs |
@@ -281,6 +285,8 @@ Largest unlocking bytecode: `refund`, 803 bytes, against the 10,000-byte standar
 - `src/tx/vm.js`: evaluates every input and the whole transaction in the 2026 VM, standard and consensus.
 - `src/tx/sign.js`: signing with test keys (tests only; builders never sign).
 - `src/tx/verify.js`: `verifyGenesis`, the client-side genesis check (section 7).
+- `simnet/`: a local Fulcrum-compatible JSON-RPC-over-WebSocket server over an in-memory chain (`npm run simnet`). Every broadcast is checked as a BCHN node would (inputs exist and are unspent, mempool conflicts, locktime and BIP68 against the next block, relay fee) and evaluated in the 2026 VM in standard mode with the real source outputs; refusals carry the VM's text in Fulcrum's error shape. Response shapes are pinned against real mainnet answers in `test/fixtures/fulcrum-live/` (`simnet/README.md`).
+- `studio/`: the organiser CLI (`npm run studio -- keygen | plan | genesis | close | status | simnet-bootstrap`); writes `shows.json` and the BCMR files; nothing is sent without `--broadcast`, and on mainnet only after typing `BROADCAST` (`studio/README.md`).
 - `test/`: `npm test` runs everything. `happy.test.js` and `sanity.test.js` cover the honest paths and the harness; `attacks-boxoffice.test.js`, `attacks-escrow.test.js` and `genesis.test.js` are the attack suite (section 11); `policy.test.js` covers the show policy, the sales-end guard and the builders' dust guard; `limits.test.js` measures the fee floor, the batch caps and the operation-cost budgets; `kit.js` builds hand-made attack transactions over made-up coins.
 
 ## 11. Attack suite
