@@ -15,6 +15,7 @@ import { bootstrapSimnet } from '../../studio/index.js';
 import { createController } from '../../app/src/lib/controller.js';
 import { createApi } from '../../app/src/lib/api.js';
 import { say } from '../../app/src/lib/copy.js';
+import { ticketModel } from '../../app/src/lib/view.js';
 import { memoryStorage } from '../../src/wallet/index.js';
 import { settleOpensAt } from '../../src/shows/index.js';
 import { checkSignatureFree, fetchShowLedger, liveEscrowUtxos } from '../../src/chain/index.js';
@@ -309,6 +310,84 @@ test('walk in: the door claim is reserved before the check-in is sent; a failed 
   assert.equal(say(flow.doorError.key, flow.doorError.vars), 'The door already gave the event link for this check-in to another page, so it cannot give it here.');
   const pageAsks = stub.calls.filter((c) => c.endpoint === 'door' && c.txid === sent2.txid && c.claim !== 'ee'.repeat(32));
   assert.equal(pageAsks.length, 1, 'a 409 is not retried');
+});
+
+test('a real show stops selling and walking in when its call ends, by the page clock, even when Try again is pressed or the wallet approves after the end', async (t) => {
+  const callEnd = Date.parse(REAL_SHOW.eventAt) + REAL_SHOW.durationMin * 60_000;
+  let clock = Date.now();
+  let decline = false;
+  let onApprove = () => {};
+  const { controller, wallet, state, stub } = await setup(t, {
+    walletOptions: {
+      approve: () => {
+        onApprove();
+        return decline ? 'User rejected the request' : true;
+      },
+    },
+    deps: { keeper: false, now: () => clock },
+  });
+  await controller.start();
+  const real = controller.onSale().find((s) => s.kind === 'real');
+  await controller.pool.request('simnet.fund', { address: wallet.addressAt('receive', 0).address, sats: 1_000_000, mine: true });
+  await controller.connect();
+  await waitFor(() => state().wallet.state === 'connected' && state().wallet.balance !== null, 'wallet ready');
+  const seatOf = (key) => key.split(':')[1];
+  const coinOf = async (key) => (await fetchShowLedger(controller.pool, real, { contracts: real.contracts })).bySeat.get(seatOf(key));
+  const reserves = () => stub.calls.filter((c) => c.endpoint === 'reserve').length;
+
+  // A late arrival buys during the call; the wallet declines the walk-in, which leaves Try again on the card.
+  clock = callEnd - 10 * 60_000;
+  const one = await controller.buy(real.id);
+  assert.ok(one?.key, JSON.stringify(state().flows[real.id]?.error));
+  decline = true;
+  await controller.walkIn(one.key);
+  assert.deepEqual(state().flows[one.key].error.actions, ['retry']);
+  decline = false;
+
+  // The call ends. Try again (controller.walkIn, as App.jsx maps it) asks no wallet and sends nothing.
+  clock = callEnd + 5 * 60_000;
+  const asked = wallet.log.length;
+  assert.equal(await controller.walkIn(one.key), undefined);
+  const late = state().flows[one.key].error;
+  assert.equal(late.key, 'callSalesEnded');
+  assert.deepEqual(late.actions, [], 'no Try again after the call');
+  assert.equal(wallet.log.length, asked, 'the wallet was not asked');
+  assert.equal(reserves(), 0, 'the door was not asked');
+  assert.equal((await coinOf(one.key)).spend, null, 'the coin is unspent');
+  // The ticket keeps Hand it back and the settle countdown, without Walk in.
+  const held = ticketModel(state().tickets.find((x) => `${x.showId}:${x.seatHex}` === one.key), { tip: state().chain.tip, now: clock, timeZone: 'UTC' });
+  assert.equal(held.canWalkIn, false);
+  assert.equal(held.canHandBack, true);
+  assert.equal(held.lines.at(-1), 'The call is over, so Walk in is closed.');
+  assert.equal(held.call, null);
+  assert.notEqual(held.countdown, null);
+
+  // Walk in tapped a minute before the end, approved after it: the signed check-in is not sent.
+  clock = callEnd - 60_000;
+  const two = await controller.buy(real.id);
+  assert.ok(two?.key, JSON.stringify(state().flows[real.id]?.error));
+  onApprove = () => {
+    clock = callEnd + 10_000;
+  };
+  assert.equal(await controller.walkIn(two.key), undefined);
+  assert.equal(state().flows[two.key].error.key, 'callSalesEnded');
+  assert.equal(wallet.log.at(-1).outcome, 'signed', 'the wallet did approve');
+  assert.equal(reserves(), 0);
+  assert.equal((await coinOf(two.key)).spend, null);
+
+  // Get a ticket tapped 30 s before the end, approved after it: the signed buy is not sent.
+  clock = callEnd - 30_000;
+  const sold = (await fetchShowLedger(controller.pool, real, { contracts: real.contracts })).bySeat.size;
+  assert.equal(await controller.buy(real.id), undefined);
+  assert.equal(state().flows[real.id].error.key, 'callSalesEnded');
+  assert.deepEqual(state().flows[real.id].error.actions, []);
+  assert.equal(wallet.log.at(-1).outcome, 'signed', 'the wallet did approve');
+  assert.equal((await fetchShowLedger(controller.pool, real, { contracts: real.contracts })).bySeat.size, sold, 'no new ticket on chain');
+
+  // Hand it back still works after the call.
+  onApprove = () => {};
+  const back = await controller.handBack(one.key);
+  assert.ok(back?.txid, JSON.stringify(state().flows[one.key]?.error));
 });
 
 test('a hand-back that loses the race to a settle says another transaction spent the coin, and the card shows the settle', async (t) => {
