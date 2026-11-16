@@ -85,6 +85,18 @@ test('sign: the wallet\'s refusal comes back with its own words', async () => {
   await session.disconnect();
 });
 
+test('sign: a request the relay refused, or dropped from its queue when the connection closed, is a relay error (the wallet never saw it), not a refusal', async (t) => {
+  const { sim, session, events } = await pairedSession();
+  t.after(() => session.disconnect());
+  await waitFor(() => events.ready.length === 1);
+  for (const words of [true, 'Connection closed before message could be sent', 'Queue cleared']) {
+    sim.blip({ ms: 20, refuse: words });
+    await assert.rejects(session.sign(buyRequest(sim).request), (e) => e.code === 'relay', String(words));
+    await waitFor(() => session.state === 'connected');
+  }
+  assert.equal(sim.requests.length, 0);
+});
+
 test('sign: one at a time; a second request while one waits is "busy"; timeout tells the wallet to cancel', async () => {
   const { sim, session, events } = await pairedSession({}, { signTimeoutMs: 80 });
   await waitFor(() => events.ready.length === 1);

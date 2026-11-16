@@ -226,6 +226,8 @@ export const makeSimWallet = ({
 
   const sessions = new Map();
   const cancels = [];
+  /** Sequences of the sign requests it received (in-process mode), repeats it dropped not counted. */
+  const requests = [];
   let paused = false;
 
   /**
@@ -254,43 +256,49 @@ export const makeSimWallet = ({
     let down = null;
     const walletPublicKey = sha256.hash(flattenBinArray([relaySeed, utf8ToBin(credentials.privateKey)]));
     const held = [];
+    /** Sequences the wallet holds or is answering: like the real wallet library, it drops a repeat of one of these. */
+    const active = new Set();
     const deliverToDapp = (msg) => {
       setTimeout(() => {
         if (open) client.emit('message', { time: Math.floor(Date.now() / 1000), ...msg });
       }, 0);
     };
+    const walletReady = () => ({
+      action: RelayMsgAction.WalletReady,
+      wallet_name: name,
+      wallet_icon: '',
+      supported_protocols: ['hdwalletv1'],
+      session: { hdwalletv1: { paths: paths() } },
+      public_key: binToHex(walletPublicKey),
+      secret: credentials.secret,
+    });
+    const answerRequest = async (msg) => {
+      const r = await answer(msg);
+      active.delete(msg.sequence);
+      deliverToDapp({
+        action: RelayMsgAction.SignTransactionResponse,
+        sequence: msg.sequence,
+        signedTransaction: r.signedTransaction ?? '',
+        ...(r.error !== undefined && { error: r.error }),
+      });
+    };
     const handle = async (msg) => {
       if (!open) return;
-      if (paused && msg.action === RelayMsgAction.SignTransactionRequest) {
-        held.push(msg);
-        return;
-      }
       switch (msg.action) {
         case RelayMsgAction.DappReady:
           if (!msg.wallet_discovered && !walletReadySent) {
             walletReadySent = true;
-            deliverToDapp({
-              action: RelayMsgAction.WalletReady,
-              wallet_name: name,
-              wallet_icon: '',
-              dapp_discovered: true,
-              supported_protocols: ['hdwalletv1'],
-              session: { hdwalletv1: { paths: paths() } },
-              public_key: binToHex(walletPublicKey),
-              secret: credentials.secret,
-            });
+            deliverToDapp({ ...walletReady(), dapp_discovered: true });
           }
           break;
-        case RelayMsgAction.SignTransactionRequest: {
-          const r = await answer(msg);
-          deliverToDapp({
-            action: RelayMsgAction.SignTransactionResponse,
-            sequence: msg.sequence,
-            signedTransaction: r.signedTransaction ?? '',
-            ...(r.error !== undefined && { error: r.error }),
-          });
+        case RelayMsgAction.SignTransactionRequest:
+          // The dapp sends pending requests again after a reconnect: a repeat of one still on screen is dropped.
+          if (active.has(msg.sequence)) break;
+          active.add(msg.sequence);
+          requests.push(msg.sequence);
+          if (paused) held.push(msg);
+          else await answerRequest(msg);
           break;
-        }
         case RelayMsgAction.Ping:
           deliverToDapp({ action: RelayMsgAction.Pong });
           break;
@@ -298,6 +306,7 @@ export const makeSimWallet = ({
           cancels.push({ sequence: msg.sequence, reason: msg.reason });
           const i = held.findIndex((h) => h.sequence === msg.sequence);
           if (i !== -1) held.splice(i, 1);
+          active.delete(msg.sequence);
           break;
         }
         case RelayMsgAction.Disconnect:
@@ -311,7 +320,7 @@ export const makeSimWallet = ({
       relay: async (msg) => {
         if (!open) throw new Error('in-process relay closed');
         if (down !== null) {
-          if (down.refuse) throw new Error('relay publish failed: not connected');
+          if (down.refuse) throw new Error(typeof down.refuse === 'string' ? down.refuse : 'relay publish failed: not connected');
           return; // lost on the way, as a relay that drops a message
         }
         setTimeout(() => handle(JSON.parse(JSON.stringify(msg))), 0);
@@ -327,12 +336,18 @@ export const makeSimWallet = ({
       disconnect: (message = 'Wallet disconnected') =>
         deliverToDapp({ action: RelayMsgAction.Disconnect, reason: 'user_disconnect', message }),
       releaseHeld: () => {
-        for (const msg of held.splice(0)) handle(msg);
+        for (const msg of held.splice(0)) answerRequest(msg);
       },
       /**
+       * The wallet app is opened again after it went quiet: it says wallet_ready
+       * (the dapp then sends its pending requests again with the same sequence).
+       */
+      wake: () => deliverToDapp({ ...walletReady(), dapp_discovered: true }),
+      /**
        * A relay hiccup: the dapp hears "reconnecting", whatever it sends meanwhile
-       * is lost (or, with `refuse`, fails to send), and after `ms` the relay is
-       * back and says "connected" (the dapp then sends dapp_ready again).
+       * is lost (or, with `refuse`, fails to send, with `refuse` as the error's
+       * words when it is a string), and after `ms` the relay is back and says
+       * "connected" (the dapp then sends dapp_ready again).
        */
       blip: ({ ms = 60, refuse = false } = {}) => {
         down = { refuse };
@@ -402,6 +417,8 @@ export const makeSimWallet = ({
     log,
     /** sign_cancel messages it received (in-process mode): [{ sequence, reason }]. */
     cancels,
+    /** Sequences of the sign requests it received (in-process mode). */
+    requests,
     inProcessRelay,
     pairOverRelay,
     sessions,
@@ -411,6 +428,14 @@ export const makeSimWallet = ({
     resume: () => {
       paused = false;
       for (const s of sessions.values()) s.releaseHeld();
+    },
+    /** The wallet app opened again: wallet_ready on every in-process session, then held requests are answered. */
+    wake: () => {
+      paused = false;
+      for (const s of sessions.values()) s.wake();
+      setTimeout(() => {
+        for (const s of sessions.values()) s.releaseHeld();
+      }, 20);
     },
     /** A relay hiccup on every in-process session (see the session's `blip`). */
     blip: (options) => {

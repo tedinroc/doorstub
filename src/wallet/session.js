@@ -299,7 +299,9 @@ export const createWalletSession = ({
       if (e instanceof WalletError) throw e;
       if (why === 'timeout') throw new WalletError('timeout', 'The wallet did not answer in time. Open your wallet to approve, or send the request again.');
       if (why === 'cancelled') throw new WalletError('cancelled', 'Cancelled.');
-      if (/not connected|relay|publish/i.test(e?.message ?? '')) throw new WalletError('relay', `Could not reach the wallet relay: ${e.message}`);
+      // The send failed: the relay refused it, or the relay client dropped it from its queue when the connection
+      // closed before it went out ("Connection closed before message could be sent"). The wallet never saw it.
+      if (/not connected|relay|publish|connection closed|queue cleared/i.test(e?.message ?? '')) throw new WalletError('relay', `Could not reach the wallet relay: ${e.message}`);
       throw new WalletError('rejected', e?.message ?? String(e));
     } finally {
       clearTimeout(timer);
