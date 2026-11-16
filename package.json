@@ -17,15 +17,21 @@
   },
   "dependencies": {
     "@bitauth/libauth": "3.1.0-next.8",
+    "@noble/curves": "1.9.7",
+    "@noble/hashes": "1.8.0",
     "@wizardconnect/core": "0.2.10",
     "@wizardconnect/dapp": "0.2.7",
     "cashscript": "0.14.0",
+    "preact": "10.29.8",
     "qrcode": "1.5.4"
   },
   "devDependencies": {
     "@wizardconnect/wallet": "0.2.4",
     "cashc": "0.14.0",
+    "puppeteer-core": "23.11.1",
     "vite": "7.3.8",
-    "vite-plugin-singlefile": "2.3.4"
+    "vite-plugin-singlefile": "2.3.4",
+    "wrangler": "3.114.17",
+    "ws": "8.23.0"
   }
 }

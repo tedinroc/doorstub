@@ -7,3 +7,9 @@ dist/
 # internal build notes, never committed
 BUILD-BRIEF.md
 .claude/
+
+# internal briefs and local secrets, never committed
+APP-BRIEF.md
+.secrets/
+.wrangler/
+.dev.vars
