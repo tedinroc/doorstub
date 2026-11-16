@@ -53,7 +53,7 @@ test('Pages Functions route and cron Worker, on simnet', async (t) => {
   assert.match(health.body.vm, /rule check/);
   assert.equal(health.headers.get('cache-control'), 'no-store');
   assert.deepEqual(health.body.signer.alsoKeyOf, [], 'the worker\'s key is not the real show\'s data key');
-  assert.deepEqual(health.body.door.shows, [{ id: 'live-call', configured: true }]);
+  assert.deepEqual(health.body.door, { shows: [{ id: 'live-call', configured: true }], record: 'kv+memory' }, 'DOOR_CLAIMS is bound');
 
   const ticket = await buyTicket(ctx.rpc, showB);
   const notice = await call('/api/notice', { method: 'POST', body: JSON.stringify({ category: showB.categoryHex, seat: ticket.seatHex, txid: ticket.txid }), headers: { 'cf-connecting-ip': '203.0.113.7' } });

@@ -27,6 +27,7 @@ test('notice signer: live B seats only, verifiable, refund accepted by the simne
   assert.deepEqual(health.body.signer, { configured: true, shows: [{ id: showB.id, keyMatches: true }], alsoKeyOf: [] }, 'a real show has its own data key, which the worker never holds');
   assert.notEqual(binToHex(real.organiserDataPk), binToHex(showB.organiserDataPk));
   assert.equal(health.body.runtime, 'node');
+  assert.deepEqual(health.body.door, { shows: [{ id: real.id, configured: false }], record: 'memory' });
 
   // A buy of sample B, still in the mempool.
   const ticket = await buyTicket(ctx.rpc, showB);

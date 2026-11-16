@@ -135,10 +135,10 @@ try {
   }, 'wrangler pages dev', 90_000).catch((e) => {
     throw new Error(`${e.message}\n${pages.log()}`);
   });
-  if (health.runtime !== 'workerd' || health.chain?.tip === undefined || health.signer?.shows?.[0]?.keyMatches !== true || health.signer?.alsoKeyOf?.length !== 0) {
+  if (health.runtime !== 'workerd' || health.chain?.tip === undefined || health.signer?.shows?.[0]?.keyMatches !== true || health.signer?.alsoKeyOf?.length !== 0 || health.door?.record !== 'kv+memory') {
     throw new Error(`unexpected health ${JSON.stringify(health)}`);
   }
-  step('pages: /api/health in workerd', { tip: health.chain.tip, signer: health.signer, vm: health.vm });
+  step('pages: /api/health in workerd', { tip: health.chain.tip, signer: health.signer, door: health.door, vm: health.vm });
 
   const ticket = await buyTicket(rpc, showB);
   const t0 = Date.now();

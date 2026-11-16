@@ -60,7 +60,7 @@ Refusals (both calls): `400 bad-request` (`reserve` that is not `true` or `false
 
 ### `GET /api/health`
 
-`{ ok, service, api, network, runtime: "workerd"|"node", vm, config: { errors }, shows: { loaded, rejected }, signer: { configured, shows: [{ id, keyMatches }], alsoKeyOf: [real show ids whose data key is this key] }, door: { shows: [{ id, configured }] }, chain: { tip } }`. `alsoKeyOf` is empty for a catalogue the studio planned: real shows get the studio's second data key, which the worker never holds. It opens one Fulcrum connection (60 per minute per IP).
+`{ ok, service, api, network, runtime: "workerd"|"node", vm, config: { errors }, shows: { loaded, rejected }, signer: { configured, shows: [{ id, keyMatches }], alsoKeyOf: [real show ids whose data key is this key] }, door: { shows: [{ id, configured }], record: "kv+memory"|"memory" }, chain: { tip } }`. `door.record` says where the door's record lives: `kv+memory` once `DOOR_CLAIMS` is bound (memory only when KV fails), `memory` without it. `alsoKeyOf` is empty for a catalogue the studio planned: real shows get the studio's second data key, which the worker never holds. It opens one Fulcrum connection (60 per minute per IP).
 
 ## 3. Keeper
 
@@ -102,7 +102,7 @@ npm run worker:workerd-check
 Deploying is the organiser's step, never an agent's. The checklist, from the repo root:
 
 1. Pages project `doorstub`: `wrangler pages deploy app/dist --project-name doorstub` (run from the repo root, so `functions/` is bundled with the built site and `/api/*` goes to the worker). Secrets: `wrangler pages secret put STUDIO_DATA_KEY --project-name doorstub` (the `data.privateKey`, never `realData.privateKey`) and, once a real show sells, `DOOR_LINKS`. Before a real show sells, create a KV namespace (`wrangler kv namespace create DOOR_CLAIMS`) and bind it to the Pages project as `DOOR_CLAIMS` in the dashboard (Settings, Functions, KV namespace bindings).
-2. Check `https://doorstub.pages.dev/api/health`: `network` mainnet, `config.errors` empty, `signer.shows[].keyMatches` true for sample B, `signer.alsoKeyOf` empty, `door.shows[].configured` true for each real show, a `chain.tip`.
+2. Check `https://doorstub.pages.dev/api/health`: `network` mainnet, `config.errors` empty, `signer.shows[].keyMatches` true for sample B, `signer.alsoKeyOf` empty, `door.shows[].configured` true for each real show, `door.record` `kv+memory`, a `chain.tip`.
 3. Cron Worker: `wrangler deploy --config worker/wrangler.toml`, then `wrangler secret put STUDIO_DATA_KEY --config worker/wrangler.toml`. It has no URL; `wrangler tail --config worker/wrangler.toml` shows each run's one-line report.
 4. Before relying on the cron, `npm run keeper -- --network mainnet --shows app/public/shows.json --studio .secrets/studio.json --once` is a dry run against mainnet (reads only; it builds and checks what the keeper would send).
 
