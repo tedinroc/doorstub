@@ -1,0 +1,175 @@
+pragma cashscript ^0.14.0;
+
+// Doorstub Escrow: one address per show. Each ticket's money is one coin here,
+// marked by an immutable NFT 'E'|seat|buyerPkh (24 bytes) of the show's category.
+// The matching ticket is 'T'|seat|buyerPkh (24 bytes), held at P2PKH(buyerPkh).
+//
+// Every path pays the output at this.activeInputIndex, so one output can never
+// satisfy two escrow coins. A fee (if any) goes to the output at
+// this.activeInputIndex + tx.inputs.length, which is also unique per coin.
+// Whoever builds the transaction can keep at most minerFeeCap of a coin.
+//
+// Constructor:
+//   category         the show's token category (32 bytes, as OP_UTXOTOKENCATEGORY returns it)
+//   organiserPkh     the organiser's payee (P2PKH) for check-ins and fees
+//   organiserDataPk  the organiser key for data-signed refund notices
+//   startHeight      block height when the show starts
+//   graceBlocks      blocks after startHeight before unused tickets settle
+//   handBackFeeBps   hand-back fee in basis points of the coin value
+//   noShowFeeBps     no-show fee in basis points of the coin value
+//   minerFeeCap      most satoshis a coin may lose to the transaction builder
+contract Escrow(
+    bytes32 category,
+    bytes20 organiserPkh,
+    pubkey organiserDataPk,
+    int startHeight,
+    int graceBlocks,
+    int handBackFeeBps,
+    int noShowFeeBps,
+    int minerFeeCap
+) {
+
+    // The holder hands the ticket back for a refund, minus the posted fee.
+    // The ticket input sits at P2PKH(buyerPkh), so the buyer's wallet signs it.
+    // Ticket and marker are both burned.
+    function handBack(int ticketInputIndex) {
+        int idx = this.activeInputIndex;
+        require(tx.inputs[idx].tokenCategory == category);
+        bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);
+        require(tag == 0x45);
+        require(body.length == 23);
+        bytes20 buyerPkh = unsafe_bytes20(body.split(3)[1]);
+        bytes buyerLock = new LockingBytecodeP2PKH(buyerPkh);
+
+        require(tx.inputs[ticketInputIndex].tokenCategory == category);
+        require(tx.inputs[ticketInputIndex].nftCommitment == 0x54 + body);
+        require(tx.inputs[ticketInputIndex].lockingBytecode == buyerLock);
+
+        int value = tx.inputs[idx].value;
+        int fee = value * handBackFeeBps / 10000;
+        if (fee < 546) {
+            fee = 0;
+        }
+        int j = 0;
+        while (j < tx.outputs.length) {
+            bytes outCategory = tx.outputs[j].tokenCategory;
+            if (outCategory.length != 0) {
+                require(outCategory.split(32)[0] != category);
+            }
+            j = j + 1;
+        }
+
+        require(tx.outputs[idx].lockingBytecode == buyerLock);
+        require(tx.outputs[idx].value >= value - fee - minerFeeCap);
+        if (fee > 0) {
+            int feeIndex = idx + tx.inputs.length;
+            require(tx.outputs[feeIndex].lockingBytecode == new LockingBytecodeP2PKH(organiserPkh));
+            require(tx.outputs[feeIndex].value >= fee);
+        }
+    }
+
+    // The holder checks in at the door (K1). The coin pays the organiser; the
+    // ticket goes back to the holder as a keepsake stub with no money behind it.
+    // The keepsake sits at the output with the ticket input's index; it is the
+    // only output of this category, so the marker is burned.
+    function checkIn(int ticketInputIndex) {
+        int idx = this.activeInputIndex;
+        require(tx.inputs[idx].tokenCategory == category);
+        bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);
+        require(tag == 0x45);
+        require(body.length == 23);
+        bytes20 buyerPkh = unsafe_bytes20(body.split(3)[1]);
+        bytes buyerLock = new LockingBytecodeP2PKH(buyerPkh);
+        bytes ticketCommitment = 0x54 + body;
+
+        require(tx.inputs[ticketInputIndex].tokenCategory == category);
+        require(tx.inputs[ticketInputIndex].nftCommitment == ticketCommitment);
+        require(tx.inputs[ticketInputIndex].lockingBytecode == buyerLock);
+
+        int j = 0;
+        while (j < tx.outputs.length) {
+            if (j != ticketInputIndex) {
+                bytes outCategory = tx.outputs[j].tokenCategory;
+                if (outCategory.length != 0) {
+                    require(outCategory.split(32)[0] != category);
+                }
+            }
+            j = j + 1;
+        }
+
+        require(tx.outputs[idx].lockingBytecode == new LockingBytecodeP2PKH(organiserPkh));
+        require(tx.outputs[idx].value >= tx.inputs[idx].value - minerFeeCap);
+
+        require(tx.outputs[ticketInputIndex].lockingBytecode == buyerLock);
+        require(tx.outputs[ticketInputIndex].tokenCategory == category);
+        require(tx.outputs[ticketInputIndex].nftCommitment == ticketCommitment);
+    }
+
+    // After startHeight + graceBlocks, anyone may refund an unused ticket's
+    // coin to its buyer, minus the posted no-show fee (K2).
+    function settle() {
+        require(tx.time >= startHeight + graceBlocks);
+
+        int idx = this.activeInputIndex;
+        require(tx.inputs[idx].tokenCategory == category);
+        bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);
+        require(tag == 0x45);
+        require(body.length == 23);
+        bytes20 buyerPkh = unsafe_bytes20(body.split(3)[1]);
+
+        int value = tx.inputs[idx].value;
+        int fee = value * noShowFeeBps / 10000;
+        if (fee < 546) {
+            fee = 0;
+        }
+        int j = 0;
+        while (j < tx.outputs.length) {
+            bytes outCategory = tx.outputs[j].tokenCategory;
+            if (outCategory.length != 0) {
+                require(outCategory.split(32)[0] != category);
+            }
+            j = j + 1;
+        }
+
+        require(tx.outputs[idx].lockingBytecode == new LockingBytecodeP2PKH(buyerPkh));
+        require(tx.outputs[idx].value >= value - fee - minerFeeCap);
+        if (fee > 0) {
+            int feeIndex = idx + tx.inputs.length;
+            require(tx.outputs[feeIndex].lockingBytecode == new LockingBytecodeP2PKH(organiserPkh));
+            require(tx.outputs[feeIndex].value >= fee);
+        }
+    }
+
+    // The organiser cancels (K5): a data signature over 'C'|category refunds the
+    // whole show; one over 'R'|category|seat refunds one ticket. Anyone may push
+    // it. The money can only go back to the buyer.
+    function refund(datasig organiserDataSig, bytes1 scope) {
+        int idx = this.activeInputIndex;
+        require(tx.inputs[idx].tokenCategory == category);
+        bytes tag, bytes body = tx.inputs[idx].nftCommitment.split(1);
+        require(tag == 0x45);
+        require(body.length == 23);
+        bytes seat, bytes buyerPkhBytes = body.split(3);
+        bytes20 buyerPkh = unsafe_bytes20(buyerPkhBytes);
+
+        bytes message = scope + category;
+        if (scope == 0x52) {
+            message = message + seat;
+        } else {
+            require(scope == 0x43);
+        }
+        require(checkDataSig(organiserDataSig, message, organiserDataPk));
+
+        int j = 0;
+        while (j < tx.outputs.length) {
+            bytes outCategory = tx.outputs[j].tokenCategory;
+            if (outCategory.length != 0) {
+                require(outCategory.split(32)[0] != category);
+            }
+            j = j + 1;
+        }
+
+        require(tx.outputs[idx].lockingBytecode == new LockingBytecodeP2PKH(buyerPkh));
+        require(tx.outputs[idx].value >= tx.inputs[idx].value - minerFeeCap);
+    }
+}

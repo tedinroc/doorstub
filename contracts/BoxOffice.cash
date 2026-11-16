@@ -1,0 +1,108 @@
+pragma cashscript ^0.14.0;
+
+// Doorstub BoxOffice: one shard of a show's box office.
+//
+// The shard holds one minting NFT of the show's token category.
+// Its commitment is 4 bytes: state(1) | shard(1) | sold(2, little-endian).
+//   state 0x01 = sales open, 0x00 = sales closed.
+// A seat id is 3 bytes: shard(1) | sold(2, LE), where sold is the count AFTER
+// this sale (so the first seat of a shard is sold = 1). Shard bytes are set
+// once at genesis and never change, so seat ids never repeat across shards.
+//
+// Constructor:
+//   price                 ticket price in satoshis (escrowed, not paid out)
+//   organiserPk           public key that may close sales
+//   escrowLockingBytecode the show's Escrow P2SH32 locking bytecode
+contract BoxOffice(int price, pubkey organiserPk, bytes escrowLockingBytecode) {
+
+    // Sell one seat. No signature: anyone can run it, but every output that
+    // matters is fixed, so the only freedom is who the buyer is.
+    //   input 0  = this shard (minting NFT, state open)
+    //   output 0 = this shard again, sold + 1
+    //   output 1 = immutable ticket NFT 'T'|seat|buyerPkh to P2PKH(buyerPkh)
+    //   output 2 = Escrow coin with immutable marker 'E'|seat|buyerPkh
+    //   outputs 3..5 may exist (change, data) but never carry this category
+    function buy(bytes20 buyerPkh) {
+        require(this.activeInputIndex == 0);
+
+        bytes mintingCategory = tx.inputs[0].tokenCategory;
+        require(mintingCategory.length == 33);
+        bytes category, bytes capability = mintingCategory.split(32);
+        require(capability == 0x02);
+
+        bytes state, bytes rest = tx.inputs[0].nftCommitment.split(1);
+        require(state == 0x01);
+        require(rest.length == 3);
+        bytes shard, bytes soldBytes = rest.split(1);
+        // sold stays below 0x8000; toPaddedBytes fails at 32,768, which is
+        // the per-shard limit.
+        bytes seat = shard + toPaddedBytes(int(soldBytes) + 1, 2);
+
+        // nothing else may carry this category: cap the outputs, then check them all
+        require(tx.outputs.length <= 6);
+        int j = 3;
+        while (j < tx.outputs.length) {
+            bytes outCategory = tx.outputs[j].tokenCategory;
+            if (outCategory.length != 0) {
+                require(outCategory.split(32)[0] != category);
+            }
+            j = j + 1;
+        }
+
+        // no other input may be a minting NFT of this category (no second shard)
+        int i = 1;
+        while (i < tx.inputs.length) {
+            require(tx.inputs[i].tokenCategory != mintingCategory);
+            i = i + 1;
+        }
+
+        // output 0: the shard continues, same token, same state, sold + 1
+        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+        require(tx.outputs[0].tokenCategory == mintingCategory);
+        require(tx.outputs[0].nftCommitment == 0x01 + seat);
+        require(tx.outputs[0].value >= tx.inputs[0].value);
+
+        // output 1: the ticket, immutable, to the buyer's own address
+        require(tx.outputs[1].lockingBytecode == new LockingBytecodeP2PKH(buyerPkh));
+        require(tx.outputs[1].tokenCategory == category);
+        require(tx.outputs[1].nftCommitment == 0x54 + seat + buyerPkh);
+        require(tx.outputs[1].value >= 1000);
+
+        // output 2: the ticket money, held by Escrow under an immutable marker
+        require(tx.outputs[2].lockingBytecode == escrowLockingBytecode);
+        require(tx.outputs[2].tokenCategory == category);
+        require(tx.outputs[2].nftCommitment == 0x45 + seat + buyerPkh);
+        require(tx.outputs[2].value >= price + 1000);
+    }
+
+    // Close sales on this shard for good. Organiser only. Several shards may be
+    // closed in one transaction: each pays itself forward at its own index.
+    // Every output that carries this category must sit at this contract in the
+    // closed state, so minting capability can never leave the box office and a
+    // closed shard can never reopen.
+    function closeSales(sig organiserSig) {
+        require(checkSig(organiserSig, organiserPk));
+
+        int idx = this.activeInputIndex;
+        bytes mintingCategory = tx.inputs[idx].tokenCategory;
+        bytes category = mintingCategory.split(32)[0];
+        bytes myBytecode = tx.inputs[idx].lockingBytecode;
+
+        int j = 0;
+        while (j < tx.outputs.length) {
+            bytes outCategory = tx.outputs[j].tokenCategory;
+            if (outCategory.length != 0) {
+                if (outCategory.split(32)[0] == category) {
+                    require(tx.outputs[j].lockingBytecode == myBytecode);
+                    require(tx.outputs[j].nftCommitment.split(1)[0] == 0x00);
+                }
+            }
+            j = j + 1;
+        }
+
+        require(tx.outputs[idx].lockingBytecode == myBytecode);
+        require(tx.outputs[idx].tokenCategory == mintingCategory);
+        require(tx.outputs[idx].nftCommitment == 0x00 + tx.inputs[idx].nftCommitment.split(1)[1]);
+        require(tx.outputs[idx].value >= tx.inputs[idx].value);
+    }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "doorstub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tickets that refund themselves: an event box office on Bitcoin Cash.",
+  "type": "module",
+  "author": "Ted Chen",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "compile": "node scripts/compile.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "probe": "vite probe",
+    "probe:build": "vite build probe"
+  },
+  "dependencies": {
+    "@bitauth/libauth": "3.1.0-next.8",
+    "@wizardconnect/core": "0.2.10",
+    "@wizardconnect/dapp": "0.2.7",
+    "cashscript": "0.14.0",
+    "qrcode": "1.5.4"
+  },
+  "devDependencies": {
+    "@wizardconnect/wallet": "0.2.4",
+    "cashc": "0.14.0",
+    "vite": "7.3.8",
+    "vite-plugin-singlefile": "2.3.4"
+  }
+}

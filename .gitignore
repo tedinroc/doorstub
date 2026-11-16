@@ -1,0 +1,8 @@
+node_modules/
+.cache/
+.progress/
+dist/
+*.local
+.env*
+# internal build notes, never committed
+BUILD-BRIEF.md

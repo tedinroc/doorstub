@@ -1,0 +1,164 @@
+{
+  "contractName": "BoxOffice",
+  "constructorInputs": [
+    {
+      "name": "price",
+      "type": "int"
+    },
+    {
+      "name": "organiserPk",
+      "type": "pubkey"
+    },
+    {
+      "name": "escrowLockingBytecode",
+      "type": "bytes"
+    }
+  ],
+  "abi": [
+    {
+      "name": "buy",
+      "inputs": [
+        {
+          "name": "buyerPkh",
+          "type": "bytes20"
+        }
+      ]
+    },
+    {
+      "name": "closeSales",
+      "inputs": [
+        {
+          "name": "organiserSig",
+          "type": "sig"
+        }
+      ]
+    }
+  ],
+  "bytecode": "OP_3 OP_PICK OP_0 OP_NUMEQUAL OP_IF OP_4 OP_ROLL OP_SIZE 14 OP_EQUALVERIFY OP_INPUTINDEX OP_0 OP_NUMEQUALVERIFY OP_0 OP_UTXOTOKENCATEGORY OP_SIZE 21 OP_NUMEQUALVERIFY OP_DUP 20 OP_SPLIT OP_2 OP_EQUALVERIFY OP_0 OP_UTXOTOKENCOMMITMENT OP_1 OP_SPLIT OP_SWAP OP_1 OP_EQUALVERIFY OP_SIZE OP_3 OP_NUMEQUALVERIFY OP_1 OP_SPLIT OP_BIN2NUM OP_1ADD OP_2 OP_NUM2BIN OP_CAT OP_TXOUTPUTCOUNT OP_6 OP_LESSTHANOREQUAL OP_VERIFY OP_3 OP_BEGIN OP_DUP OP_TXOUTPUTCOUNT OP_LESSTHAN OP_DUP OP_TOALTSTACK OP_IF OP_DUP OP_OUTPUTTOKENCATEGORY OP_SIZE OP_0 OP_NUMNOTEQUAL OP_IF OP_DUP 20 OP_SPLIT OP_DROP OP_4 OP_PICK OP_EQUAL OP_NOT OP_VERIFY OP_ENDIF OP_SWAP OP_1ADD OP_NIP OP_ENDIF OP_FROMALTSTACK OP_NOT OP_UNTIL OP_1 OP_BEGIN OP_DUP OP_TXINPUTCOUNT OP_LESSTHAN OP_DUP OP_TOALTSTACK OP_IF OP_DUP OP_UTXOTOKENCATEGORY OP_5 OP_PICK OP_EQUAL OP_NOT OP_VERIFY OP_1ADD OP_ENDIF OP_FROMALTSTACK OP_NOT OP_UNTIL OP_0 OP_OUTPUTBYTECODE OP_0 OP_UTXOBYTECODE OP_EQUALVERIFY OP_0 OP_OUTPUTTOKENCATEGORY OP_5 OP_ROLL OP_EQUALVERIFY OP_0 OP_OUTPUTTOKENCOMMITMENT OP_1 OP_4 OP_PICK OP_CAT OP_EQUALVERIFY OP_0 OP_OUTPUTVALUE OP_0 OP_UTXOVALUE OP_GREATERTHANOREQUAL OP_VERIFY OP_1 OP_OUTPUTBYTECODE 76a914 OP_6 OP_PICK OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_1 OP_OUTPUTTOKENCATEGORY OP_4 OP_PICK OP_EQUALVERIFY OP_1 OP_OUTPUTTOKENCOMMITMENT 54 OP_4 OP_PICK OP_CAT OP_6 OP_PICK OP_CAT OP_EQUALVERIFY OP_1 OP_OUTPUTVALUE e803 OP_GREATERTHANOREQUAL OP_VERIFY OP_2 OP_OUTPUTBYTECODE OP_8 OP_ROLL OP_EQUALVERIFY OP_2 OP_OUTPUTTOKENCATEGORY OP_4 OP_ROLL OP_EQUALVERIFY OP_2 OP_OUTPUTTOKENCOMMITMENT 45 OP_4 OP_ROLL OP_CAT OP_4 OP_ROLL OP_CAT OP_EQUALVERIFY OP_2 OP_OUTPUTVALUE OP_3 OP_ROLL e803 OP_ADD OP_GREATERTHANOREQUAL OP_VERIFY OP_2DROP OP_2DROP OP_1 OP_ELSE OP_3 OP_ROLL OP_1 OP_NUMEQUALVERIFY OP_3 OP_ROLL OP_ROT OP_CHECKSIGVERIFY OP_INPUTINDEX OP_DUP OP_UTXOTOKENCATEGORY OP_DUP 20 OP_SPLIT OP_DROP OP_2 OP_PICK OP_UTXOBYTECODE OP_0 OP_BEGIN OP_DUP OP_TXOUTPUTCOUNT OP_LESSTHAN OP_DUP OP_TOALTSTACK OP_IF OP_DUP OP_OUTPUTTOKENCATEGORY OP_SIZE OP_0 OP_NUMNOTEQUAL OP_IF OP_DUP 20 OP_SPLIT OP_DROP OP_4 OP_PICK OP_EQUAL OP_IF OP_OVER OP_OUTPUTBYTECODE OP_3 OP_PICK OP_EQUALVERIFY OP_OVER OP_OUTPUTTOKENCOMMITMENT OP_1 OP_SPLIT OP_DROP 00 OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_SWAP OP_1ADD OP_NIP OP_ENDIF OP_FROMALTSTACK OP_NOT OP_UNTIL OP_4 OP_PICK OP_OUTPUTBYTECODE OP_ROT OP_EQUALVERIFY OP_3 OP_PICK OP_OUTPUTTOKENCATEGORY OP_3 OP_ROLL OP_EQUALVERIFY OP_2 OP_PICK OP_OUTPUTTOKENCOMMITMENT 00 OP_4 OP_PICK OP_UTXOTOKENCOMMITMENT OP_1 OP_SPLIT OP_NIP OP_CAT OP_EQUALVERIFY OP_2 OP_PICK OP_OUTPUTVALUE OP_3 OP_ROLL OP_UTXOVALUE OP_GREATERTHANOREQUAL OP_VERIFY OP_2DROP OP_2DROP OP_1 OP_ENDIF",
+  "source": "pragma cashscript ^0.14.0;\n\n// Doorstub BoxOffice: one shard of a show's box office.\n//\n// The shard holds one minting NFT of the show's token category.\n// Its commitment is 4 bytes: state(1) | shard(1) | sold(2, little-endian).\n//   state 0x01 = sales open, 0x00 = sales closed.\n// A seat id is 3 bytes: shard(1) | sold(2, LE), where sold is the count AFTER\n// this sale (so the first seat of a shard is sold = 1). Shard bytes are set\n// once at genesis and never change, so seat ids never repeat across shards.\n//\n// Constructor:\n//   price                 ticket price in satoshis (escrowed, not paid out)\n//   organiserPk           public key that may close sales\n//   escrowLockingBytecode the show's Escrow P2SH32 locking bytecode\ncontract BoxOffice(int price, pubkey organiserPk, bytes escrowLockingBytecode) {\n\n    // Sell one seat. No signature: anyone can run it, but every output that\n    // matters is fixed, so the only freedom is who the buyer is.\n    //   input 0  = this shard (minting NFT, state open)\n    //   output 0 = this shard again, sold + 1\n    //   output 1 = immutable ticket NFT 'T'|seat|buyerPkh to P2PKH(buyerPkh)\n    //   output 2 = Escrow coin with immutable marker 'E'|seat|buyerPkh\n    //   outputs 3..5 may exist (change, data) but never carry this category\n    function buy(bytes20 buyerPkh) {\n        require(this.activeInputIndex == 0);\n\n        bytes mintingCategory = tx.inputs[0].tokenCategory;\n        require(mintingCategory.length == 33);\n        bytes category, bytes capability = mintingCategory.split(32);\n        require(capability == 0x02);\n\n        bytes state, bytes rest = tx.inputs[0].nftCommitment.split(1);\n        require(state == 0x01);\n        require(rest.length == 3);\n        bytes shard, bytes soldBytes = rest.split(1);\n        // sold stays below 0x8000; toPaddedBytes fails at 32,768, which is\n        // the per-shard limit.\n        bytes seat = shard + toPaddedBytes(int(soldBytes) + 1, 2);\n\n        // nothing else may carry this category: cap the outputs, then check them all\n        require(tx.outputs.length <= 6);\n        int j = 3;\n        while (j < tx.outputs.length) {\n            bytes outCategory = tx.outputs[j].tokenCategory;\n            if (outCategory.length != 0) {\n                require(outCategory.split(32)[0] != category);\n            }\n            j = j + 1;\n        }\n\n        // no other input may be a minting NFT of this category (no second shard)\n        int i = 1;\n        while (i < tx.inputs.length) {\n            require(tx.inputs[i].tokenCategory != mintingCategory);\n            i = i + 1;\n        }\n\n        // output 0: the shard continues, same token, same state, sold + 1\n        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);\n        require(tx.outputs[0].tokenCategory == mintingCategory);\n        require(tx.outputs[0].nftCommitment == 0x01 + seat);\n        require(tx.outputs[0].value >= tx.inputs[0].value);\n\n        // output 1: the ticket, immutable, to the buyer's own address\n        require(tx.outputs[1].lockingBytecode == new LockingBytecodeP2PKH(buyerPkh));\n        require(tx.outputs[1].tokenCategory == category);\n        require(tx.outputs[1].nftCommitment == 0x54 + seat + buyerPkh);\n        require(tx.outputs[1].value >= 1000);\n\n        // output 2: the ticket money, held by Escrow under an immutable marker\n        require(tx.outputs[2].lockingBytecode == escrowLockingBytecode);\n        require(tx.outputs[2].tokenCategory == category);\n        require(tx.outputs[2].nftCommitment == 0x45 + seat + buyerPkh);\n        require(tx.outputs[2].value >= price + 1000);\n    }\n\n    // Close sales on this shard for good. Organiser only. Several shards may be\n    // closed in one transaction: each pays itself forward at its own index.\n    // Every output that carries this category must sit at this contract in the\n    // closed state, so minting capability can never leave the box office and a\n    // closed shard can never reopen.\n    function closeSales(sig organiserSig) {\n        require(checkSig(organiserSig, organiserPk));\n\n        int idx = this.activeInputIndex;\n        bytes mintingCategory = tx.inputs[idx].tokenCategory;\n        bytes category = mintingCategory.split(32)[0];\n        bytes myBytecode = tx.inputs[idx].lockingBytecode;\n\n        int j = 0;\n        while (j < tx.outputs.length) {\n            bytes outCategory = tx.outputs[j].tokenCategory;\n            if (outCategory.length != 0) {\n                if (outCategory.split(32)[0] == category) {\n                    require(tx.outputs[j].lockingBytecode == myBytecode);\n                    require(tx.outputs[j].nftCommitment.split(1)[0] == 0x00);\n                }\n            }\n            j = j + 1;\n        }\n\n        require(tx.outputs[idx].lockingBytecode == myBytecode);\n        require(tx.outputs[idx].tokenCategory == mintingCategory);\n        require(tx.outputs[idx].nftCommitment == 0x00 + tx.inputs[idx].nftCommitment.split(1)[1]);\n        require(tx.outputs[idx].value >= tx.inputs[idx].value);\n    }\n}\n",
+  "fingerprint": "0c85e1707e3f803b8f66327135ce066bad2d80e48df000891d151fe2821974c5",
+  "debug": {
+    "bytecode": "5379009c63547a82011488c0009d00ce8201219d7601207f528800cf517f7c518882539d517f818b52807ec456a169536576c49f766b6376d182009e637601207f755479879169687c8b77686c9166516576c39f766b6376ce55798791698b686c916600cd00c78800d1557a8800d25154797e8800cc00c6a26951cd0376a91456797e0288ac7e8851d154798851d2015454797e56797e8851cc02e803a26952cd587a8852d1547a8852d20145547a7e547a7e8852cc537a02e80393a2696d6d5167537a519d537a7badc076ce7601207f755279c7006576c49f766b6376d182009e637601207f755479876378cd53798878d2517f7501008868687c8b77686c91665479cd7b885379d1537a885279d201005479cf517f777e885279cc537ac6a2696d6d5168",
+    "sourceMap": "25:4:76:5;;;;;:17:25:33;;;;;26:16:26:37;:41::42;:8::44:1;28:42:28:43:0;:32::58:1;29:16:29:38;:42::44:0;:8::46:1;30:43:30:58:0;:65::67;:43::68:1;31:30:31:34:0;:8::36:1;33:44:33:45:0;:34::60:1;:67::68:0;:34::69:1;34:16:34:21:0;:25::29;:8::31:1;35:16:35:27;:31::32:0;:8::34:1;36:50:36:51:0;:39::52:1;39:43:39:57;:::61;:63::64:0;:29::65:1;:21;42:16:42:33:0;:37::38;:16:::1;:8::40;43:16:43:17:0;44:8:50:9;:15:44:16;:19::36;:15:::1;;;:38:50:9:0;45:43:45:44;:32::59:1;46:16:46:34;:38::39:0;:16:::1;:41:48:13:0;47:24:47:35;:42::44;:24::45:1;:::48;:52::60:0;;:24:::1;;:16::62;46:41:48:13;49:12:49:22;;44:38:50:9;;;:8;;53:16:53:17:0;54:8:57:9;:15:54:16;:19::35;:15:::1;;;:37:57:9:0;55:30:55:31;:20::46:1;:50::65:0;;:20:::1;;:12::67;56::56:22;54:37:57:9;;:8;;60:27:60:28:0;:16::45:1;:59::60:0;:49::77:1;:8::79;61:27:61:28:0;:16::43:1;:47::62:0;;:8::64:1;62:27:62:28:0;:16::43:1;:47::51:0;:54::58;;:47:::1;:8::60;63:27:63:28:0;:16::35:1;:49::50:0;:39::57:1;:16;:8::59;66:27:66:28:0;:16::45:1;:49::83:0;:74::82;;:49::83:1;;;:8::85;67:27:67:28:0;:16::43:1;:47::55:0;;:8::57:1;68:27:68:28:0;:16::43:1;:47::51:0;:54::58;;:47:::1;:61::69:0;;:47:::1;:8::71;69:27:69:28:0;:16::35:1;:39::43:0;:16:::1;:8::45;72:27:72:28:0;:16::45:1;:49::70:0;;:8::72:1;73:27:73:28:0;:16::43:1;:47::55:0;;:8::57:1;74:27:74:28:0;:16::43:1;:47::51:0;:54::58;;:47:::1;:61::69:0;;:47:::1;:8::71;75:27:75:28:0;:16::35:1;:39::44:0;;:47::51;:39:::1;:16;:8::53;25:35:76:5;;;:4;83::107::0;;;;84:25:84:37;;:39::50;:8::53:1;86:18:86:39:0;87:42:87:45;:32::60:1;88:25:88:40:0;:47::49;:25::50:1;:::53;89:37:89:40:0;;:27::57:1;91:16:91:17:0;92:8:101:9;:15:92:16;:19::36;:15:::1;;;:38:101:9:0;93:43:93:44;:32::59:1;94:16:94:34;:38::39:0;:16:::1;:41:99:13:0;95:20:95:31;:38::40;:20::41:1;:::44;:48::56:0;;:20:::1;:58:98:17:0;96:39:96:40;:28::57:1;:61::71:0;;:20::73:1;97:39:97:40:0;:28::55:1;:62::63:0;:28::64:1;:::67;:71::75:0;:20::77:1;95:58:98:17;94:41:99:13;100:12:100:22;;92:38:101:9;;;:8;;103:27:103:30:0;;:16::47:1;:51::61:0;:8::63:1;104:27:104:30:0;;:16::45:1;:49::64:0;;:8::66:1;105:27:105:30:0;;:16::45:1;:49::53:0;:66::69;;:56::84:1;:91::92:0;:56::93:1;:::96;:49;:8::98;106:27:106:30:0;;:16::37:1;:51::54:0;;:41::61:1;:16;:8::63;83:42:107:5;;;16:0:108:1",
+    "logs": [],
+    "requires": [
+      {
+        "ip": 15,
+        "line": 26
+      },
+      {
+        "ip": 20,
+        "line": 29
+      },
+      {
+        "ip": 25,
+        "line": 31
+      },
+      {
+        "ip": 32,
+        "line": 34
+      },
+      {
+        "ip": 35,
+        "line": 35
+      },
+      {
+        "ip": 46,
+        "line": 42
+      },
+      {
+        "ip": 69,
+        "line": 47
+      },
+      {
+        "ip": 92,
+        "line": 55
+      },
+      {
+        "ip": 102,
+        "line": 60
+      },
+      {
+        "ip": 107,
+        "line": 61
+      },
+      {
+        "ip": 114,
+        "line": 62
+      },
+      {
+        "ip": 120,
+        "line": 63
+      },
+      {
+        "ip": 129,
+        "line": 66
+      },
+      {
+        "ip": 134,
+        "line": 67
+      },
+      {
+        "ip": 144,
+        "line": 68
+      },
+      {
+        "ip": 149,
+        "line": 69
+      },
+      {
+        "ip": 154,
+        "line": 72
+      },
+      {
+        "ip": 159,
+        "line": 73
+      },
+      {
+        "ip": 169,
+        "line": 74
+      },
+      {
+        "ip": 177,
+        "line": 75
+      },
+      {
+        "ip": 189,
+        "line": 84
+      },
+      {
+        "ip": 226,
+        "line": 96
+      },
+      {
+        "ip": 233,
+        "line": 97
+      },
+      {
+        "ip": 247,
+        "line": 103
+      },
+      {
+        "ip": 253,
+        "line": 104
+      },
+      {
+        "ip": 265,
+        "line": 105
+      },
+      {
+        "ip": 273,
+        "line": 106
+      }
+    ],
+    "sourceTags": "5:9:pv;70:70:sc;71:74:lc;91:94:lc;235:235:sc;236:239:lc"
+  },
+  "compiler": {
+    "name": "cashc",
+    "version": "0.14.0",
+    "options": {
+      "enforceFunctionParameterTypes": true,
+      "enforceLocktimeGuard": true
+    }
+  }
+}
