@@ -1,5 +1,7 @@
-// POST /api/door: a real check-in on the simnet gets the event link once;
-// check-ins not on chain, of another show, hand-backs and buys are refused.
+// POST /api/door: a real check-in on the simnet gets the event link, for one
+// claimant per check-in (the first caller's IP or claim secret, so a page that
+// retries still gets in); check-ins not on chain, of another show, hand-backs
+// and buys are refused.
 // Forged check-ins that the network would never accept (wrong payee, no
 // keepsake, a bad signature) are served by a lying chain to the door's own
 // checks, which must refuse them by themselves.
@@ -9,8 +11,8 @@ import { encodeTransaction, hexToBin } from '@bitauth/libauth';
 import { buildCheckIn, p2pkhLockingBytecode } from '../../src/tx/index.js';
 import { freshKey, signWallet } from '../helpers.js';
 import { txidOf } from '../../worker/lib/crypto.js';
-import { answerDoor } from '../../worker/lib/door.js';
-import { createMemoryClaims } from '../../worker/lib/limits.js';
+import { answerDoor, claimToken } from '../../worker/lib/door.js';
+import { createKvClaims, createMemoryClaims } from '../../worker/lib/limits.js';
 import { parseWorkerShows } from '../../worker/lib/shows.js';
 import { decodeTransaction } from '../../worker/lib/tx.js';
 import { libauthVmCheck } from '../../worker/node/vm.js';
@@ -50,11 +52,27 @@ test('door: a real check-in on chain gets the link once; not on chain, other sho
     seatLabel: 'R-0-1',
     txid: checkInTxid,
     confirmed: false,
+    again: false,
     link: `https://example.invalid/live?seat=R-0-1&checkin=${checkInTxid}`,
   });
-  const second = await door({ category: real.categoryHex, txid: checkInTxid });
-  assert.equal(second.status, 409, 'one answer per check-in');
+  // The same claimant (here the same client IP, as a page retrying after a lost answer) gets the same answer again ...
+  const retry = await door({ category: real.categoryHex, txid: checkInTxid });
+  assert.equal(retry.status, 200);
+  assert.deepEqual(retry.body, { ...answer.body, again: true });
+  // ... anyone else (here: a claim secret the first caller did not send) does not: one claimant per check-in.
+  const second = await door({ category: real.categoryHex, txid: checkInTxid, claim: 'ab'.repeat(32) });
+  assert.equal(second.status, 409, 'one claimant per check-in');
   assert.equal(second.body.error.code, 'already-answered');
+  assert.equal(second.body.message, second.body.error.message, 'the message is also at the top level');
+
+  // A page that sends a claim secret is recognised by it, not by its IP.
+  const claimed = await buyTicket(ctx.rpc, real, { shard: 2 });
+  const claimedTxid = await send(ctx.rpc, signedCheckIn(real, claimed));
+  const secret = 'cd'.repeat(32);
+  assert.equal((await door({ category: real.categoryHex, txid: claimedTxid, claim: secret })).body.again, false);
+  assert.equal((await door({ category: real.categoryHex, txid: claimedTxid, claim: secret.toUpperCase() })).body.again, true);
+  assert.equal((await door({ category: real.categoryHex, txid: claimedTxid })).status, 409, 'the same IP without the secret is someone else');
+  assert.equal((await door({ category: real.categoryHex, txid: claimedTxid, claim: 'ab' })).body.error.code, 'bad-request', 'a claim is 32 to 128 hex');
 
   // A check-in of another show (sample A, or another real show) is not a check-in of this one.
   const aTicket = await buyTicket(ctx.rpc, showA);
@@ -142,6 +160,30 @@ test('door: forged check-ins served by a lying chain are refused by the door its
   // The honest one passes the same door.
   const ok = await ask(put(honest.transaction));
   assert.equal(ok.seat, ticket.seatHex);
+
+  // One claimant per check-in, by IP or by claim secret, in memory and in a KV namespace (Pages with DOOR_CLAIMS bound).
+  const kvStore = new Map();
+  const kvClaims = createKvClaims({
+    get: async (key) => kvStore.get(key)?.value ?? null,
+    put: async (key, value, options) => {
+      kvStore.set(key, { value, options });
+    },
+  });
+  for (const claims of [createMemoryClaims(), kvClaims]) {
+    const txid = put(honest.transaction);
+    const at = (clientIp, claim) => answerDoor({ shows, chain: lying, doorLinks: { 'real-show': LINK }, claims, vmCheck: libauthVmCheck, clientIp, body: { category: real.categoryHex, txid, ...(claim && { claim }) } });
+    assert.equal((await at('198.51.100.1')).again, false, claims.kind);
+    assert.equal((await at('198.51.100.1')).again, true, `${claims.kind}: same IP, same answer`);
+    await assert.rejects(at('198.51.100.2'), (e) => e.code === 'already-answered' && e.status === 409, `${claims.kind}: another IP`);
+    await assert.rejects(at('198.51.100.1', 'ef'.repeat(16)), (e) => e.code === 'already-answered', `${claims.kind}: a claim the first caller did not send`);
+  }
+  const [stored] = [...kvStore.values()];
+  assert.match(stored.value, /^[0-9a-f]{64}$/, 'KV holds a hash, never the IP');
+  assert.ok(stored.options.expirationTtl > 0);
+  // Without an IP or a claim, the first caller wins and nobody can repeat it.
+  const anonymous = createMemoryClaims();
+  assert.equal(await anonymous.claim('k', claimToken({ clientIp: 'unknown' })), 'first');
+  assert.equal(await anonymous.claim('k', null), 'taken');
   // Without the VM (workerd), the door relies on the network having accepted the check-in: the rule check alone passes it.
   const rulesOnly = await ask(put(badSignature), null);
   assert.equal(rulesOnly.seat, ticket.seatHex, 'documented in RUNTIME.md: workerd trusts the network for signatures');

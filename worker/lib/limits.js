@@ -34,26 +34,34 @@ export const createRateLimiter = ({ limits = DEFAULT_LIMITS, maxKeys = 10_000, n
   return { take };
 };
 
-/** First caller wins, per key. In memory: one process (Node) or one isolate (workerd). */
+/**
+ * The door's record: one claimant per check-in. `claim(key, token)` stores the
+ * first caller's token (a hash; null for none) and answers 'first' for that
+ * call, 'same' when a later call brings the same token, else 'taken'.
+ * In memory: one process (Node) or one isolate (workerd).
+ */
 export const createMemoryClaims = ({ maxKeys = 100_000 } = {}) => {
-  const seen = new Set();
+  const held = new Map();
   return {
     kind: 'memory',
-    claim: async (key) => {
-      if (seen.has(key)) return false;
-      seen.add(key);
-      if (seen.size > maxKeys) seen.delete(seen.values().next().value);
-      return true;
+    claim: async (key, token = null) => {
+      if (held.has(key)) return token !== null && held.get(key) === token ? 'same' : 'taken';
+      held.set(key, token);
+      if (held.size > maxKeys) held.delete(held.keys().next().value);
+      return 'first';
     },
   };
 };
 
+const NO_TOKEN = '-';
+
 /** The same record in a Cloudflare KV namespace (eventually consistent across locations). */
 export const createKvClaims = (kv, { ttlSeconds = 60 * 60 * 24 * 120 } = {}) => ({
   kind: 'kv',
-  claim: async (key) => {
-    if ((await kv.get(key)) !== null) return false;
-    await kv.put(key, new Date().toISOString(), { expirationTtl: ttlSeconds });
-    return true;
+  claim: async (key, token = null) => {
+    const stored = await kv.get(key);
+    if (stored !== null) return token !== null && stored === token ? 'same' : 'taken';
+    await kv.put(key, token ?? NO_TOKEN, { expirationTtl: ttlSeconds });
+    return 'first';
   },
 });

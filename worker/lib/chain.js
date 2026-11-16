@@ -15,7 +15,7 @@ import { txidOf } from './crypto.js';
 import { isVetted } from './rules.js';
 import { decodeTransaction } from './tx.js';
 
-/** Same patterns as src/chain/pool.js (pinned equal by test/worker/chain.test.js). */
+/** Same patterns as src/chain/pool.js (pinned equal by test/worker/runtime.test.js). */
 export const ALREADY_KNOWN = /txn-already-(?:known|in-mempool)|already in (?:the )?block ?chain|already have transaction|transaction already exists/i;
 export const CONFLICT = /txn-mempool-conflict|missingorspent|missing ?inputs|double.?spend|inputs.?spent/i;
 
@@ -56,16 +56,25 @@ export const createWorkerChain = ({
   let active = null;
   let closed = false;
 
-  const connectTo = async (server) => {
+  // One socket per server, even when several requests ask for it at once.
+  const opening = new Map();
+  const connectTo = (server) => {
     const existing = open.get(server.url);
-    if (existing !== undefined && !existing.closed) return existing;
-    const conn = await openElectrum(server.url, { WebSocketImpl, connectTimeoutMs, requestTimeoutMs, clientName: CLIENT_NAME });
-    if (closed) {
-      conn.close();
-      throw new WorkerError('closed', 'the chain client is closed', { status: 503, retryable: true });
-    }
-    open.set(server.url, conn);
-    return conn;
+    if (existing !== undefined && !existing.closed) return Promise.resolve(existing);
+    const pending = opening.get(server.url);
+    if (pending !== undefined) return pending;
+    const promise = openElectrum(server.url, { WebSocketImpl, connectTimeoutMs, requestTimeoutMs, clientName: CLIENT_NAME })
+      .then((conn) => {
+        if (closed) {
+          conn.close();
+          throw new WorkerError('closed', 'the chain client is closed', { status: 503, retryable: true });
+        }
+        open.set(server.url, conn);
+        return conn;
+      })
+      .finally(() => opening.delete(server.url));
+    opening.set(server.url, promise);
+    return promise;
   };
 
   const connect = async () => {

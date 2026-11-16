@@ -20,6 +20,28 @@ import { assembleRefund, assembleSettle, batchCoins, coinFromElectrum } from './
 import { vet } from './rules.js';
 import { refundNoticeMessage } from './shows.js';
 
+/** How many listunspent requests the keeper keeps in flight. */
+export const LIST_CONCURRENCY = 6;
+
+/** Run `fn` over `items`, at most `limit` at once. Returns [{ value } | { error }] in order. */
+const mapLimit = async (items, limit, fn) => {
+  const results = new Array(items.length);
+  let next = 0;
+  const lane = async () => {
+    while (next < items.length) {
+      const i = next;
+      next += 1;
+      try {
+        results[i] = { value: await fn(items[i]) };
+      } catch (error) {
+        results[i] = { error };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, lane));
+  return results;
+};
+
 /** 'on-sale' | 'started' | 'settling' | 'cancelled', as src/shows showPhase. */
 export const phaseOf = (show, tip) => {
   if (show.cancelled) return 'cancelled';
@@ -44,17 +66,21 @@ const plan = (show, phase, dataKeyMatches) => {
  * @param {Function} [a.log]
  * @returns {Promise<{ network, tip, at, sent, shows: Array, errors: Array }>}
  */
-export const runKeeper = async ({ shows, chain, dataKey = null, vmCheck, dryRun = false, now = () => new Date(), log = () => {} }) => {
+export const runKeeper = async ({ shows, chain, dataKey = null, vmCheck, dryRun = false, now = () => new Date(), log = () => {}, listConcurrency = LIST_CONCURRENCY }) => {
   const tip = await chain.tip();
   const report = { network: chain.network, tip, at: now().toISOString(), dryRun, sent: 0, shows: [], errors: [] };
   const dataPk = dataKey === null ? null : publicKeyOf(dataKey);
-  for (const show of shows) {
+  // Every show's coins first, a few requests at a time over the same sockets
+  // (a catalogue of 50 shows costs a few round trips, not 50).
+  const listed = await mapLimit(shows, listConcurrency, (show) => chain.listUnspent(show.escrow.scripthash));
+  for (const [index, show] of shows.entries()) {
     const phase = phaseOf(show, tip);
     const entry = { id: show.id, kind: show.kind, phase, liveCoins: 0, ignored: 0, actions: [] };
     report.shows.push(entry);
     try {
       const { path, scope, why } = plan(show, phase, dataPk !== null && equal(dataPk, show.organiserDataPk));
-      const items = await chain.listUnspent(show.escrow.scripthash);
+      if (listed[index].error !== undefined) throw listed[index].error;
+      const items = listed[index].value;
       const coins = [];
       for (const item of items) {
         const coin = coinFromElectrum(show, item);

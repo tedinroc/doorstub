@@ -38,7 +38,9 @@ export const onRequest = async (context) => {
     claims: env.DOOR_CLAIMS ? createKvClaims(env.DOOR_CLAIMS) : isolate.claims,
     limiter: isolate.limiter,
     clientIp: request.headers.get('cf-connecting-ip') ?? 'unknown',
-    markerWaitMs: 6_000,
+    // Under the page's 6 s request timeout (app/src/lib/api.js), so a seat whose
+    // buy this server has not seen yet comes back as a retryable 404 in time.
+    markerWaitMs: 4_000,
     runtime: 'workerd',
     log: (line) => console.log(line),
   });

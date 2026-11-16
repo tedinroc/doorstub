@@ -18,11 +18,12 @@ const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-cont
 
 const json = (status, body, extra = {}) => new Response(JSON.stringify(body), { status, headers: { ...headers, ...extra } });
 
+// The top-level `message` repeats error.message for clients that read only that.
+const errorBody = (code, message, retryable) => ({ error: { code, message, retryable }, message });
+
 const errorResponse = (e) => {
-  if (e instanceof WorkerError) {
-    return json(e.status, { error: { code: e.code, message: e.message, retryable: e.retryable } });
-  }
-  return json(500, { error: { code: 'internal', message: 'the worker failed; the keeper will retry within minutes', retryable: true } });
+  if (e instanceof WorkerError) return json(e.status, errorBody(e.code, e.message, e.retryable));
+  return json(500, errorBody('internal', 'the worker failed; the keeper will retry within minutes', true));
 };
 
 const readJson = async (request) => {
@@ -66,7 +67,7 @@ const ROUTES = {
  * @param {() => object} deps.openChain a fresh worker chain client (closed after the request)
  * @param {Uint8Array|null} deps.dataKey
  * @param {object|null} deps.doorLinks
- * @param {{ claim }} deps.claims
+ * @param {{ claim }} deps.claims the door's one-claimant-per-check-in record
  * @param {{ take }} deps.limiter
  * @param {string} deps.clientIp
  * @param {Function} [deps.vmCheck]
@@ -78,13 +79,13 @@ export const handleApi = async (request, deps) => {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '');
   const method = ROUTES[path];
-  if (method === undefined) return json(404, { error: { code: 'not-found', message: 'no such API endpoint', retryable: false } });
-  if (request.method !== method) return json(405, { error: { code: 'method-not-allowed', message: `use ${method}`, retryable: false } }, { allow: method });
+  if (method === undefined) return json(404, errorBody('not-found', 'no such API endpoint', false));
+  if (request.method !== method) return json(405, errorBody('method-not-allowed', `use ${method}`, false), { allow: method });
   const bucket = path.slice('/api/'.length);
   const limited = deps.limiter.take(bucket, deps.clientIp ?? 'unknown');
   if (!limited.ok) {
     const seconds = Math.max(1, Math.ceil(limited.retryAfterMs / 1000));
-    return json(429, { error: { code: 'rate-limited', message: `too many requests; try again in ${seconds} s`, retryable: true } }, { 'retry-after': String(seconds) });
+    return json(429, errorBody('rate-limited', `too many requests; try again in ${seconds} s`, true), { 'retry-after': String(seconds) });
   }
   let chain = null;
   const openChain = () => {
@@ -98,7 +99,7 @@ export const handleApi = async (request, deps) => {
     if (path === '/api/notice') {
       return json(200, await signSeatNotice({ shows, chain: openChain(), dataKey: deps.dataKey, body, markerWaitMs: deps.markerWaitMs ?? 0, pollMs: deps.pollMs }));
     }
-    return json(200, await answerDoor({ shows, chain: openChain(), doorLinks: deps.doorLinks, claims: deps.claims, vmCheck: deps.vmCheck, body }));
+    return json(200, await answerDoor({ shows, chain: openChain(), doorLinks: deps.doorLinks, claims: deps.claims, vmCheck: deps.vmCheck, body, clientIp: deps.clientIp }));
   } catch (e) {
     if (!(e instanceof WorkerError)) deps.log?.(`api ${path}: ${e?.stack ?? e}`);
     return errorResponse(e);
