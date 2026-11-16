@@ -62,8 +62,11 @@ test('page + real worker on simnet: B refund through the notice signer, walk in 
   assert.deepEqual(worker.config.errors, []);
   const calls = [];
   const fetchImpl = async (url, init) => {
+    const body = JSON.parse(init.body);
+    // Whether the simnet already knew the txid when the call reached the worker (a reservation must come first).
+    const known = typeof body.txid === 'string' && simnet.chain.txs.has(body.txid);
     const response = await worker.fetch(url, init);
-    calls.push({ path: new URL(url).pathname, body: JSON.parse(init.body), status: response.status });
+    calls.push({ path: new URL(url).pathname, body, known, status: response.status, answer: await response.clone().json() });
     return response;
   };
 
@@ -119,6 +122,9 @@ test('page + real worker on simnet: B refund through the notice signer, walk in 
   // The page first reserves its claim (reserve: true, before the check-in is sent), then asks for the link.
   const reserved = calls.filter((c) => c.path === '/api/door' && c.body.reserve === true);
   assert.equal(reserved.length, 1, 'one reservation before the check-in');
+  assert.equal(reserved[0].body.txid, sentIn.txid);
+  assert.equal(reserved[0].known, false, 'the reservation reached the worker before the check-in reached the network');
+  assert.deepEqual([reserved[0].status, reserved[0].answer], [200, { reserved: true, again: false }]);
   const firstDoor = calls.filter((c) => c.path === '/api/door' && c.body.reserve !== true);
   assert.equal(firstDoor.length, 1);
   assert.equal(reserved[0].body.claim, firstDoor[0].body.claim, 'the reservation and the ask carry the same claim');
@@ -130,6 +136,7 @@ test('page + real worker on simnet: B refund through the notice signer, walk in 
     { clientIp: '203.0.113.9' },
   );
   assert.equal(observer.status, 409);
+  assert.equal((await observer.json()).error.code, 'already-answered');
   // A "reload": the flow is gone, the check-in txid comes from the chain, the kept claim gets the link again.
   await waitFor(() => ticket(r.key)?.state === 'walkedIn' && ticket(r.key).pending !== true, 'walked in, from the chain');
   controller.dismiss(r.key);

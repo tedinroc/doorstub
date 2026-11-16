@@ -19,14 +19,19 @@
 //   pass (worker/lib/keeper.js; the page's own settle push is switched off
 //   for this run) -> REFUNDED -> My tickets -> proof strip counts -> a phone's
 //   connect dialog -> dark mode.
+// The browser runs in New York time (not this machine's zone), so the real
+// show's call is checked in the reader's own zone. The walk-in is raced by a
+// front-runner that polls the real show's Escrow mempool over Fulcrum and asks
+// the door the moment the check-in appears; it must get 409 while the page,
+// which reserved its claim before sending the check-in, gets the link.
 // Screenshots at 390x844 and 1440x900 go to .cache/e2e/screens/.
 //   --home      home page only (light and dark)
 //   --screens   every step at 360x740, 375x667, 390x844 and 1440x900, light and dark, into .cache/screens/
-//               (plus the approve state, the empty-wallet road and a real show's call, which this mode
-//               stages in the page's store for the screenshot only; nothing is asserted from them)
+//               (plus the approve state and the empty-wallet road, which this mode stages in the page's
+//               store for the screenshot only; nothing is asserted from them)
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import puppeteer from 'puppeteer-core';
 import { build } from 'vite';
 import { binToHex, decodeTransaction, encodeLockingBytecodeP2pkh, hexToBin } from '@bitauth/libauth';
@@ -36,9 +41,11 @@ import { createWorkerChain } from '../../worker/lib/chain.js';
 import { runKeeper } from '../../worker/lib/keeper.js';
 import { parseWorkerShows, seatLabelOf } from '../../worker/lib/shows.js';
 import { libauthVmCheck } from '../../worker/node/vm.js';
+import { clockText } from '../../app/src/lib/view.js';
 import { makeSimWallet } from '../support/sim-wallet.js';
 import { startLocalRelay } from '../support/local-relay.js';
-import { STAGE_DOOR_LINK, repoRoot, startStage } from './stage.js';
+import { parseNft, walletLabel } from '../support/bcmr-parse.js';
+import { REAL_SHOW, STAGE_DOOR_LINK, repoRoot, startStage } from './stage.js';
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const CACHE = join(repoRoot, '.cache');
@@ -62,6 +69,8 @@ const SHOTS = allScreens ? join(CACHE, 'screens') : SCREENS;
 const homeOnly = process.argv.includes('--home');
 const PAIR_WAIT_MS = 45_000;
 const TOKEN_SATS = 1_000;
+/** The browser's time zone: not this machine's, so the page must use the reader's own zone. November: GMT-5. */
+const VIEWER_ZONE = 'America/New_York';
 
 const log = (...a) => console.log(`[e2e ${new Date().toISOString().slice(11, 19)}]`, ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -116,6 +125,7 @@ let browser;
 let pairing;
 let failed = false;
 const consoleErrors = [];
+const consoleWarnings = [];
 const apiAnswers = [];
 
 // ------------------------------------------------------------------ the simnet's own view (independent of the page)
@@ -249,6 +259,7 @@ const openPage = async (url) => {
   const page = await browser.newPage();
   page.on('console', (m) => {
     if (m.type() === 'error') consoleErrors.push(m.text());
+    if (m.type() === 'warn' || m.type() === 'warning') consoleWarnings.push(m.text());
   });
   page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
   page.on('response', async (r) => {
@@ -262,9 +273,89 @@ const openPage = async (url) => {
     }
     apiAnswers.push({ path, status: r.status(), body });
   });
+  await page.emulateTimezone(VIEWER_ZONE);
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   return page;
+};
+
+// Every /api/door request as the worker receives it (the stage's worker runs in this process), with whether the
+// simnet already knew its txid at that moment: the page's reservation must come before its check-in is sent.
+// While a front-runner races the page, the page's own ask (a claim that is not the front-runner's) waits at the
+// door until the front-runner has its answers (at most 4 s), so the front-runner always asks first.
+const doorLog = [];
+let doorHold = null;
+const watchDoor = () => {
+  const { worker } = stage.server;
+  const handle = worker.handle;
+  worker.handle = async (request, context) => {
+    if (request.method === 'POST' && new URL(request.url).pathname === '/api/door') {
+      const body = await request.clone().json().catch(() => null);
+      const entry = { body, known: typeof body?.txid === 'string' && stage.simnet.chain.txs.has(body.txid.toLowerCase()) };
+      doorLog.push(entry);
+      const hold = doorHold;
+      if (hold !== null && body?.reserve !== true && typeof body?.claim === 'string' && !hold.claims.has(body.claim)) {
+        entry.released = await Promise.race([hold.released.then(() => 'front-runner'), sleep(4_000).then(() => 'timeout')]);
+      }
+      entry.handledAt = performance.now();
+    }
+    return handle(request, context);
+  };
+};
+
+const postDoor = async (body) => {
+  const response = await fetch(`${stage.server.origin}/api/door`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  return { status: response.status, body: await response.json().catch(() => null) };
+};
+const randomClaim = () => binToHex(crypto.getRandomValues(new Uint8Array(32)));
+
+/**
+ * A front-runner: polls the real show's Escrow mempool over Fulcrum (as anyone can) and, the moment a spend of
+ * the escrow coin appears, asks the door for the link twice at once, without a claim and with a claim of its own.
+ */
+const startFrontRunner = (show, buyTxid) => {
+  const scripthash = scripthashOf(escrowLock(show));
+  const claim = randomClaim();
+  let release;
+  const released = new Promise((r) => (release = r));
+  doorHold = { claims: new Set([claim]), released };
+  const seen = new Set();
+  const answers = [];
+  let stopped = false;
+  let polls = 0;
+  let error = null;
+  const done = (async () => {
+    while (!stopped) {
+      polls += 1;
+      for (const { tx_hash: txid } of await rpc.request('blockchain.scripthash.get_mempool', [scripthash])) {
+        if (seen.has(txid)) continue;
+        seen.add(txid);
+        if (!spends(await chainTx(txid), buyTxid, 2)) continue;
+        const [noClaim, ownClaim] = await Promise.all([
+          postDoor({ category: show.params.category, txid }),
+          postDoor({ category: show.params.category, txid, claim }),
+        ]);
+        answers.push({ txid, at: performance.now(), noClaim, ownClaim });
+        stopped = true;
+        release();
+      }
+      if (!stopped) await sleep(15);
+    }
+  })().catch((e) => {
+    error = e;
+    release();
+  });
+  return {
+    answers,
+    polls: () => polls,
+    error: () => error,
+    stop: async () => {
+      stopped = true;
+      await done;
+      release();
+      doorHold = null;
+    },
+  };
 };
 
 try {
@@ -272,6 +363,7 @@ try {
   const showB = stage.shows.find((s) => s.kind === 'sample-refund-seat');
   const real = stage.shows.find((s) => s.kind === 'real');
   const cap = BigInt(showA.params.minerFeeCap);
+  watchDoor();
   const fund = await rpc.request('simnet.fund', { address: receive.address, sats: 2_000_000, mine: true });
   ok(await isUnspent(receive.lockingBytecode, fund.txid, 0), 'the sim wallet is funded on simnet (2,000,000 sats)');
   log(`tip ${await tipHeight()}; sample A starts at ${showA.params.startHeight}, settles from ${showA.params.startHeight + showA.params.graceBlocks + 1}`);
@@ -289,21 +381,23 @@ try {
   await page.waitForSelector(`[data-buy="${showB.id}"]`, { timeout: 30_000 });
   await page.waitForSelector(`[data-buy="${real.id}"]`, { timeout: 30_000 });
   log(`home ready in ${Date.now() - t0} ms`);
-  if (allScreens) {
-    // Staged for the screenshots only (the studio on main does not write a call time yet): the real show's call two days ahead.
-    await page.evaluate((id) => {
-      const store = window.__doorstub.controller.store;
-      const show = store.get().shows.find((x) => x.id === id);
-      if (show.eventAtMs === undefined) {
-        show.eventAtMs = Math.floor((Date.now() + 2 * 86_400_000) / 60_000) * 60_000;
-        show.eventAt = new Date(show.eventAtMs).toISOString();
-        show.durationMin = 25;
-      }
-      store.set({ shows: [...store.get().shows] });
-    }, real.id);
-    await sleep(300);
-  }
   ok((await domText(page, `[data-show="${real.id}"]`)).includes(real.card), 'the real show card shows its card text from shows.json');
+  // The real show's call, as shows.json posts it (CONTRACT: eventAt, durationMin, seatPrefix), in the reader's own zone.
+  ok(real.eventAt === REAL_SHOW.eventAt && real.durationMin === 25 && real.seatPrefix === 'S', `shows.json: the real show names its call (${real.eventAt}), 25 minutes and seat letter S`);
+  const callMs = Date.parse(real.eventAt);
+  const callClock = clockText(new Date(callMs), { timeZone: VIEWER_ZONE });
+  const newYork = new Intl.DateTimeFormat('en-GB', { timeZone: VIEWER_ZONE, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(callMs);
+  const callRow = await domText(page, `[data-show="${real.id}"] [data-fact="call"] dd`);
+  ok(callRow.includes(`, ${newYork} GMT\u20115`), `the real card's Call row is in the browser's zone, named (New York: ${newYork} GMT-5): "${callRow}"`);
+  ok(callRow.startsWith(`${callClock} (in `) && callRow.endsWith('), for 25 minutes.'), 'the Call row reads "<time> (in ...), for 25 minutes."');
+  ok((await domText(page, `[data-show="${real.id}"] .subtitle`)) === 'Online, 25 minutes', 'the real card\'s subtitle is "Online, 25 minutes" (no times)');
+  ok((await page.$(`[data-show="${showA.id}"] .subtitle`)) === null && (await page.$(`[data-show="${showB.id}"] .subtitle`)) === null, 'the sample cards have no subtitle');
+  // The worker's data key signs sample B's notices only; the real show's notices need the studio's second data key.
+  const health = await (await fetch(`${stage.server.origin}/api/health`)).json();
+  ok(Array.isArray(health.signer?.alsoKeyOf) && health.signer.alsoKeyOf.length === 0, '/api/health: the worker\'s data key is no real show\'s key (alsoKeyOf [])');
+  ok(health.signer.shows.length === 1 && health.signer.shows[0].keyMatches === true, '/api/health: the worker\'s data key is sample B\'s');
+  ok(real.params.organiserDataPk === stage.secrets.realData.publicKey && real.params.organiserDataPk !== stage.secrets.data.publicKey, 'the real show\'s organiserDataPk is the studio\'s realData key, not the worker\'s data key');
+  ok(health.door?.shows?.some((d) => d.id === real.id && d.configured === true) && health.door.record === 'memory', '/api/health: the real show\'s door is configured; the Node adapter keeps the door record in memory');
   await sleep(600);
   // The judge reaches "Get a ticket" in the first phone screen, and nothing scrolls sideways.
   // 375x667 is an iPhone SE: with Safari's bars about 560 px of it show the page.
@@ -457,13 +551,47 @@ try {
   const r = await checkBuyOnChain(real, buyR, 'buy real');
   await page.waitForSelector(`[data-walk-in="${keyR}"]`, { timeout: 30_000 });
   await sleep(1300);
+  const labelR = await domText(page, `[data-ticket="${keyR}"] .seat`);
+  ok(/^S-\d-1$/.test(labelR), `the real ticket's seat label uses the show's letter S (${labelR})`);
+  const callBox = `[data-ticket="${keyR}"] .countdown.call`;
+  ok((await domText(page, `${callBox} .cd-l`)) === 'Call starts in', 'a held real ticket counts down to the call ("Call starts in")');
+  ok((await domText(page, `${callBox} > p`)) === `The call starts ${callClock}, for 25 minutes.`, 'under the call countdown: "The call starts <time in the reader\'s zone>, for 25 minutes."');
+  // A wallet reading the show's BCMR (the registry the studio's genesis wrote) gets the same label.
+  const registry = JSON.parse(readFileSync(join(dirname(stage.boot.showsPath), 'bcmr', `${real.params.category}.json`), 'utf8'));
+  const parsedR = parseNft(registry, real.params.category, (await chainTx(buyR)).outputs[1].token.nft.commitment, r.buyer.pkh);
+  ok(walletLabel(parsedR.decoded) === labelR, `the BCMR NFT parse of this ticket gives the page's label (${walletLabel(parsedR.decoded)})`);
   await shot(page, '07-real-held', { selector: `[data-ticket="${keyR}"]` });
+  const doorFrom = doorLog.length;
+  const answersFrom = apiAnswers.length;
+  const frontRunner = startFrontRunner(real, buyR);
   await click(page, `[data-walk-in="${keyR}"]`);
-  await waitState(page, (s) => s.flows[keyR]?.link || s.flows[keyR]?.doorError, 'door answer', 60_000);
+  try {
+    await waitState(page, (s) => s.flows[keyR]?.link || s.flows[keyR]?.doorError, 'door answer', 60_000);
+  } finally {
+    await frontRunner.stop();
+  }
   const doorFlow = (await state(page)).flows[keyR];
   ok(typeof doorFlow.link === 'string', `the door answered: ${JSON.stringify(doorFlow.doorError ?? null)}`);
-  ok(/^Doorstub: walk in with seat [A-Z]-\d-1\. This pays the organiser 0\.\d+ BCH; your ticket stays as a keepsake\.$/.test(wallet.log.at(-1).userPrompt), 'check-in prompt is the CLAIMS.md section 7 wording');
+  ok(/^Doorstub: walk in with seat S-\d-1\. This pays the organiser 0\.\d+ BCH; your ticket stays as a keepsake\.$/.test(wallet.log.at(-1).userPrompt), 'check-in prompt is the CLAIMS.md section 7 wording');
+  ok(wallet.log.at(-1).userPrompt.includes(`seat ${labelR}.`), 'the check-in prompt names the seat label the page shows');
   const checkInTxid = doorFlow.txid;
+  // The page reserved its claim with the check-in's txid before it sent the check-in, then asked with the same claim.
+  const pageClaim = await page.evaluate((txid) => JSON.parse(localStorage.getItem(`doorstub.door.${txid}`)).claim, checkInTxid);
+  const pageDoor = doorLog.slice(doorFrom).filter((d) => d.body?.claim === pageClaim);
+  ok(pageDoor[0]?.body?.reserve === true && pageDoor[0].body.txid === checkInTxid, 'the page\'s first door call is a reservation for this check-in\'s txid, with its claim');
+  ok(pageDoor[0].known === false, 'the reservation reached the door before the check-in reached the network (simnet did not know the txid yet)');
+  ok(pageDoor.length === 2 && pageDoor[1].body.reserve === undefined && pageDoor[1].body.txid === checkInTxid && pageDoor[1].known === true, 'then, after sending the check-in, the page asked once with the same claim');
+  const reserveAnswer = apiAnswers.slice(answersFrom).find((a) => a.path === '/api/door');
+  ok(reserveAnswer?.status === 200 && JSON.stringify(reserveAnswer.body) === '{"reserved":true,"again":false}', `the door answered the reservation 200 { reserved: true, again: false } (${JSON.stringify(reserveAnswer)})`);
+  ok(!apiAnswers.some((a) => a.path === '/api/door' && a.status === 404) && !consoleWarnings.some((w) => /door reservation failed/.test(w)), 'no door 404 and no failed reservation in the console');
+  // The front-runner saw the check-in in the Escrow mempool and asked before the page; the door refused it both ways.
+  const [raced] = frontRunner.answers;
+  ok(frontRunner.error() === null && raced?.txid === checkInTxid, `the front-runner saw the check-in in the Escrow mempool (${frontRunner.polls()} polls; ${frontRunner.error() ?? 'no error'})`);
+  ok(pageDoor[1].released === 'front-runner' && raced.at < pageDoor[1].handledAt, 'the front-runner\'s asks reached the door before the page\'s ask');
+  ok(raced.noClaim.status === 409 && raced.noClaim.body?.error?.code === 'already-answered', `front-runner without a claim: 409 already-answered (${raced.noClaim.status})`);
+  ok(raced.ownClaim.status === 409 && raced.ownClaim.body?.error?.code === 'already-answered', `front-runner with its own claim: 409 already-answered (${raced.ownClaim.status})`);
+  ok(!JSON.stringify(raced).includes('example.org'), 'the front-runner never saw the link');
+  log(`front-runner: saw the check-in after ${frontRunner.polls()} mempool polls, asked twice, got 409 twice; then the page's ask got the link`);
   await checkSpendOnChain(real, buyR, checkInTxid, { lock: payeeLock(real), minValue: r.value - cap, keepsake: r.buyer.lockingBytecode, what: 'check-in' });
   const keepsake = (await unspentAt(r.buyer.lockingBytecode)).find((u) => u.tx_hash === checkInTxid && u.tx_pos === 1);
   ok(keepsake?.token_data?.nft?.commitment?.startsWith(`54${r.seatHex}`), 'check-in: the keepsake stub (same ticket commitment) is unspent in the wallet');
@@ -479,9 +607,14 @@ try {
   const claim = await page.evaluate((txid) => JSON.parse(localStorage.getItem(`doorstub.door.${txid}`)).claim, checkInTxid);
   const again = await (await fetch(`${stage.server.origin}/api/door`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ category: real.params.category, txid: checkInTxid, claim }) })).json();
   ok(again.again === true && again.link === expectedLink, 'the page\'s claim gets the same link again');
+  const lateReserve = await postDoor({ category: real.params.category, txid: checkInTxid, claim: randomClaim(), reserve: true });
+  ok(lateReserve.status === 409 && lateReserve.body?.error?.code === 'already-answered', `a third party reserving this check-in with another claim gets 409 already-answered (${lateReserve.status})`);
+  ok(seatLabelOf(workerShow, hexToBin(r.seatHex)) === labelR && doorFlow.link.includes(`seat=${labelR}`), 'the worker labels the seat as the page does (S-x-y), and the link carries it');
   log(`walked in; door link ${doorFlow.link}`);
   await sleep(1500);
   ok((await domText(page, `[data-ticket="${keyR}"] .stamp`)) === 'WALKED IN', 'real ticket card stamped WALKED IN');
+  const walkedLines = await page.$$eval(`[data-ticket="${keyR}"] .lines p`, (els) => els.map((el) => el.textContent.trim()));
+  ok(walkedLines.some((l) => l.startsWith(`The call starts ${callClock} (in `) && l.endsWith(').')), `the walked-in ticket says when the call starts, in the reader's zone (${walkedLines.join(' | ')})`);
   await shot(page, '08-walked-in', { selector: `[data-ticket="${keyR}"]` });
 
   // ---------------------------------------------------------------- a second A ticket, then the cron keeper settles it
