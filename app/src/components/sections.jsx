@@ -1,0 +1,397 @@
+import { useEffect, useState } from 'preact/hooks';
+import { formatBch } from '../../../src/shows/format.js';
+import { BLAZE, CONTRACT_FILES, EXPLORER, WIZARDCONNECT_SOURCE } from '../config.js';
+import { TEST_HOOKS } from '../env.js';
+import { LABELS, PRIOR_ART, SENTENCES, say } from '../lib/copy.js';
+import { num, proofModel, shortBch, showCardModel } from '../lib/view.js';
+import { usePrevious } from '../hooks.js';
+import { CopyButton, Logo, TxLink } from './parts.jsx';
+
+const ext = { target: '_blank', rel: 'noopener noreferrer' };
+
+/** The BLAZE banner, required at the very top of the home page. */
+export const Banner = () => (
+  <div class="blaze" role="region" aria-label="BCH BLAZE 2026">
+    <div class="wrap">
+      <strong class="blaze-mark">
+        BCH BLAZE <span class="flame">2026</span>
+      </strong>
+      <span class="blaze-links">
+        {BLAZE.presentationUrl ? (
+          <a href={BLAZE.presentationUrl} {...ext}>
+            {LABELS.presentation}
+          </a>
+        ) : (
+          <span class="soon">{LABELS.presentation}</span>
+        )}
+        {BLAZE.sourceUrl ? (
+          <a href={BLAZE.sourceUrl} {...ext}>
+            {LABELS.source}
+          </a>
+        ) : (
+          <span class="soon">{LABELS.source}</span>
+        )}
+        <span class="donate">
+          <span>{LABELS.donations}</span>
+          {BLAZE.donationAddress ? (
+            <>
+              <code title={BLAZE.donationAddress}>{BLAZE.donationAddress.replace(/^bitcoincash:/, '').slice(0, 8)}…</code>
+              <CopyButton text={BLAZE.donationAddress} class="chip-btn" label={LABELS.copy} />
+            </>
+          ) : (
+            <span class="soon">…</span>
+          )}
+        </span>
+      </span>
+      <span class="line">{say('blazeLine')}</span>
+    </div>
+  </div>
+);
+
+export const Header = ({ state, ticketCount, onConnect, onOpenTickets }) => {
+  const w = state.wallet;
+  const connected = w.state === 'connected' || w.state === 'reconnecting';
+  const chain = state.chain.status;
+  const tip = state.chain.tip;
+  return (
+    <header class="top">
+      <div class="wrap">
+        <a class="brand" href="#top" aria-label="Doorstub">
+          <Logo />
+          <b>Doorstub</b>
+        </a>
+        <span class="chain" title={state.chain.server ?? ''}>
+          <span class={`chain-dot${chain === 'connected' ? ' on' : chain === 'down' ? ' down' : ''}`} aria-hidden="true" />
+          <span class="tip">{tip === null ? '' : `${LABELS.block} ${num(tip)}`}</span>
+        </span>
+        {TEST_HOOKS && state.network !== 'mainnet' ? <span class="net-pill">SIMNET</span> : null}
+        <span class="spacer" />
+        {connected ? (
+          <button type="button" class="wallet-chip" data-wallet-chip onClick={onOpenTickets} aria-label={`${LABELS.myTickets}: ${ticketCount}`}>
+            <span class="name">{w.name}</span>
+            <span class="bal">{w.balance === null ? '…' : shortBch(w.balance)}</span>
+            <span class="count">
+              <span class="word long">{LABELS.myTickets}</span>
+              <span class="word short">{LABELS.tickets}</span>
+              <span class="n">{ticketCount}</span>
+            </span>
+          </button>
+        ) : (
+          <button type="button" class="btn small" onClick={onConnect} data-connect>
+            {LABELS.connect}
+          </button>
+        )}
+      </div>
+    </header>
+  );
+};
+
+/** "Tickets that refund themselves." in four words, the third in red. */
+const h = SENTENCES.headline.replace(/\.$/, '').split(' ');
+
+export const Hero = ({ state }) => {
+  const cap = state.shows[0]?.minerFeeCap ?? 1500n;
+  return (
+    <section class="hero" id="top">
+      <div class="wrap">
+        <h1 class="display">
+          <span class="row">{`${h[0]} ${h[1]} `}</span>
+          <span class="row">
+            <span class="refund">{h[2]}</span> {h[3]}
+            <span class="dot">.</span>
+          </span>
+        </h1>
+        <div class="hero-foot">
+          <p class="sub">{say('subline')}</p>
+          <p class="fine">
+            {say('smallPrint', { cap: num(cap) })} {say('keeperLine')}
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+export const ProofStrip = ({ state }) => {
+  const model = proofModel(state.proof);
+  const prev = usePrevious(model.rows.map((r) => r.count).join(','));
+  const now = model.rows.map((r) => r.count).join(',');
+  const changed = prev !== undefined && prev !== now ? prev.split(',').map(Number) : null;
+  const pushed = state.keeper.at(-1);
+  return (
+    <section class="section" id="proof">
+      <div class="wrap">
+        <div class="proof">
+          <div class="head">
+            <span class={`chain-dot${state.chain.status === 'connected' ? ' on' : ''}`} aria-hidden="true" />
+            <h2 class="display">{state.network === 'mainnet' ? LABELS.onMainnet : LABELS.onSimnet}</h2>
+            <p>{model.total === 0 && state.proof !== null ? say('proofEmpty') : say('proofIntro')}</p>
+          </div>
+          <div class="counts">
+            {model.rows.map((row, i) => (
+              <div key={row.path} class={`count${changed && changed[i] !== row.count ? ' bump' : ''}`} data-proof={row.path}>
+                <div class="n" key={`${row.path}-${row.count}`}>
+                  {state.proof === null ? '…' : row.count}
+                </div>
+                <div class="l">{row.label}</div>
+                {row.latest ? <TxLink network={state.network} label={LABELS.latest} txid={row.latest} /> : <div class="none">—</div>}
+              </div>
+            ))}
+          </div>
+          {pushed ? (
+            <div class="pushed">
+              {say('pushedSettle', { show: pushed.title, count: pushed.count, coins: pushed.count === 1 ? LABELS.coin : LABELS.coins })}{' '}
+              <TxLink network={state.network} txid={pushed.txid} />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+/** One diagram: a buy puts the money in an escrow coin; three ways out, and who each one pays. */
+export const HowItWorks = ({ cap }) => (
+  <section class="section" id="how">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 class="display">{LABELS.howItWorks}</h2>
+        <span class="perf" aria-hidden="true" />
+      </div>
+      <div class="how">
+        <div class="box buy">
+          <span class="tag">1 · {LABELS.buyTx}</span>
+          <h3 class="display">{LABELS.getTicket}</h3>
+          <p>{say('ticketNft')}</p>
+        </div>
+        <div class="box coin-box">
+          <span class="tag">2 · {LABELS.coinLink}</span>
+          <h3 class="display">
+            <span class="coin-mark" aria-hidden="true" />
+            Escrow
+          </h3>
+          <p>{say('howBuy')}</p>
+        </div>
+        <div class="outs">
+          <div class="box out green">
+            <span class="tag">3 · {LABELS.walkIn}</span>
+            <h3 class="display">
+              {LABELS.stateWalkedIn} <span class="to">→ {LABELS.toOrganiser}</span>
+            </h3>
+            <p>{say('howWalkIn')}</p>
+          </div>
+          <div class="box out blue">
+            <span class="tag">3 · {LABELS.handBack} / {LABELS.settleTx}</span>
+            <h3 class="display">
+              {LABELS.stateHandedBack} / {LABELS.stateRefunded} <span class="to">→ {LABELS.toBuyer}</span>
+            </h3>
+            <p>
+              {say('ticketHandBack')} {say('howSettle')}
+            </p>
+          </div>
+          <div class="box out red">
+            <span class="tag">3 · {LABELS.refundTx}</span>
+            <h3 class="display">
+              {LABELS.stateRefunded} <span class="to">→ {LABELS.toBuyer}</span>
+            </h3>
+            <p>
+              {say('howRefund', { cap: num(cap) })} {say('howOnlyBuyer')}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+);
+
+const LIMIT_KEYS = ['limitBch', 'limitBefore', 'limitSeat', 'limitOrganiser', 'limitMoved', 'limitFinal', 'limitHaveBch', 'limitStuck', 'limitSales', 'limitContention'];
+
+export const CheckIt = ({ state, shows }) => {
+  const [picked, setPicked] = useState(null);
+  const show = shows.find((s) => s.id === picked) ?? shows[0];
+  useEffect(() => {
+    if (picked !== null && !shows.some((s) => s.id === picked)) setPicked(null);
+  }, [shows, picked]);
+  const tip = state.chain.tip ?? 0;
+  const model = show ? showCardModel(show, { tip }) : null;
+  const addressLink = (address) =>
+    state.network === 'mainnet' ? (
+      <a href={EXPLORER.address(address)} {...ext}>
+        {address} ↗
+      </a>
+    ) : (
+      address
+    );
+  return (
+    <section class="section" id="check">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 class="display">{LABELS.checkIt}</h2>
+          <span class="perf" aria-hidden="true" />
+        </div>
+        <div class="checks">
+          <div class="panel">
+            <p>{say('checkIntro')}</p>
+            {shows.length > 1 ? (
+              <div class="show-tabs" role="group">
+                {shows.map((s) => (
+                  <button type="button" key={s.id} aria-pressed={String(s.id === show?.id)} onClick={() => setPicked(s.id)}>
+                    {s.title}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {show ? (
+              <div class="verify">
+                <div class="row">
+                  <span class="ok" aria-hidden="true" />
+                  <div>
+                    <div class="what">
+                      {LABELS.boxOfficeAddress} · {LABELS.recomputed}
+                    </div>
+                    <div class="val">{addressLink(show.derived.boxOfficeTokenAddress)}</div>
+                  </div>
+                </div>
+                <div class="row">
+                  <span class="ok" aria-hidden="true" />
+                  <div>
+                    <div class="what">
+                      {LABELS.escrowAddress} · {LABELS.recomputed}
+                    </div>
+                    <div class="val">{addressLink(show.derived.escrowTokenAddress)}</div>
+                  </div>
+                </div>
+                {show.genesis ? (
+                  <div class="row">
+                    <span class="ok" aria-hidden="true" />
+                    <div>
+                      <div class="what">
+                        {LABELS.genesis} · {LABELS.verified}
+                      </div>
+                      <div class="val text">
+                        {say('checkGenesis', { txid: `${show.genesisTxid.slice(0, 10)}…`, height: num(show.genesis.height) })}{' '}
+                        <TxLink network={state.network} txid={show.genesisTxid} />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                <div class="row">
+                  <span class="ok" aria-hidden="true" />
+                  <div>
+                    <div class="what">{LABELS.postedFees}</div>
+                    <div class="val text">{model.feesLine}</div>
+                  </div>
+                </div>
+                <div class="row">
+                  <span class="ok" aria-hidden="true" />
+                  <div>
+                    <div class="what">{LABELS.category}</div>
+                    <div class="val">{show.categoryHex}</div>
+                  </div>
+                </div>
+                <div class="row">
+                  <span class="ok" aria-hidden="true" />
+                  <div>
+                    <div class="what">{LABELS.contractSource}</div>
+                    <div class="val">
+                      {CONTRACT_FILES.map((file) =>
+                        BLAZE.sourceUrl ? (
+                          <span key={file}>
+                            <a href={`${BLAZE.sourceUrl.replace(/\/$/, '')}/blob/main/${file}`} {...ext}>
+                              {file} ↗
+                            </a>{' '}
+                          </span>
+                        ) : (
+                          <span key={file}>{file} </span>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p>{say('showsChecking')}</p>
+            )}
+          </div>
+          <div class="panel">
+            <h3 class="display">{LABELS.limits}</h3>
+            <ul class="limits">
+              {LIMIT_KEYS.map((k) => (
+                <li key={k}>{say(k)}</li>
+              ))}
+            </ul>
+            <h3 class="display" style="margin-top:18px">
+              {LABELS.testsLabel}
+            </h3>
+            <p>{say('checkTests')}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+export const Footer = () => (
+  <footer class="foot">
+    <div class="wrap">
+      <div class="cols">
+        <div>
+          <h2 class="display">{LABELS.priorArt}</h2>
+          <p>{say('priorArtIntro')}</p>
+          <ul>
+            {PRIOR_ART.map(([name, text]) => (
+              <li key={name}>
+                <b>{name}</b> {text}
+              </li>
+            ))}
+          </ul>
+          <p style="margin-top:12px">{say('addsLine')}</p>
+        </div>
+        <div>
+          <h2 class="display">{LABELS.credits}</h2>
+          <ul>
+            <li>
+              {SENTENCES.wizardCredit}{' '}
+              <a href={WIZARDCONNECT_SOURCE} {...ext}>
+                Source ↗
+              </a>{' '}
+              · <a href="/licenses.txt">Licences</a>
+            </li>
+            <li>{say('libsCredit')}</li>
+            <li>{say('aiCredit')}</li>
+            <li>{say('walletLine')}</li>
+          </ul>
+          <div class="small">Doorstub · BCH BLAZE 2026</div>
+        </div>
+      </div>
+    </div>
+  </footer>
+);
+
+/** Simnet only (never in a production build): fund the wallet, mine blocks. */
+export const DevPanel = ({ state, dev }) => {
+  const [devState, setDevState] = useState({ busy: false, message: '' });
+  if (state.network !== 'simnet' || dev === undefined) return null;
+  const busy = devState.busy;
+  const run = async (fn) => {
+    setDevState({ busy: true, message: '' });
+    setDevState({ busy: false, message: await fn() });
+  };
+  return (
+    <div class="wrap">
+      <div class="dev">
+        <b>SIMNET</b>
+        <button type="button" class="btn quiet small" disabled={busy || state.wallet.state !== 'connected'} onClick={() => run(() => dev.fund(500_000))} data-dev-fund>
+          Fund wallet 0.005 BCH
+        </button>
+        <button type="button" class="btn quiet small" disabled={busy} onClick={() => run(() => dev.mine(1))} data-dev-mine>
+          Mine 1 block
+        </button>
+        <button type="button" class="btn quiet small" disabled={busy} onClick={() => run(() => dev.mine(12))}>
+          Mine 12 blocks
+        </button>
+        <span>{devState.message}</span>
+      </div>
+    </div>
+  );
+};

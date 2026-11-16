@@ -1,0 +1,219 @@
+// Every sentence the site shows, in one place.
+//
+// CLAIMS.md is the source for every public sentence (its section 9, "Site
+// wording", lists each template below with the rule that makes it true).
+// test/app/copy.test.js fails when a sentence here is missing from CLAIMS.md
+// word for word, or uses a word CLAIMS.md section 3 rules out.
+//
+// `{name}` marks a value the app fills in. LABELS are button and heading
+// words, not sentences; they make no claim.
+
+export const SENTENCES = Object.freeze({
+  // Hero and banner
+  headline: 'Tickets that refund themselves.',
+  subline: 'The organiser is paid for each guest who walks in. Every other ticket refunds.',
+  smallPrint: 'Refunds return the same BCH, minus a network fee of at most {cap} sats and any fee the organiser posted on the show page.',
+  keeperLine: "Someone has to send the refund transaction. Anyone can, without a key, and Doorstub's keeper does it for you.",
+  walletLine: 'Works with your own wallet over WizardConnect. Doorstub never holds your money or your keys.',
+  blazeLine: 'Built from scratch during BCH BLAZE 2026, starting 15 Nov; no earlier code.',
+
+  // Show cards
+  showStarts: 'Block {start}, about {time} ({eta}).',
+  usdAbout: 'about {usd}',
+  soldLine: '{sold} sold on {shards} box-office shards',
+  showSettles: 'Settling opens at block {settle}, about {time} ({eta}); the refund follows once the keeper or this page sends it.',
+  showFees: 'Hand-back fee {handBack}. No-show fee {noShow}. Network fee cap {cap} sats per ticket.',
+  showSalesEnded: 'Sales for this show ended at block {start}.',
+  showsChecking: "Checking every show's genesis transaction on chain.",
+  showsNone: 'No show is on sale right now.',
+  showsFailed: 'The show list did not load.',
+  showUnverified: "Doorstub could not verify this show's genesis on chain, so it is not on sale.",
+
+  // Connect dialog and wallet
+  connectIntro: 'Scan the code with your wallet, or open a wallet on this device.',
+  connectTested: 'Signing tested with Selene, Paytaca and Cashonize.',
+  connectPaste: "Paytaca: press Copy link, then paste it in Paytaca's WizardConnect screen. The link stays valid while this page stays open.",
+  connectCashonize: 'Cashonize: create a wallet first, then press Open in Cashonize again.',
+  connectWaiting: 'Waiting for your wallet to join.',
+  connectRelayDown: 'The wallet relay is not answering. Try the other relay.',
+  walletWrongNetwork: 'This wallet is on {network}. Doorstub runs on Bitcoin Cash mainnet; switch the wallet to mainnet and connect again.',
+  walletGone: 'Your wallet ended the connection.',
+  walletScanning: "Reading your wallet's coins from the network.",
+  walletConnected: 'Connected: {name}, {balance}.',
+  noTickets: 'No Doorstub ticket in this wallet yet.',
+
+  // Buying and approving
+  buyPreparing: 'Picking a box-office shard and the coins to pay with.',
+  approveIn: 'Approve in {wallet}. It shows: “{prompt}”',
+  sending: "Checking your wallet's signature, then sending the transaction.",
+  buyHeld: 'Your {price} is held by contract coin {outpoint}.',
+  shardTaken: 'Someone bought on the same box-office shard at the same moment. Please approve once more.',
+  needMore: 'You need about {need} for this ticket; your wallet has {have} in plain BCH.',
+  onlyTokens: 'Your wallet holds only token coins here. A ticket needs plain BCH to pay.',
+  walletDeclined: 'Your wallet declined: “{reason}”. Nothing was sent.',
+  walletCouldNotVerify: 'Your wallet could not verify this transaction. Nothing was sent.',
+  walletTimeout: 'Your wallet did not answer in time. Nothing was sent.',
+  walletBusy: 'Another approval is already waiting in your wallet.',
+  walletRelay: 'Could not reach your wallet through the relay. Nothing was sent.',
+  replyFailed: "Your wallet's reply did not pass Doorstub's checks, so it was not sent.",
+  refused: 'The network refused the transaction: “{words}”',
+  chainDown: 'No Bitcoin Cash server answered. Doorstub keeps trying.',
+  salesClosed: 'Sales for this show are closed.',
+  unexpected: 'Something went wrong: {message}',
+
+  // Tickets
+  ticketMoney: 'Your ticket money waits in a contract, not with the organiser.',
+  ticketHandBack: 'Until you walk in or the show settles, you can hand your ticket back for your money, minus the hand-back fee shown on the show page.',
+  ticketNft: 'Your ticket is an NFT in your own wallet. After check-in it stays there as a keepsake stub with no money behind it.',
+  handBackDone: 'Handed back. {amount} came back to your wallet.',
+  settleDone: 'Refunded by the settle after the show: {amount} to the address that bought it.',
+  noticeDone: "Refunded under the organiser's refund notice: {amount} to the address that bought it.",
+  walkedIn: 'Walked in. Your ticket stays in your wallet as a keepsake stub with no money behind it.',
+  checkInFinal: 'Check-in is final. Once you check in, the organiser has the money.',
+  doorAsking: 'Your check-in is on chain. Asking the door for your event link.',
+  doorAnswered: 'The door answered with your event link.',
+  doorDown: 'Your check-in is on chain. The door did not answer yet; try again in a moment.',
+  noticeDown: "The refund-notice service did not answer. Doorstub's keeper sends this refund within minutes, with no approval from you.",
+  movedAway: "A ticket moved away from the buyer's address can no longer check in or hand back. Settle still refunds the original buyer.",
+  unknownState: "This ticket's contract coin is not in the show's history yet.",
+  pushedSettle: 'This page sent the settle for {show}: {count} {coins}. Anyone can send it; it needs no key.',
+
+  // How it works
+  howBuy: 'Your ticket money waits in a contract, not with the organiser.',
+  howWalkIn: 'The organiser is paid when you check in, and your own wallet signs the check-in.',
+  howSettle: 'If you do not use your ticket, it refunds after the show.',
+  howRefund: 'The organiser\'s key can refund your money. It can never send it anywhere else; at most {cap} sats of your ticket can go to the network fee.',
+  howOnlyBuyer: 'A refund goes only to the address that bought the ticket.',
+
+  // Proof strip
+  proofIntro: "Read live from the chain: every transaction at the contract addresses of the shows on this page.",
+  proofEmpty: 'No Doorstub transaction yet.',
+
+  // Check it yourself
+  checkIntro: "Both contract addresses below were recomputed in your browser from the show's posted parameters and compared with the ones on this page.",
+  checkGenesis: "Genesis {txid} is confirmed at block {height} and passed Doorstub's genesis check.",
+  checkTests: 'Every contract path and 143 attack tests run in the 2026 BCH virtual machine, in standard and consensus mode, and the virtual machine refuses every attack in them.',
+  limitBch: 'Prices are in BCH. A refund returns the same BCH, not the same dollars.',
+  limitBefore: '"Before the show" cannot be enforced. Hand-back and check-in work for as long as the ticket\'s money is still in the contract, even after the start.',
+  limitSeat: 'Hand-backs do not free a seat.',
+  limitOrganiser: 'The organiser key can refund money but never redirect it.',
+  limitMoved: "A ticket moved away from the buyer's address can no longer check in or hand back.",
+  limitFinal: 'Check-in is final. Once you check in, the organiser has the money.',
+  limitHaveBch: 'Buyers need BCH already. There is no card or cash door.',
+  limitStuck: 'Coins sent straight to a contract address without the right token are stuck for good. Only use the app.',
+  limitSales: 'Sales end in the app, not on chain.',
+  limitContention: 'Two buyers on the same box-office shard at once means one of them signs again.',
+
+  // Credits
+  priorArtIntro: 'Doorstub is not a new idea, and we say so.',
+  addsLine: 'What Doorstub adds on Bitcoin Cash, stated modestly: one escrow coin per ticket identified by a marker NFT, a check-in that the holder\'s own wallet signs and that leaves the ticket as a keepsake, a no-show settle that anyone can push, per-seat and whole-show refund notices, and parallel box-office shards so many buyers can buy at once.',
+  wizardCredit: 'Wallet connection by WizardConnect (Whiterun LLC), used under the GNU LGPL 3.0 or later and shipped as its own file.',
+  libsCredit: 'Built with libauth, CashScript, Preact, qrcode and noble, all under the MIT licence.',
+  aiCredit: 'AI coding assistance (Claude).',
+});
+
+/** Prior art, exactly as CLAIMS.md section 5 words it. */
+export const PRIOR_ART = Object.freeze([
+  ['Turnout', '(Arc, mainnet according to its README): dollar tickets held in escrow and released to the host per ticket at the door, holder-signed check-in, refunds for cancelled events and unscanned tickets.'],
+  ['Firstrow', '(Monad testnet, Monad Metropolis 2026): money held in escrow until the fan walks in; fans refund themselves.'],
+  ['Curtain', '(Monad testnet, Monad Metropolis 2026): pay-on-entry ticket escrow; an on-chain check-in pays the organiser; refunds without anyone approving them.'],
+  ['TixPact', '(NEAR testnet, NEAR Hackathon 2026): event tickets whose refund does not depend on the seller.'],
+  ['FundMe and its CashStarter contracts', '(Bitcoin Cash): refund a pledge by burning its receipt NFT, with refunds still open after a creator cancels. Doorstub\'s hand-back burns the ticket the same way.'],
+  ['Dance.cash', '(a 2025 Bitcoin Cash hackathon entry): class tickets sold as NFTs on Bitcoin Cash.'],
+  ['The ShowUp spec', '(Bitcoin Cash, published as a concept and withdrawn before BCH BLAZE 2026): deposits held in a covenant, released at check-in, refunded by default.'],
+  ['Waybill', '(a BCH BLAZE 2026 entry): a similar release-at-the-door covenant for parcels; the seller is paid when the buyer\'s code is scanned at handoff, with a refund after a deadline.'],
+]);
+
+/** Short words on buttons, tabs and headings. */
+export const LABELS = Object.freeze({
+  getTicket: 'Get a ticket',
+  getNext: 'Get a ticket for the next one',
+  connect: 'Connect wallet',
+  disconnect: 'Disconnect',
+  myTickets: 'My tickets',
+  tickets: 'Tickets',
+  handBack: 'Hand it back',
+  walkIn: 'Walk in',
+  tryAgain: 'Try again',
+  openSelene: 'Open Selene',
+  openCashonize: 'Open in Cashonize',
+  copyLink: 'Copy link',
+  copied: 'Copied',
+  copy: 'Copy',
+  otherRelay: 'Use the other relay',
+  showQr: 'Show the QR code',
+  close: 'Close',
+  cancel: 'Cancel',
+  reload: 'Reload',
+  openEvent: 'Open the event',
+  getEventLink: 'Get the event link',
+  sample: 'Sample',
+  realShow: 'Real show',
+  inContract: 'in the contract',
+  settleIn: 'Settling opens in',
+  block: 'Block',
+  admitOne: 'Admit one',
+  seat: 'Seat',
+  starts: 'Starts',
+  refundsLabel: 'Refunds',
+  fees: 'Fees',
+  buyTx: 'Buy',
+  coinLink: 'Contract coin',
+  handBackTx: 'Hand-back',
+  checkInTx: 'Check-in',
+  settleTx: 'Settle',
+  refundTx: 'Refund',
+  boxOfficeAddress: 'Box office address',
+  escrowAddress: 'Escrow address',
+  genesis: 'Genesis',
+  category: 'Token category',
+  postedFees: 'Posted fees',
+  contractSource: 'Contract source',
+  testsLabel: 'Tests',
+  refresh: 'Refresh',
+  yourTicket: 'Your ticket',
+  howItWorks: 'How it works',
+  toOrganiser: 'Organiser',
+  toBuyer: 'You',
+  onMainnet: 'On mainnet',
+  onSimnet: 'On simnet',
+  checkIt: 'Check it yourself',
+  limits: 'Limits',
+  priorArt: 'Prior art',
+  credits: 'Credits',
+  presentation: 'Short presentation',
+  source: 'Source code',
+  donations: 'EMBER2026 donations',
+  verified: 'verified',
+  recomputed: 'recomputed in your browser',
+  buys: 'Buys',
+  handBacks: 'Hand-backs',
+  checkIns: 'Check-ins',
+  settles2: 'Settles',
+  refunds: 'Refunds',
+  latest: 'latest',
+  stepHeld: 'Ticket held',
+  stepNotice: 'Organiser refund notice',
+  stepSent: 'Refund sent',
+  stepBack: 'Money back',
+  stampWalkedIn: 'WALKED IN',
+  stampRefunded: 'REFUNDED',
+  stampHandedBack: 'HANDED BACK',
+  stateHeld: 'Held',
+  stateWalkedIn: 'Walked in',
+  stateHandedBack: 'Handed back',
+  stateRefunded: 'Refunded',
+  stateUnknown: 'Not found yet',
+  coin: 'coin',
+  coins: 'coins',
+});
+
+/** Fill `{name}` slots. Unknown slots stay visible so a missing value is noticed. */
+export const fill = (template, vars = {}) => template.replace(/\{(\w+)\}/g, (all, name) => (vars[name] === undefined || vars[name] === null ? all : String(vars[name])));
+
+/** A sentence by key, filled. */
+export const say = (key, vars) => {
+  const template = SENTENCES[key];
+  if (template === undefined) throw new Error(`no sentence "${key}"`);
+  return fill(template, vars);
+};

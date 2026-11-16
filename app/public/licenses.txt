@@ -1,0 +1,19 @@
+Doorstub: third-party software in this site
+============================================
+
+WizardConnect (@wizardconnect/core, @wizardconnect/dapp)
+  Copyright (C) 2026 Whiterun LLC
+  Licensed under the GNU Lesser General Public License (LGPL), version 3.0 or later.
+  https://www.gnu.org/licenses/lgpl-3.0.html
+  Source: https://gitlab.com/riftenlabs/lib/wizardconnect
+  This site ships WizardConnect unmodified, as its own file (assets/wizardconnect-*.js),
+  so it can be replaced with another build of the library.
+
+MIT licence
+  @bitauth/libauth (Bitauth), cashscript (CashScript), preact (Preact),
+  qrcode (node-qrcode), @noble/curves and @noble/hashes (noble).
+  https://opensource.org/licenses/MIT
+
+nostr-tools (used by WizardConnect for its relay transport)
+  Released under the Unlicense (public domain): https://unlicense.org
+  https://github.com/nbd-wtf/nostr-tools
