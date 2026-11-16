@@ -9,14 +9,15 @@ import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { binToHex, decodeTransaction, hexToBin } from '@bitauth/libauth';
-import { createFulcrumPool, fetchShowLedger } from '../../src/chain/index.js';
-import { encodeMarkerCommitment, encodeSeat, p2pkhLockingBytecode, sameBytes } from '../../src/tx/index.js';
+import { checkSignatureFree, createFulcrumPool, fetchShowLedger } from '../../src/chain/index.js';
+import { buildRefund, encodeMarkerCommitment, encodeSeat, p2pkhLockingBytecode, sameBytes } from '../../src/tx/index.js';
+import { signDataEcdsa } from '../../worker/lib/crypto.js';
 import { freshKey, randomTxid } from '../helpers.js';
 import { createWorkerChain } from '../../worker/lib/chain.js';
 import { runKeeper, summariseKeeperReport } from '../../worker/lib/keeper.js';
-import { parseWorkerShows } from '../../worker/lib/shows.js';
+import { parseWorkerShows, refundNoticeMessage } from '../../worker/lib/shows.js';
 import { libauthVmCheck } from '../../worker/node/vm.js';
-import { buyTicket, tipOf, unspentAt, workerSimnet } from './support.js';
+import { buyTicket, send, signedHandBack, tipOf, unspentAt, workerSimnet } from './support.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -166,4 +167,37 @@ test('keeper: B refunds now, A settles at start + grace (not before), 130 coins 
   assert.deepEqual(last.errors, []);
   assert.ok(last.shows.every((s) => s.liveCoins === 0));
   assert.match(summariseKeeperReport(last), /0 transaction\(s\) sent/);
+});
+
+test('keeper: a race with the page ends as a conflict (not an error), and the same bytes as the page\'s refund count as sent', async (t) => {
+  const ctx = await workerSimnet(t, { name: 'keeper-race' });
+  const { shows } = parseWorkerShows(ctx.showsText, { network: 'simnet' });
+  const [showB] = ctx.byKind('sample-refund-seat');
+  const workerB = shows.find((s) => s.id === showB.id);
+  const dataKey = hexToBin(ctx.dataKeyHex);
+  const chain = createWorkerChain({ network: 'simnet', servers: [ctx.simnet.url] });
+  t.after(() => chain.close());
+  const pool = createFulcrumPool({ network: 'simnet', servers: [ctx.simnet.url], allowBroadcast: true, pingIntervalMs: 0 });
+  t.after(() => pool.close());
+  const pageRefund = (ticket) => {
+    const signature = signDataEcdsa(dataKey, refundNoticeMessage({ scope: 'R', category: workerB.category, seat: ticket.seat }));
+    return buildRefund({ show: showB, escrowUtxos: [ticket.escrowUtxo], notices: [{ scope: 'R', seat: ticket.seat, signature }], contracts: showB.contracts });
+  };
+
+  // The keeper read the Escrow just before the holder handed the ticket back: a conflict.
+  const one = await buyTicket(ctx.rpc, showB);
+  const stale = await chain.listUnspent(workerB.escrow.scripthash);
+  await send(ctx.rpc, signedHandBack(showB, one));
+  const raced = await runKeeper({ shows: [workerB], chain: { ...chain, listUnspent: async () => stale }, dataKey, vmCheck: libauthVmCheck });
+  assert.deepEqual(raced.errors, [], 'a lost race is not an error');
+  assert.deepEqual(raced.shows[0].actions.map((a) => a.status), ['conflict']);
+
+  // The page's refund at the default fee rate is byte for byte the keeper's (deterministic notice, same assembler): the keeper's send is a no-op.
+  const two = await buyTicket(ctx.rpc, showB);
+  const staleTwo = await chain.listUnspent(workerB.escrow.scripthash);
+  const page = await pool.broadcastChecked(checkSignatureFree(pageRefund(two)));
+  const same = await runKeeper({ shows: [workerB], chain: { ...chain, listUnspent: async () => staleTwo }, dataKey, vmCheck: libauthVmCheck });
+  assert.deepEqual(same.errors, []);
+  assert.equal(same.shows[0].actions[0].txid, page.txid, 'the same transaction');
+  assert.ok(['sent', 'already-known'].includes(same.shows[0].actions[0].status));
 });
