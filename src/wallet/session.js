@@ -18,6 +18,19 @@ export const SESSION_KEY = 'doorstub-wizardconnect';
 /** How long a sign request may wait for the wallet before we give up on it. */
 export const SIGN_TIMEOUT_MS = 5 * 60_000;
 
+/**
+ * Late join. @wizardconnect/dapp 0.2.7 waits only 30 s after the relay
+ * connects for the wallet's key exchange, then stops without ever sending
+ * dapp_ready. A wallet that joins later (a pasted link in Paytaca, a slow QR
+ * scan) then waits for the dapp forever, while the dapp waits for the wallet.
+ * Once the key exchange completes late, the session re-runs the library's own
+ * "connected" handler, which sends dapp_ready at once: at most once per
+ * LATE_JOIN_NUDGE_MS, and never for a wallet that joined in time. The library
+ * itself is not modified. (Carried over from probe/src/connect.js.)
+ */
+export const LIBRARY_KEY_EXCHANGE_WAIT_MS = 30_000;
+export const LATE_JOIN_NUDGE_MS = 10_000;
+
 /** Link that opens Cashonize's web wallet with the pairing URI. */
 export const cashonizeLink = (uri) => `https://cashonize.com/?uri=${encodeURIComponent(uri)}`;
 
@@ -70,6 +83,7 @@ export const walletInfoOf = (manager) => {
  * @param {string} [options.sessionKey]
  * @param {Function} [options.initiateRelay] defaults to @wizardconnect/core initiateDappRelay
  * @param {'mainnet'} [options.expectNetwork] wallets on any other network are refused (wallet-wrong-network)
+ * @param {number} [options.lateJoinCheckMs] how often to look for a wallet that joined after the library's wait (0 turns the nudge off)
  * @param {(event: { state, error? }) => void} [options.onStatus]
  * @param {(info) => void} [options.onWalletReady]
  * @param {(reason: string, message?: string) => void} [options.onDisconnect]
@@ -83,6 +97,7 @@ export const createWalletSession = ({
   initiateRelay = initiateDappRelay,
   expectNetwork = 'mainnet',
   signTimeoutMs = SIGN_TIMEOUT_MS,
+  lateJoinCheckMs = 1_000,
   onStatus = () => {},
   onWalletReady = () => {},
   onDisconnect = () => {},
@@ -93,6 +108,7 @@ export const createWalletSession = ({
   let state = 'idle';
   let inFlight = null;
   let lastPairing = null;
+  let lateJoinTimer = null;
 
   const setState = (next, error) => {
     state = next;
@@ -106,6 +122,8 @@ export const createWalletSession = ({
   const sessionOptions = storage === false ? { session: false } : { session: { key: sessionKey, storage } };
 
   const teardown = async (message) => {
+    if (lateJoinTimer !== null) clearInterval(lateJoinTimer);
+    lateJoinTimer = null;
     const m = manager;
     const r = relay;
     manager = null;
@@ -159,11 +177,31 @@ export const createWalletSession = ({
     });
   };
 
-  const relayStatus = (m) => (payload) => {
+  /** Relay state per manager, for the late-join nudge. */
+  const relayStatus = (m, late = {}) => (payload) => {
+    if (payload.client) late.client = payload.client;
+    if (payload.status?.status === 'connected') late.connectedAt = Date.now();
     m.updateConnection(payload.client, payload.status);
     const s = payload.status?.status;
     if (s === 'connected' && state === 'reconnecting' && m.isWalletDiscovered()) setState('connected');
     else if (s === 'reconnecting' && state === 'connected') setState('reconnecting', payload.status.error ?? undefined);
+  };
+
+  /** Watch for a key exchange that completes after the library stopped waiting (see LIBRARY_KEY_EXCHANGE_WAIT_MS). */
+  const watchLateJoin = (m, late) => {
+    if (!(lateJoinCheckMs > 0)) return;
+    late.nudgedAt = 0;
+    lateJoinTimer = setInterval(() => {
+      if (manager !== m || m.isWalletDiscovered()) return;
+      const client = late.client;
+      if (client == null || !(late.connectedAt > 0)) return;
+      if (typeof client.isKeyExchangeComplete !== 'function' || !client.isKeyExchangeComplete()) return;
+      const now = Date.now();
+      if (now - late.connectedAt < LIBRARY_KEY_EXCHANGE_WAIT_MS || now - late.nudgedAt < LATE_JOIN_NUDGE_MS) return;
+      late.nudgedAt = now;
+      m.updateConnection(client, { status: 'connected' });
+    }, lateJoinCheckMs);
+    lateJoinTimer.unref?.();
   };
 
   const ordered = (primary) => [relayUrls[primary % relayUrls.length], ...relayUrls.filter((_, i) => i !== primary % relayUrls.length)];
@@ -178,8 +216,10 @@ export const createWalletSession = ({
     const m = new DappConnectionManager(dappName, dappIcon, sessionOptions);
     manager = m;
     wire(m);
-    const r = initiateRelay(relayStatus(m), { explicitRelayUrls: ordered(primary) });
+    const late = {};
+    const r = initiateRelay(relayStatus(m, late), { explicitRelayUrls: ordered(primary) });
     relay = r;
+    watchLateJoin(m, late);
     m.attachRelay(r);
     setState('pairing');
     lastPairing = connectLinks({ uri: r.uri, qrUri: r.qrUri });
@@ -203,8 +243,9 @@ export const createWalletSession = ({
     manager = m;
     wire(m);
     let r;
+    const late = {};
     try {
-      r = initiateRelay(relayStatus(m), {
+      r = initiateRelay(relayStatus(m, late), {
         explicitRelayUrls: ordered(0),
         existingCredentials: { privateKey: stored.privateKey, secret: stored.secret, walletPublicKey: stored.walletPublicKey },
       });
@@ -215,6 +256,7 @@ export const createWalletSession = ({
     }
     relay = r;
     m.attachRelay(r);
+    watchLateJoin(m, late);
     try {
       const restored = walletInfoOf(m);
       if (restored.network === expectNetwork) info = restored;

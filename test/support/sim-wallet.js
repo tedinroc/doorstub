@@ -233,9 +233,11 @@ export const makeSimWallet = ({
    * the dapp's real DappConnectionManager to this wallet in memory. It honours
    * `existingCredentials` (restore after reload) by reconnecting to the same
    * session. `pause()` / `resume()` hold the wallet's answers (a wallet that is
-   * not looking at its screen).
+   * not looking at its screen). With `holdKeyExchange`, the relay connects but
+   * the wallet's key exchange completes only when `joinLate()` is called (a
+   * wallet that scans or pastes the link late).
    */
-  const inProcessRelay = () => (statusCallback, options = {}) => {
+  const inProcessRelay = ({ holdKeyExchange = false } = {}) => (statusCallback, options = {}) => {
     const credentials = options.existingCredentials
       ? { privateKey: options.existingCredentials.privateKey, publicKey: '00'.repeat(32), secret: options.existingCredentials.secret }
       : generateKeyExchangeCredentials();
@@ -247,6 +249,7 @@ export const makeSimWallet = ({
     let sequence = 1000;
     let open = true;
     let walletReadySent = false;
+    let exchanged = !holdKeyExchange;
     const walletPublicKey = sha256.hash(flattenBinArray([relaySeed, utf8ToBin(credentials.privateKey)]));
     const held = [];
     const deliverToDapp = (msg) => {
@@ -307,7 +310,7 @@ export const makeSimWallet = ({
         if (!open) throw new Error('in-process relay closed');
         setTimeout(() => handle(JSON.parse(JSON.stringify(msg))), 0);
       },
-      isKeyExchangeComplete: () => open,
+      isKeyExchangeComplete: () => open && exchanged,
       nextSequence: () => ++sequence,
       setPeerCapabilities: () => {},
       setPairedPublicKey: () => {},
@@ -320,12 +323,17 @@ export const makeSimWallet = ({
       releaseHeld: () => {
         for (const msg of held.splice(0)) handle(msg);
       },
+      joinLate: () => {
+        if (!open || exchanged) return;
+        exchanged = true;
+        events.emit('keyexchangecomplete', walletPublicKey);
+      },
     };
     sessions.set(credentials.privateKey, session);
     setTimeout(() => {
       if (!open) return;
       statusCallback({ client, status: RelayStatus.connected() });
-      events.emit('keyexchangecomplete', walletPublicKey);
+      if (exchanged) events.emit('keyexchangecomplete', walletPublicKey);
     }, 0);
     return {
       client,
@@ -384,6 +392,10 @@ export const makeSimWallet = ({
     resume: () => {
       paused = false;
       for (const s of sessions.values()) s.releaseHeld();
+    },
+    /** Complete the key exchange of sessions opened with inProcessRelay({ holdKeyExchange: true }). */
+    joinLate: () => {
+      for (const s of sessions.values()) s.joinLate();
     },
     pathOfChild: (child) => PATH_OF_CHILD[child],
   };
