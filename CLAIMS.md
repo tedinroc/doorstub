@@ -120,7 +120,7 @@ Every sentence the site (`app/`) shows, word for word, from `app/src/lib/copy.js
 | `Refunds return the same BCH, minus a network fee of at most {cap} sats and any fee the organiser posted on the show page.` | Section 1 small print; `{cap}` is the show's `minerFeeCap`. |
 | `Someone has to send the refund transaction. Anyone can, without a key, and Doorstub's keeper does it for you.` | Section 1 small print. The page itself pushes the settle of any show past its grace (`test/app/controller.test.js`) and the sample B refund; the cron keeper (`worker/lib/keeper.js`, every 5 minutes) is the backup and settles a started show on its own (`test/integration/app-worker.test.js`, `npm run e2e`) *(keeper not deployed yet)*. |
 | `Works with your own wallet over WizardConnect. Doorstub never holds your money or your keys.` | C10. |
-| `Built from scratch during BCH BLAZE 2026, starting 15 Nov; no earlier code.` | The repository's first commit is from 15 Nov 2026; nothing older was copied in (the project's hygiene rules, `npm run check:hygiene`). |
+| `Built from scratch during BCH BLAZE 2026; first commit 16 Nov (UTC); no earlier code.` | The repository's first commit is from 16 Nov 2026 03:21 UTC (`git log --reverse`); nothing older was copied in (the project's hygiene rules, `npm run check:hygiene`). |
 | `Block {start}, about {time} ({eta}).` | `startHeight` from the show; the time is the tip plus ten minutes a block, in the reader's own time zone with the zone named. |
 | `about {usd}` | Today's rate from a public price source; hidden when none answers (section 3, "dollar amounts as a promise"). |
 | `{sold} sold on {shards} box-office shards` | Seats counted from the markers at the show's Escrow address (`src/chain/ledger.js`). |

@@ -64,7 +64,7 @@ need('/shows.json', 'the production show list');
 need('wss://fulcrum.greyh.at:50004', 'the pinned mainnet servers');
 need('wss://relay.riften.net', 'the pinned WizardConnect relays');
 need('Tickets that refund themselves.', 'the headline');
-need('Built from scratch during BCH BLAZE 2026, starting 15 Nov; no earlier code.', 'the BLAZE banner line');
+need('Built from scratch during BCH BLAZE 2026; first commit 16 Nov (UTC); no earlier code.', 'the BLAZE banner line');
 
 const assets = readdirSync(join(dist, 'assets'));
 if (!assets.some((f) => /^wizardconnect-.*\.js$/.test(f))) problems.push('WizardConnect (LGPL) is not in its own assets/wizardconnect-*.js file');

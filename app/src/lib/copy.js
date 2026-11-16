@@ -15,7 +15,7 @@ export const SENTENCES = Object.freeze({
   smallPrint: 'Refunds return the same BCH, minus a network fee of at most {cap} sats and any fee the organiser posted on the show page.',
   keeperLine: "Someone has to send the refund transaction. Anyone can, without a key, and Doorstub's keeper does it for you.",
   walletLine: 'Works with your own wallet over WizardConnect. Doorstub never holds your money or your keys.',
-  blazeLine: 'Built from scratch during BCH BLAZE 2026, starting 15 Nov; no earlier code.',
+  blazeLine: 'Built from scratch during BCH BLAZE 2026; first commit 16 Nov (UTC); no earlier code.',
 
   // Show cards
   showStarts: 'Block {start}, about {time} ({eta}).',

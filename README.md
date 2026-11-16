@@ -4,7 +4,7 @@
 
 Doorstub (say it door-stub, like a ticket stub) is an event box office on Bitcoin Cash. Your ticket money waits in a contract, not with the organiser. The organiser is paid when you check in, and your own wallet signs the check-in. If you do not use your ticket, it refunds after the show.
 
-Built from scratch during BCH BLAZE 2026, starting 15 Nov; no earlier code.
+Built from scratch during BCH BLAZE 2026; first commit 16 Nov (UTC); no earlier code.
 
 ## Try it
 
