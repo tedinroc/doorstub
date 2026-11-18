@@ -1,0 +1,94 @@
+{
+  "$schema": "https://cashtokens.org/bcmr-v2.schema.json",
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "latestRevision": "2026-11-18T17:32:51.009Z",
+  "registryIdentity": {
+    "name": "Doorstub",
+    "description": "Tickets that refund themselves. The organiser is paid for each guest who walks in. Every other ticket refunds.",
+    "uris": {
+      "web": "https://doorstub.pages.dev/"
+    }
+  },
+  "identities": {
+    "3018f3bf4e14760ed465e60bcc5327088ef3835e205b3624c26110a23ff1048e": {
+      "2026-11-18T17:32:51.009Z": {
+        "name": "Doorstub ticket: Sample show A",
+        "description": "Tickets that refund themselves. The organiser is paid for each guest who walks in. Every other ticket refunds. Sample show. Nobody checks in at a sample show, so every ticket refunds itself after it starts.",
+        "token": {
+          "category": "3018f3bf4e14760ed465e60bcc5327088ef3835e205b3624c26110a23ff1048e",
+          "symbol": "DOORSTUB-A979705",
+          "decimals": 0,
+          "nfts": {
+            "description": "Your ticket money waits in a contract, not with the organiser.",
+            "fields": {
+              "show": {
+                "name": "Show",
+                "description": "The show's letter, the first part of the seat label (A-0-12).",
+                "encoding": {
+                  "type": "utf8"
+                }
+              },
+              "boxOffice": {
+                "name": "Box office",
+                "description": "The box-office shard that sold this seat (0, 1, 2, ...), the middle part of the seat label (A-0-12).",
+                "encoding": {
+                  "type": "number"
+                }
+              },
+              "seat": {
+                "name": "Seat",
+                "description": "Seat number within its box office, the last part of the seat label (A-0-12). The site shows the label as show letter, box office and seat.",
+                "encoding": {
+                  "type": "number"
+                }
+              },
+              "buyer": {
+                "name": "Buyer key hash",
+                "description": "HASH160 of the buyer's public key. Refunds go only to this address.",
+                "encoding": {
+                  "type": "hex"
+                }
+              }
+            },
+            "parse": {
+              "bytecode": "00cf517f7c6b01416b517f7c01007e816b527f7c816b6b",
+              "types": {
+                "45": {
+                  "name": "Doorstub escrow marker: Sample show A",
+                  "description": "Escrow marker for one ticket. It stays in the show's contract with the ticket's money.",
+                  "fields": [
+                    "show",
+                    "boxOffice",
+                    "seat",
+                    "buyer"
+                  ]
+                },
+                "54": {
+                  "name": "Doorstub ticket: Sample show A",
+                  "description": "Your ticket money waits in a contract, not with the organiser.",
+                  "fields": [
+                    "show",
+                    "boxOffice",
+                    "seat",
+                    "buyer"
+                  ],
+                  "uris": {
+                    "icon": "https://doorstub.pages.dev/bcmr/icon.png"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "uris": {
+          "icon": "https://doorstub.pages.dev/bcmr/icon.png",
+          "web": "https://doorstub.pages.dev/"
+        }
+      }
+    }
+  }
+}
