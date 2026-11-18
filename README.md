@@ -17,7 +17,8 @@ Works with your own wallet over WizardConnect. Doorstub never holds your money o
 3. Then, depending on the show:
    - **Sample show A.** Nobody checks in at a sample show, so every ticket refunds itself after it starts. Until then you can **Hand it back**.
    - **Sample show B.** Its organiser refunds every seat right after it is sold, so you can watch a refund arrive without doing anything.
-   - **The screenings** (planned, not created yet): "Doorstub screening 1" and "Doorstub screening 2", online calls on 24 and 28 Nov at 13:00 UTC, each a 12-minute film on how Doorstub works, then Q&A in the chat, about 25 minutes in all. The card shows the time in your own time zone. You can buy and walk in until the call ends. **Walk in** pays the organiser and shows the room link; your ticket stays in your wallet as a keepsake stub. A ticket nobody walks in with refunds by the settle, which opens about a day after sales end on chain.
+   - **The screenings** (planned, not created yet): "Doorstub screening 1" and "Doorstub screening 2", online screenings on 24 Nov at 13:00 UTC and 28 Nov at 05:00 UTC, each a short film on how Doorstub works, then Q&A in the chat, about 25 minutes in all. They will play in Doorstub's own screening room on the site (built and tested locally, not deployed yet). Their card says "Online screening: a short film on how Doorstub works, then Q&A in the chat. Walk in to get the room link." The site shows the time in your own time zone. You can buy and walk in until the event ends. **Walk in** pays the organiser and shows the room link; your ticket stays in your wallet as a keepsake stub. A ticket nobody walks in with refunds by the settle, which opens about a day after sales end on chain.
+   - **The screening room.** **Open the event** opens it. Before the start it counts down and shows your seat; **Enter the room** turns the sound on. The film plays to everyone at the start time, and a late arrival joins where everyone is. Questions in the chat are answered from Doorstub's written FAQ, picked by matching words in your browser, until 10 minutes after the event ends; **Watch from the start** stays for 4 days after that. The room link opens on any device, and anyone you give it to can open it too.
 4. The "On mainnet" strip counts every buy, hand-back, check-in, settle and refund at the shows' contract addresses, read live from the chain. "Check it yourself" recomputes both contract addresses in your browser and checks each show's genesis on chain.
 
 Prices are in BCH. A refund returns the same BCH, minus a network fee of at most 1,500 sats on the sample shows and any fee the organiser posted on the show page.
@@ -51,6 +52,7 @@ Every public sentence about Doorstub, the rule that makes it true and the test t
 - Coins sent straight to a contract address without the right token are stuck for good. Only use the app.
 - The event link of a real show is off chain. Your page reserves its check-in at Doorstub's door before sending it, so someone who sees the check-in in the mempool cannot take the link. That depends on the page's one reservation try reaching the door (it sends the check-in anyway if the try fails) and on the door's KV record having writes left; the door reads one server and accepts an unconfirmed check-in (limit 17 there).
 - What the page reads from the chain is one server's word. It cannot move money: every transaction the page sends is checked in the 2026 VM first, and the network runs the scripts again.
+- The screening room's link is a bearer link: anyone given it can open the room, and one seat's link cannot be revoked. The film is unlisted, not gated. The chat's answers are picked from the written FAQ by matching words; nothing is written on the spot (limits 19 to 24 there).
 
 Every contract path and 143 attack tests run in the 2026 BCH virtual machine, in standard and consensus mode, and the virtual machine refuses every attack in them.
 
@@ -61,21 +63,23 @@ Node 22. Nothing here touches mainnet: tests and the local site run on simnet, a
 ```
 npm install
 npm test              # contracts, attacks, libraries, studio, worker, site logic (no browser)
+npm run test:room     # the screening room: pass, enter, answer picker, page states, copy, build (outside npm test)
 npm run app:sim       # the site on a local simnet with the worker; prints a link to open
 npm run e2e           # the whole judge path in headless Chrome on simnet (needs Google Chrome)
 npm run e2e -- --screens        # the same, with every step at four sizes, light and dark, in .cache/screens/
+npm run e2e:room      # the screening room in headless Chrome on a local stage with a test film (needs Google Chrome and ffmpeg)
 npm run worker:workerd-check    # the worker's Cloudflare adapters in local workerd against a simnet
 npm run app:build     # production build to app/dist, then checks it has no test overrides and no empty banner value
 DOORSTUB_ALLOW_PLACEHOLDERS=1 npm run app:build   # a preview build while the banner links are still empty
 ```
 
-Layout: `contracts/` (CashScript), `src/tx` (transaction builders), `src/chain`, `src/wallet`, `src/shows` (client libraries), `app/` (the site), `worker/` (refund-notice signer, door, keeper; `worker/RUNTIME.md`), `studio/` (the organiser's CLI; `studio/README.md`), `simnet/` (the local test chain), `test/`.
+Layout: `contracts/` (CashScript), `src/tx` (transaction builders), `src/chain`, `src/wallet`, `src/shows` (client libraries), `app/` (the site; `app/room/` and `app/src/room/` are the screening room), `worker/` (refund-notice signer, door, keeper, the room's pass check and written answers; `worker/RUNTIME.md`), `studio/` (the organiser's CLI; `studio/README.md`), `simnet/` (the local test chain), `test/`, `test-room/` (the room's suites).
 
 ## Credits
 
 Doorstub is not a new idea, and we say so. Turnout, Firstrow, Curtain, TixPact, FundMe and its CashStarter contracts, Dance.cash, the ShowUp spec and Waybill did it first or did parts of it; [CLAIMS.md section 5](CLAIMS.md#5-prior-art) says what each one did and what Doorstub adds.
 
-Wallet connection by WizardConnect (Whiterun LLC), used under the GNU LGPL 3.0 or later and shipped as its own file. Built with libauth, CashScript, Preact, qrcode and noble, all under the MIT licence. The display face is Barlow Condensed, under the SIL Open Font License 1.1 (`app/public/fonts/OFL.txt`).
+Wallet connection by WizardConnect (Whiterun LLC), used under the GNU LGPL 3.0 or later and shipped as its own file. Built with libauth, CashScript, Preact, qrcode and noble, all under the MIT licence. Video playback by hls.js, under the Apache License 2.0. The display face is Barlow Condensed, under the SIL Open Font License 1.1 (`app/public/fonts/OFL.txt`).
 
 AI coding assistance (Claude).
 

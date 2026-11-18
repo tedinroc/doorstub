@@ -186,7 +186,7 @@ test('plan: the default catalogue, its card texts, and the policy and payee chec
   const screenings = makePlan({ network: 'mainnet', tip: 977_577, now, studio: view, payee, count: 0, refundSeatStart: null, schedule: SCREENINGS });
   assert.deepEqual(screenings.shows.map((s) => [s.id, s.seatPrefix, s.subtitle, s.durationMin, s.eventAt]), [
     ['screening-1', 'S', 'Online, 25 minutes', 25, '2026-11-24T13:00:00Z'],
-    ['screening-2', 'T', 'Online, 25 minutes', 25, '2026-11-28T13:00:00Z'],
+    ['screening-2', 'T', 'Online, 25 minutes', 25, '2026-11-28T05:00:00Z'],
   ]);
   // 24 Nov 13:25 UTC is 11,937 minutes after 16 Nov 06:28: 1,194 blocks (rounded up), then 24 + ceil(1,194 / 20) = 84 more.
   assert.equal(salesMarginBlocks(1_194), 84);
@@ -319,7 +319,7 @@ test('end to end on simnet: keygen, fund, plan, genesis --broadcast, verifyGenes
     ['', undefined, undefined, undefined],
     ['', undefined, undefined, undefined],
     ['Online, 25 minutes', '2026-11-24T13:00:00Z', 25, 'S'],
-    ['Online, 25 minutes', '2026-11-28T13:00:00Z', 25, 'T'],
+    ['Online, 25 minutes', '2026-11-28T05:00:00Z', 25, 'T'],
   ]);
   assert.deepEqual(doc.shows.map((s) => s.params.organiserDataPk === view.realDataPk), [false, false, false, true, true]);
   assert.deepEqual(doc.shows.map((s) => s.params.organiserDataPk === view.dataPk), [true, true, true, false, false]);

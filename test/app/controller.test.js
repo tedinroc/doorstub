@@ -365,7 +365,7 @@ test('a real show stops selling and walking in when its call ends, by the page c
   const held = ticketModel(state().tickets.find((x) => `${x.showId}:${x.seatHex}` === one.key), { tip: state().chain.tip, now: clock, timeZone: 'UTC' });
   assert.equal(held.canWalkIn, false);
   assert.equal(held.canHandBack, true);
-  assert.equal(held.lines.at(-1), 'The call is over, so Walk in is closed.');
+  assert.equal(held.lines.at(-1), 'The event is over, so Walk in is closed.');
   assert.equal(held.call, null);
   assert.notEqual(held.countdown, null);
 

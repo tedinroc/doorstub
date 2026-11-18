@@ -1,8 +1,15 @@
 # Cloudflare Pages response headers. The page talks only to the pinned Fulcrum
 # servers, the two WizardConnect relays, the price sources and its own /api/*
-# (test/app/headers.test.js keeps this list equal to the code's).
+# (test/app/client.test.js keeps this list equal to the code's). media-src is
+# for the screening room's film: its own HLS files, played by hls.js through
+# Media Source (blob:) or natively by Safari.
+#
+# The rules never set one header twice for a path (Pages would join the
+# values): Cache-Control by depth under /room/media/ (the room.json and the
+# master playlists at <folder>/, every versioned file below <folder>/<version>/),
+# Content-Type by extension.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' wss://bch.imaginary.cash:50004 wss://electrum.imaginary.cash:50004 wss://fulcrum.greyh.at:50004 wss://blackie.c3-soft.com:50004 wss://bch.soul-dev.com:50004 wss://fulcrum.pat.mn:50004 wss://electroncash.dk:50004 wss://bch.loping.net:50004 wss://relay.riften.net wss://relay.cauldron.quest https://api.coingecko.com https://api.coinbase.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; font-src 'self'; connect-src 'self' wss://bch.imaginary.cash:50004 wss://electrum.imaginary.cash:50004 wss://fulcrum.greyh.at:50004 wss://blackie.c3-soft.com:50004 wss://bch.soul-dev.com:50004 wss://fulcrum.pat.mn:50004 wss://electroncash.dk:50004 wss://bch.loping.net:50004 wss://relay.riften.net wss://relay.cauldron.quest https://api.coingecko.com https://api.coinbase.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
@@ -14,3 +21,21 @@
 
 /bcmr/*
   Access-Control-Allow-Origin: *
+
+/room/*
+  X-Robots-Tag: noindex
+
+/room/media/:folder/:file
+  Cache-Control: no-cache
+
+/room/media/:folder/:version/*
+  Cache-Control: public, max-age=86400
+
+/room/media/*.m3u8
+  Content-Type: application/vnd.apple.mpegurl
+
+/room/media/*.m4s
+  Content-Type: video/mp4
+
+/room/media/*.mp4
+  Content-Type: video/mp4

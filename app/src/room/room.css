@@ -1,0 +1,212 @@
+/* The screening room: the site's paper and ink, a dark screen, the chat beside it on wide screens. */
+
+@import '../tokens.css';
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 16px/1.5 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { color: var(--accent); }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; border-radius: 6px; }
+.room-screen :focus-visible { outline-color: var(--gold); }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.display {
+  font-family: var(--font-display);
+  font-stretch: condensed;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.room-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 0 max(var(--gutter), env(safe-area-inset-left)) 0 max(var(--gutter), env(safe-area-inset-right));
+}
+
+.room-top {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 14px 0 12px;
+}
+.room-brand { font-size: 1.75rem; text-decoration: none; text-transform: uppercase; }
+.room-kicker { color: var(--ink-soft); font-size: 1rem; }
+
+.room-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  flex: 1;
+}
+
+/* ------------------------------------------------------------------ the screen */
+
+.room-stage { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+/* The film and any overlay share one grid cell: the screen is the film's 16:9, and grows when an
+   overlay needs more room (the countdown's two buttons stack on a narrow phone and must not be cut off). */
+.room-screen {
+  position: relative;
+  display: grid;
+  width: 100%;
+  background: var(--night);
+  color: var(--on-night);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-ticket);
+}
+.room-screen > .room-video,
+.room-screen > .room-overlay { grid-area: 1 / 1; }
+.room-video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: var(--night); object-fit: contain; }
+.screen-countdown .room-video,
+.screen-replay .room-video,
+.screen-missing .room-video,
+.screen-blank .room-video { visibility: hidden; }
+
+.room-overlay {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 16px;
+  text-align: center;
+}
+.room-tap {
+  border: 0;
+  margin: 0;
+  background: rgba(11, 9, 7, 0.45);
+  cursor: pointer;
+}
+.room-countdown { font-size: clamp(2.5rem, 9vw, 5.5rem); margin: 0; font-variant-numeric: tabular-nums; }
+.room-overlay-actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.room-overlay .room-note { color: var(--on-night); max-width: 32em; margin: 0; }
+
+.room-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  background: transparent;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+}
+.room-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.room-btn-primary:hover { background: var(--accent-press); border-color: var(--accent-press); color: var(--on-accent); }
+.room-screen .room-btn:not(.room-btn-primary) { color: var(--on-night); }
+
+/* ------------------------------------------------------------------ the info under the screen */
+
+.room-info { display: flex; flex-direction: column; gap: 8px; }
+.room-title { font-size: clamp(2rem, 6vw, 3rem); margin: 0; text-transform: uppercase; }
+.room-line { margin: 0; font-size: 1.0625rem; }
+.room-receipt {
+  border-top: 1px dashed var(--rule);
+  padding-top: 8px;
+  color: var(--ink-soft);
+}
+.room-receipt p { margin: 0; }
+.room-actions { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 6px; }
+
+/* ------------------------------------------------------------------ the chat */
+
+.room-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  background: var(--face);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.room-chat-title { font-size: 1.75rem; margin: 0; text-transform: uppercase; }
+.room-label { margin: 0; color: var(--ink-soft); font-size: 1rem; }
+.room-note { margin: 0; }
+.room-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.room-chip {
+  border: 1px solid var(--rule);
+  background: var(--face-2);
+  border-radius: var(--radius-s);
+  padding: 8px 12px;
+  font-size: 1rem;
+  text-align: left;
+  cursor: pointer;
+}
+.room-chip:hover { border-color: var(--accent); }
+
+.room-transcript {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.room-transcript:not(:empty) { border-top: 1px solid var(--rule); padding-top: 12px; }
+.room-transcript:empty { display: none; }
+.room-question {
+  align-self: flex-end;
+  max-width: 85%;
+  background: var(--accent-soft);
+  border-radius: var(--radius-s);
+  padding: 8px 12px;
+  overflow-wrap: anywhere;
+}
+.room-answer { display: flex; flex-direction: column; gap: 10px; }
+.room-faq { border-left: 3px solid var(--band-real); padding-left: 12px; }
+.room-faq-q { margin: 0 0 4px; font-weight: 700; }
+.room-faq-a { margin: 0; overflow-wrap: anywhere; }
+
+.room-ask { display: flex; gap: 8px; }
+.room-ask input {
+  flex: 1;
+  min-width: 0;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-s);
+  background: var(--paper);
+  font-size: 16px; /* 16px or more: iOS does not zoom into the field */
+}
+
+.room-foot { padding: 20px 0 max(20px, env(safe-area-inset-bottom)); color: var(--ink-soft); }
+.room-foot p { margin: 0; }
+
+/* Wide screens: the film and the chat side by side. */
+@media (min-width: 1024px) {
+  .room-main { grid-template-columns: minmax(0, 1fr) 380px; align-items: start; }
+  .room-chat { position: sticky; top: 16px; max-height: calc(100vh - 32px); }
+  .room-transcript { max-height: none; flex: 1; min-height: 120px; }
+}

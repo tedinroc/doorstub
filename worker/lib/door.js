@@ -12,12 +12,14 @@
 //    what it spends from the network too (never from the caller), checks it
 //    is a check-in of THIS show (worker/lib/rules.js checkCheckIn), runs the
 //    2026 VM over it when the runtime has one, and gives the show's event
-//    link from the DOOR_LINKS secret to ONE claimant per check-in: the one
+//    link from the DOOR_LINKS secret (for the screening room, with the seat's
+//    room pass; worker/lib/room.js) to ONE claimant per check-in: the one
 //    that reserved it, or with no reservation the first caller, and later
 //    calls from that claimant (the same `claim` secret, or without one the
 //    same client IP). Someone who only saw the txid in the mempool gets 409.
 import { bytesToHex, isHex, WorkerError } from './bytes.js';
 import { sha256 } from './crypto.js';
+import { needsRoomKey, roomMediaFolder, roomPass } from './room.js';
 import { checkCheckIn } from './rules.js';
 import { seatLabelOf } from './shows.js';
 
@@ -48,14 +50,28 @@ export const claimToken = ({ claim, clientIp }) => {
   return source === null ? null : bytesToHex(sha256(encoder.encode(source)));
 };
 
-/** Fill an event link template: {seat} is the seat label, {txid} the check-in. */
-export const fillLink = (template, { seatLabel, txid }) => template.replaceAll('{seat}', encodeURIComponent(seatLabel)).replaceAll('{txid}', txid);
+/**
+ * Fill an event link template: {show} is the door's own show id (so a template
+ * cannot name another show), {seat} the seat label, {txid} the check-in,
+ * {pass} the seat's room pass and {media} the room's media folder (both need
+ * ROOM_KEY; worker/lib/room.js).
+ */
+export const fillLink = (template, { showId, seatLabel, txid, roomKey = null }) => {
+  let link = template
+    .replaceAll('{show}', encodeURIComponent(showId ?? ''))
+    .replaceAll('{seat}', encodeURIComponent(seatLabel))
+    .replaceAll('{txid}', txid);
+  if (link.includes('{pass}')) link = link.replaceAll('{pass}', roomPass(roomKey, showId, seatLabel, txid));
+  if (link.includes('{media}')) link = link.replaceAll('{media}', roomMediaFolder(roomKey));
+  return link;
+};
 
 /**
  * @param {object} a
  * @param {Array} a.shows worker shows
  * @param {object} a.chain worker chain client
  * @param {object|null} a.doorLinks { [show id]: "https://..." }
+ * @param {Uint8Array|null} [a.roomKey] ROOM_KEY, for templates with {pass} or {media}
  * @param {{ reserve(key, token), claim(key, token): Promise<'first'|'same'|'taken'> }} a.claims one claimant per check-in (worker/lib/limits.js)
  * @param {Function} [a.vmCheck] the 2026 VM (Node); absent in workerd
  * @param {string} [a.clientIp] identifies the claimant when the page sends no claim
@@ -76,7 +92,7 @@ export const reserveDoor = async ({ show, claims, request }) => {
   return { reserved: true, again: reserved === 'same' };
 };
 
-export const answerDoor = async ({ shows, chain, doorLinks, claims, vmCheck, body, clientIp }) => {
+export const answerDoor = async ({ shows, chain, doorLinks, roomKey = null, claims, vmCheck, body, clientIp }) => {
   const request = parseDoorRequest(body);
   const show = shows.find((s) => s.categoryHex === request.categoryHex);
   if (show === undefined) refuse('unknown-show', 'no show in shows.json has this category', { status: 404 });
@@ -85,6 +101,8 @@ export const answerDoor = async ({ shows, chain, doorLinks, claims, vmCheck, bod
   if (request.reserve) return reserveDoor({ show, claims, request });
   const template = doorLinks?.[show.id];
   if (typeof template !== 'string') refuse('door-not-configured', 'the door for this show is not set up yet', { status: 503 });
+  // Before any chain call or claim: a room link without ROOM_KEY must not use up the check-in's one answer.
+  if (needsRoomKey(template) && !(roomKey instanceof Uint8Array)) refuse('door-not-configured', 'the door for this show is not set up yet', { status: 503 });
 
   const found = await chain.getTransaction(request.txid);
   if (found === null) refuse('not-on-chain', 'the network does not know this check-in; send it first, then ask again', { status: 404, retryable: true });
@@ -113,6 +131,6 @@ export const answerDoor = async ({ shows, chain, doorLinks, claims, vmCheck, bod
     txid: request.txid,
     confirmed: typeof height === 'number' && height > 0,
     again: claimed === 'same',
-    link: fillLink(template, { seatLabel, txid: request.txid }),
+    link: fillLink(template, { showId: show.id, seatLabel, txid: request.txid, roomKey }),
   };
 };

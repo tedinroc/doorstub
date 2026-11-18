@@ -4,12 +4,15 @@
 //   POST /api/notice   { category, seat, txid? } -> { signature, ... }   (sample show B only)
 //   POST /api/door     { category, txid, claim, reserve: true } -> { reserved, again }   (real shows, before the check-in is sent)
 //   POST /api/door     { category, txid, claim? }               -> { link, ... }         (real shows, after it is sent)
+//   POST /api/room/enter { show, seat, txid, pass } -> { show, title, seatLabel, eventAt, durationMin, now, opensUntil }
+//                      (the screening room; worker/lib/room.js. Runs before shows.json is parsed for the door.)
 //
 // Errors are { error: { code, message, retryable } } with a fitting status.
 import { equal, WorkerError } from './bytes.js';
 import { publicKeyOf } from './crypto.js';
 import { answerDoor } from './door.js';
 import { signSeatNotice } from './notice.js';
+import { enterRoom, needsRoomKey, roomHealth } from './room.js';
 import { parseWorkerShows } from './shows.js';
 
 export const API_VERSION = 1;
@@ -54,10 +57,15 @@ export const createShowsCache = ({ network }) => {
   };
 };
 
+const noRoomShows = async () => {
+  throw new WorkerError('room-not-configured', 'the screening room is not set up yet', { status: 503, retryable: true });
+};
+
 const ROUTES = {
   '/api/health': 'GET',
   '/api/notice': 'POST',
   '/api/door': 'POST',
+  '/api/room/enter': 'POST',
 };
 
 /**
@@ -68,6 +76,11 @@ const ROUTES = {
  * @param {() => object} deps.openChain a fresh worker chain client (closed after the request)
  * @param {Uint8Array|null} deps.dataKey
  * @param {object|null} deps.doorLinks
+ * @param {Uint8Array|null} [deps.roomKey] ROOM_KEY (worker/lib/room.js)
+ * @param {() => Promise<{ origin, shows }>} [deps.roomShows] the room's light shows reader (createRoomShowsCache)
+ * @param {() => Promise<boolean>} [deps.roomMediaReady] whether the film's master playlist is deployed
+ * @param {number|null} [deps.rehearsalLeadS] simnet only (worker/lib/config.js)
+ * @param {() => number} [deps.now] the clock, in ms
  * @param {{ reserve, claim }} deps.claims the door's one-claimant-per-check-in record
  * @param {{ take }} deps.limiter
  * @param {string} deps.clientIp
@@ -96,8 +109,12 @@ export const handleApi = async (request, deps) => {
     return chain;
   };
   try {
-    if (path === '/api/health') return json(200, await health(deps, openChain));
+    if (path === '/api/health') return json(200, await health(deps, openChain, url.origin));
     const body = await readJson(request);
+    // The room needs no contract: it reads shows.json lightly, before the door's full parse.
+    if (path === '/api/room/enter') {
+      return json(200, await enterRoom({ body, roomKey: deps.roomKey ?? null, roomShows: deps.roomShows ?? noRoomShows, now: deps.now?.() ?? Date.now(), rehearsalLeadS: deps.rehearsalLeadS ?? null }));
+    }
     if (path === '/api/door' && body?.reserve === true) {
       // A reservation is a KV write that needs no check-in: its own, tighter limit (one per walk-in is enough).
       const reserveLimited = deps.limiter.take('reserve', deps.clientIp ?? 'unknown');
@@ -107,7 +124,10 @@ export const handleApi = async (request, deps) => {
     if (path === '/api/notice') {
       return json(200, await signSeatNotice({ shows, chain: openChain(), dataKey: deps.dataKey, body, markerWaitMs: deps.markerWaitMs ?? 0, pollMs: deps.pollMs }));
     }
-    return json(200, await answerDoor({ shows, chain: openChain(), doorLinks: deps.doorLinks, claims: deps.claims, vmCheck: deps.vmCheck, body, clientIp: deps.clientIp }));
+    return json(
+      200,
+      await answerDoor({ shows, chain: openChain(), doorLinks: deps.doorLinks, roomKey: deps.roomKey ?? null, claims: deps.claims, vmCheck: deps.vmCheck, body, clientIp: deps.clientIp }),
+    );
   } catch (e) {
     if (!(e instanceof WorkerError)) deps.log?.(`api ${path}: ${e?.stack ?? e}`);
     return errorResponse(e);
@@ -116,7 +136,10 @@ export const handleApi = async (request, deps) => {
   }
 };
 
-const health = async (deps, openChain) => {
+/** A real show's door is configured when its template is set and, for a room link, ROOM_KEY is too. */
+const doorConfigured = (template, roomKey) => typeof template === 'string' && !(needsRoomKey(template) && !(roomKey instanceof Uint8Array));
+
+const health = async (deps, openChain, origin) => {
   const out = {
     ok: true,
     service: 'doorstub-worker',
@@ -137,7 +160,7 @@ const health = async (deps, openChain) => {
       alsoKeyOf: shows.filter((s) => s.kind === 'real' && dataPk !== null && equal(dataPk, s.organiserDataPk)).map((s) => s.id),
     };
     out.door = {
-      shows: shows.filter((s) => s.kind === 'real' && s.door !== null).map((s) => ({ id: s.id, configured: typeof deps.doorLinks?.[s.id] === 'string' })),
+      shows: shows.filter((s) => s.kind === 'real' && s.door !== null).map((s) => ({ id: s.id, configured: doorConfigured(deps.doorLinks?.[s.id], deps.roomKey) })),
       // Where the one-claimant record lives: 'kv+memory' once DOOR_CLAIMS is bound on Cloudflare, else 'memory' (RUNTIME.md section 4).
       record: deps.claims?.kind ?? 'none',
     };
@@ -145,6 +168,14 @@ const health = async (deps, openChain) => {
     out.ok = false;
     out.shows = { error: e.message };
   }
+  // The screening room: booleans and a word, never the media folder.
+  out.room = await roomHealth({
+    roomKey: deps.roomKey ?? null,
+    doorLinks: deps.doorLinks,
+    roomShows: deps.roomShows ?? noRoomShows,
+    mediaReady: deps.roomMediaReady,
+    origin,
+  });
   try {
     out.chain = { tip: await openChain().tip() };
   } catch (e) {

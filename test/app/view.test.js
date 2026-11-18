@@ -186,7 +186,7 @@ const screening = {
   kind: 'real',
   title: 'Doorstub screening 1',
   subtitle: 'Online, 25 minutes',
-  card: 'Online screening: a 12-minute film on how Doorstub works, then Q&A in the chat. Walk in to get the room link.',
+  card: 'Online screening: a short film on how Doorstub works, then Q&A in the chat. Walk in to get the room link.',
   seatPrefix: 'S',
   startHeight: 978_776,
   eventAt: '2026-11-24T13:00:00Z',
@@ -201,20 +201,20 @@ test('real show card: the call in the reader\'s own zone with its length, and sa
   assert.equal(showCardModel(screening, { tip: 977_700, now, timeZone: 'America/New_York' }).callLine, 'Tue 24 Nov, 08:00 GMT\u20115 (in 8 days), for 25 minutes.');
   assert.equal(showCardModel(screening, { tip: 977_700, now, timeZone: 'UTC' }).callLine, 'Tue 24 Nov, 13:00 UTC (in 8 days), for 25 minutes.');
   assert.equal(taipei.startLabel, 'Door');
-  assert.equal(taipei.startLine, 'Buy and walk in until the call ends, Tue 24 Nov, 21:25 GMT+8 (in 8 days).', 'the Door row names the end of the call, never a block that could come first');
+  assert.equal(taipei.startLine, 'Buy and walk in until the event ends, Tue 24 Nov, 21:25 GMT+8 (in 8 days).', 'the Door row names the end of the call, never a block that could come first');
   assert.equal(taipei.onSale, true);
   // During the call it still sells; after it, neither Get a ticket nor the Door row, and the stub says why.
   const card = (iso, tip = 978_700) => showCardModel(screening, { tip, now: Date.parse(iso), timeZone: 'UTC' });
-  assert.equal(card('2026-11-24T13:10:00Z').startLine, 'Buy and walk in until the call ends, Tue 24 Nov, 13:25 UTC (in 15 min).');
+  assert.equal(card('2026-11-24T13:10:00Z').startLine, 'Buy and walk in until the event ends, Tue 24 Nov, 13:25 UTC (in 15 min).');
   assert.equal(card('2026-11-24T13:10:00Z').onSale, true);
   const over = card('2026-11-24T13:25:00Z');
   assert.equal(over.onSale, false, 'sales end with the call, by the reader\'s clock');
   assert.equal(over.startLine, null);
-  assert.equal(over.endedLine, 'Sales and walk-in for this show closed when its call ended.');
+  assert.equal(over.endedLine, 'Sales and walk-in for this show closed when its event ended.');
   // Blocks came early: the start block ended sales during the call; walking in still works until it ends.
   const early = card('2026-11-24T13:10:00Z', 978_776);
   assert.equal(early.onSale, false);
-  assert.equal(early.startLine, 'Sales for this show ended at block 978,776. Walk in until the call ends, Tue 24 Nov, 13:25 UTC (in 15 min).');
+  assert.equal(early.startLine, 'Sales for this show ended at block 978,776. Walk in until the event ends, Tue 24 Nov, 13:25 UTC (in 15 min).');
   assert.equal(early.endedLine, 'Sales for this show ended at block 978,776.');
   // A cancelled real show (a valid 'C' notice) stays listed while a ticket is held there: no Door row, no call, and the
   // stub does not name a start block that is still ahead.
@@ -246,17 +246,17 @@ test('real show card: the call in the reader\'s own zone with its length, and sa
 test('real ticket: held counts down to the call with the settle as small print; walked in says when the call starts', () => {
   const now = Date.parse('2026-11-23T13:00:00Z');
   const held = ticketModel(ticket({ show: screening }), { tip: 978_630, now, timeZone: 'Asia/Taipei' });
-  assert.deepEqual(held.call, { phase: 'before', countdown: '24 h', line: 'The call starts Tue 24 Nov, 21:00 GMT+8, for 25 minutes.' });
+  assert.deepEqual(held.call, { phase: 'before', countdown: '24 h', line: 'The event starts Tue 24 Nov, 21:00 GMT+8, for 25 minutes.' });
   assert.match(held.settleLine, /^Settling opens at block 978,779, about .+; the refund follows once the keeper or this page sends it\.$/);
   assert.equal(held.seat, 'S-2-1');
   assert.equal(held.canWalkIn, true);
   const during = ticketModel(ticket({ show: screening }), { tip: 978_700, now: Date.parse('2026-11-24T13:05:00Z'), timeZone: 'UTC' });
-  assert.deepEqual(during.call, { phase: 'on', countdown: null, line: 'The call is on now.' });
+  assert.deepEqual(during.call, { phase: 'on', countdown: null, line: 'The event is on now.' });
   const after = ticketModel(ticket({ show: screening }), { tip: 978_770, now: Date.parse('2026-11-24T14:00:00Z'), timeZone: 'UTC' });
   assert.equal(after.call, null, 'after the call the ticket counts down to the settle again');
   assert.equal(after.canWalkIn, false, 'Walk in closes when the call ends');
   assert.equal(after.canHandBack, true);
-  assert.equal(after.lines.at(-1), 'The call is over, so Walk in is closed.');
+  assert.equal(after.lines.at(-1), 'The event is over, so Walk in is closed.');
   assert.equal(ticketModel(ticket({ show: screening }), { tip: 978_700, now: Date.parse('2026-11-24T13:24:00Z') }).canWalkIn, true, 'a late arrival walks in during the call');
   // A cancelled show has no walk-in (a check-in would pay its organiser) and no call to count down to.
   const cancelledHeld = ticketModel(ticket({ show: { ...screening, cancelled: true } }), { tip: 978_000, now: Date.parse('2026-11-20T10:00:00Z'), timeZone: 'UTC' });
@@ -268,10 +268,10 @@ test('real ticket: held counts down to the call with the settle as small print; 
   const walked = ticketModel(ticket({ show: screening, state: 'walkedIn', escrowUtxo: null, canAct: false }), { tip: 978_630, now, timeZone: 'Asia/Taipei' });
   assert.deepEqual(walked.lines, [
     'Walked in. Your ticket stays in your wallet as a keepsake stub with no money behind it.',
-    'The call starts Tue 24 Nov, 21:00 GMT+8 (in 24 h).',
+    'The event starts Tue 24 Nov, 21:00 GMT+8 (in 24 h).',
   ]);
   const walkedDuring = ticketModel(ticket({ show: screening, state: 'walkedIn', escrowUtxo: null, canAct: false }), { tip: 978_700, now: Date.parse('2026-11-24T13:05:00Z') });
-  assert.equal(walkedDuring.lines.at(-1), 'The call is on now.');
+  assert.equal(walkedDuring.lines.at(-1), 'The event is on now.');
   // A sample ticket has no call.
   assert.equal(ticketModel(ticket(), { tip: 977_603 }).call, null);
 });
@@ -325,6 +325,6 @@ test('before the tip: cards drawn from shows.json (the next sample A by its star
   assert.equal(waiting.settleLine, null);
   assert.equal(waiting.onSale, true);
   const real = showCardModel(screening, { tip: null, now, timeZone: 'UTC' });
-  assert.equal(real.startLine, 'Buy and walk in until the call ends, Tue 24 Nov, 13:25 UTC (in 1 h 25 min).', 'the Door row needs only the clock');
+  assert.equal(real.startLine, 'Buy and walk in until the event ends, Tue 24 Nov, 13:25 UTC (in 1 h 25 min).', 'the Door row needs only the clock');
   assert.equal(real.callLine, 'Tue 24 Nov, 13:00 UTC (in 1 h), for 25 minutes.');
 });

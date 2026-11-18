@@ -17,6 +17,8 @@ export const DEFAULT_LIMITS = Object.freeze({
   door: { max: 20, windowMs: 60_000 },
   reserve: { max: 10, windowMs: 3_600_000 },
   health: { max: 60, windowMs: 60_000 },
+  // The screening room's enter (worker/lib/room.js): no chain call, no KV.
+  'room/enter': { max: 30, windowMs: 60_000 },
 });
 
 /** Fixed-window counters per (bucket, key); forgets the oldest keys past `maxKeys`. */

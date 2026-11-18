@@ -28,11 +28,11 @@ test('api: notice and door answers, checked before use', async () => {
     fetchImpl: async (url, init) => {
       calls.push({ url, body: JSON.parse(init.body), method: init.method });
       if (url === '/api/notice') return json(200, { signature: 'AB'.repeat(64) });
-      return json(200, { link: 'https://meet.example.org/doorstub' });
+      return json(200, { link: 'https://room.example.org/doorstub' });
     },
   });
   assert.deepEqual(await api.notice({ category: 'aa', seat: '010200' }), { signature: 'ab'.repeat(64) });
-  assert.deepEqual(await api.door({ category: 'aa', txid: 'bb' }), { link: 'https://meet.example.org/doorstub' });
+  assert.deepEqual(await api.door({ category: 'aa', txid: 'bb' }), { link: 'https://room.example.org/doorstub' });
   assert.deepEqual(calls.map((c) => [c.method, c.url, c.body]), [
     ['POST', '/api/notice', { category: 'aa', seat: '010200' }],
     ['POST', '/api/door', { category: 'aa', txid: 'bb' }],
@@ -51,7 +51,7 @@ test('api: the optional buy txid (notice) and claim secret (door) go in the body
     sleep: noSleep,
     fetchImpl: async (url, init) => {
       bodies.push(JSON.parse(init.body));
-      return url.endsWith('/api/notice') ? json(200, { signature: 'ab'.repeat(64) }) : json(200, { link: 'https://meet.example.org/x' });
+      return url.endsWith('/api/notice') ? json(200, { signature: 'ab'.repeat(64) }) : json(200, { link: 'https://room.example.org/x' });
     },
   });
   await api.notice({ category: 'aa', seat: '010100', txid: 'cc'.repeat(32) });
@@ -89,7 +89,7 @@ test('api: the door reservation is one try with the claim and reserve: true, and
     await assert.rejects(api.doorReserve({ category: 'aa', txid: 'bb', claim }), (e) => e instanceof ApiError && e.status === status);
     assert.equal(sent.length, before + 1, `a reservation answered ${status} is not tried again`);
   }
-  answers.push(json(200, { link: 'https://meet.example.org/x' }));
+  answers.push(json(200, { link: 'https://room.example.org/x' }));
   await assert.rejects(api.doorReserve({ category: 'aa', txid: 'bb', claim }), (e) => e.code === 'bad-answer', 'a door answer without reserved: true is refused');
   await assert.rejects(api.doorReserve({ category: 'aa', txid: 'bb', claim: 'short' }), (e) => e.code === 'bad-request');
   const slow = createApi({ reserveTimeoutMs: 20, fetchImpl: (url, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new Error('aborted')))) });
@@ -155,7 +155,7 @@ test('every stuck state has a plain sentence and a next step', () => {
     [Object.assign(new Error('all servers down'), { name: 'TransportError', code: 'all-down' }), 'chainDown', ['retry'], null],
     [new DoorstubError('sales-ended', 'sales ended'), 'showSalesEnded', ['nextInstance'], 'Sales for this show ended at block 977,637.'],
     [new DoorstubError('sales-cancelled', 'sales ended'), 'salesClosed', ['nextInstance'], 'Sales for this show are closed.'],
-    [new DoorstubError('call-ended', 'the call is over'), 'callSalesEnded', [], 'Sales and walk-in for this show closed when its call ended.'],
+    [new DoorstubError('call-ended', 'the event is over'), 'callSalesEnded', [], 'Sales and walk-in for this show closed when its event ended.'],
     [Object.assign(new Error('no open box-office shard'), { code: 'no-open-shard' }), 'salesClosed', ['nextInstance'], null],
     [Object.assign(new Error('outputs differ'), { name: 'CheckError' }), 'replyFailed', ['retry'], null],
   ];
@@ -201,6 +201,7 @@ test('_headers CSP allows exactly the pinned Fulcrum servers, the two relays and
   assert.deepEqual([...connect].sort(), [...expected].sort());
   assert.match(csp, /script-src 'self' 'wasm-unsafe-eval';/, 'no third-party script');
   assert.match(csp, /font-src 'self'/, 'no third-party font');
+  assert.match(csp, /media-src 'self' blob:;/, "the screening room's film: its own files, through Media Source");
   assert.match(csp, /frame-ancestors 'none'/);
 });
 

@@ -12,6 +12,7 @@
   "scripts": {
     "compile": "node scripts/compile.js",
     "test": "node --test \"test/**/*.test.js\" \"probe/test/*.test.js\"",
+    "test:room": "node --test \"test-room/*.test.js\"",
     "probe": "vite probe",
     "probe:selftest": "node probe/scripts/relay-selftest.js --scan",
     "probe:build": "vite build probe",
@@ -22,7 +23,11 @@
     "app:sim": "node scripts/app-sim.js",
     "app:build": "vite build app && node scripts/check-app-dist.js",
     "app:build:simnet": "vite build app --mode simnet",
+    "deploy:prep": "npm run app:build && node scripts/add-room-media.mjs && node scripts/check-app-dist.js --expect-room-media",
+    "room:media": "node scripts/room-media.mjs",
+    "room:test-film": "node scripts/room-test-film.mjs",
     "e2e": "node test/e2e/judge-path.js",
+    "e2e:room": "node test-room/e2e-room.mjs",
     "worker:dev": "node worker/node/cli.js",
     "keeper": "node worker/node/keeper-cli.js",
     "worker:workerd-check": "node worker/scripts/workerd-check.js",
@@ -36,6 +41,7 @@
     "@wizardconnect/core": "0.2.10",
     "@wizardconnect/dapp": "0.2.7",
     "cashscript": "0.14.0",
+    "hls.js": "1.7.4",
     "preact": "10.29.8",
     "qrcode": "1.5.4"
   },

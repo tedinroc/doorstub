@@ -3,7 +3,8 @@
 // and E2E). Adds the libauth 2026 VM check that workerd cannot run.
 //
 // Like a Pages deployment it can also serve the site on the same origin:
-// `staticRoot` (a built app, unknown paths fall back to index.html) and
+// `staticRoot` (a built app; a folder serves its own index.html, as /room/
+// serves room/index.html; unknown paths fall back to index.html) and
 // /shows.json from `showsPath`. `cors: true` lets a dev server on another
 // port call /api/* (local runs only; Pages Functions are same-origin).
 import { createServer } from 'node:http';
@@ -23,6 +24,10 @@ const TYPES = {
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
   '.webmanifest': 'application/manifest+json',
+  // The screening room's film (HLS: playlists, fMP4 init and media segments).
+  '.m3u8': 'application/vnd.apple.mpegurl',
+  '.m4s': 'video/mp4',
+  '.mp4': 'video/mp4',
 };
 
 /**
@@ -58,7 +63,8 @@ export const startWorkerServer = async ({
   htmlHeaders = {},
   log = () => {},
 } = {}) => {
-  const worker = createNodeWorker({ env, showsPath, showsUrl, showsText, limits, markerWaitMs, pollMs, vm, WebSocketImpl, log });
+  // staticRoot also lets /api/health check that the room's film is in the build (handler.js).
+  const worker = createNodeWorker({ env, showsPath, showsUrl, showsText, limits, markerWaitMs, pollMs, vm, WebSocketImpl, log, ...(staticRoot !== undefined && { staticRoot: resolve(staticRoot) }) });
   const { config } = worker;
 
   const root = staticRoot === undefined ? undefined : resolve(staticRoot);
@@ -84,8 +90,9 @@ export const startWorkerServer = async ({
       res.writeHead(403, { 'content-type': 'text/plain' });
       return res.end('forbidden');
     }
-    const isFile = await stat(file).then((st) => st.isFile(), () => false);
-    if (!isFile) file = resolve(root, 'index.html');
+    const kind = await stat(file).then((st) => (st.isFile() ? 'file' : st.isDirectory() ? 'dir' : null), () => null);
+    if (kind === 'dir' && (await stat(resolve(file, 'index.html')).then((st) => st.isFile(), () => false))) file = resolve(file, 'index.html');
+    else if (kind !== 'file') file = resolve(root, 'index.html');
     const type = TYPES[extname(file)] ?? 'application/octet-stream';
     const body = await readFile(file).catch(() => null);
     if (body === null) {

@@ -773,24 +773,24 @@ export const createController = ({ runtime, deps = {} }) => {
 
   /**
    * A buy only while the show sells: tip below its startHeight, not cancelled,
-   * and for a real show before its call ends by the reader's clock. Checked
+   * and for a real show before its event ends by the reader's clock. Checked
    * before the wallet is asked and again right before the broadcast, since an
    * approval can take minutes.
    */
   const assertSalesOpen = (show, height) => {
     if (salesOpen(show, height, { now: now() })) return;
-    if (!show.cancelled && show.kind === 'real' && callEnded(show, now())) throw new DoorstubError('call-ended', 'the call is over');
+    if (!show.cancelled && show.kind === 'real' && callEnded(show, now())) throw new DoorstubError('call-ended', 'the event is over');
     throw new DoorstubError(show.cancelled ? 'sales-cancelled' : 'sales-ended', 'sales ended');
   };
 
   /**
-   * A real show's walk-in closes when its call ends by the reader's clock, and
+   * A real show's walk-in closes when its event ends by the reader's clock, and
    * a cancelled show has none (a check-in would pay its organiser): checked
    * before signing and again right before sending.
    */
   const assertWalkInOpen = (show) => {
     if (show.cancelled) throw new Error('the organiser cancelled this show, so it has no walk-in');
-    if (callEnded(show, now())) throw new DoorstubError('call-ended', 'the call is over');
+    if (callEnded(show, now())) throw new DoorstubError('call-ended', 'the event is over');
   };
 
   const upsertLocal = (ticket) => {
@@ -843,7 +843,7 @@ export const createController = ({ runtime, deps = {} }) => {
       });
       let sent;
       try {
-        // An approval that lands after sales ended (the call is over, or the tip reached the start) is not sent.
+        // An approval that lands after sales ended (the event is over, or the tip reached the start) is not sent.
         sent = await signCheckSend(showId, 'buy', show, built, { beforeSend: () => assertSalesOpen(show, Math.max(height, tip() ?? height)) });
       } catch (e) {
         if (e instanceof BroadcastError && e.conflict && !retrying) {
@@ -977,13 +977,13 @@ export const createController = ({ runtime, deps = {} }) => {
     setFlow(key, { kind: 'walkIn', step: 'preparing' });
     try {
       if (show.kind !== 'real') throw new Error('only a real show has a door');
-      // Also reached by Try again on a failed walk-in and by a Walk in button drawn before the call ended.
+      // Also reached by Try again on a failed walk-in and by a Walk in button drawn before the event ended.
       assertWalkInOpen(show);
       if (!ticket.canAct) throw new Error('this ticket cannot walk in from this wallet');
       if (lastScan === null) await rescan();
       const built = buildCheckIn({ show, escrowUtxo: ticket.escrowUtxo, ticketUtxo: ticket.ticketUtxo, contracts: show.contracts });
       const sent = await signCheckSend(key, 'walkIn', show, built, {
-        // An approval that lands after the call ended is not sent (and the door is not asked).
+        // An approval that lands after the event ended is not sent (and the door is not asked).
         beforeSend: (checked) => {
           assertWalkInOpen(show);
           return reserveDoor(show, checked.txid);

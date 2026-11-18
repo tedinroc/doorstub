@@ -4,7 +4,7 @@
     "kind": "real",
     "title": "Doorstub screening 1",
     "subtitle": "Online, 25 minutes",
-    "card": "Online screening: a 12-minute film on how Doorstub works, then Q&A in the chat. Walk in to get the room link.",
+    "card": "Online screening: a short film on how Doorstub works, then Q&A in the chat. Walk in to get the room link.",
     "eventAt": "2026-11-24T13:00:00Z",
     "durationMin": 25,
     "seatPrefix": "S"
@@ -14,8 +14,8 @@
     "kind": "real",
     "title": "Doorstub screening 2",
     "subtitle": "Online, 25 minutes",
-    "card": "Online screening: a 12-minute film on how Doorstub works, then Q&A in the chat. Walk in to get the room link.",
-    "eventAt": "2026-11-28T13:00:00Z",
+    "card": "Online screening: a short film on how Doorstub works, then Q&A in the chat. Walk in to get the room link.",
+    "eventAt": "2026-11-28T05:00:00Z",
     "durationMin": 25,
     "seatPrefix": "T"
   }

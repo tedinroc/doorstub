@@ -4,6 +4,11 @@
 //   npm run app:build      production build to app/dist (mainnet, pinned servers, no overrides), then checks the bundle
 //   vite build app --mode simnet   the same build with test hooks, for the E2E (.cache/app-simnet)
 //
+// Two pages: the site (index.html) and the screening room (room/index.html,
+// app/src/room/). The room loads only Preact, its own code and, on demand,
+// hls.js; scripts/check-app-dist.js keeps hls.js out of the site's graph and
+// libauth, WizardConnect and the shared vendor chunk out of the room's.
+//
 // __DOORSTUB_TEST_HOOKS__ is the only switch between the two: a literal
 // `false` in production, so the bundler drops every override path.
 import { realpathSync } from 'node:fs';
@@ -49,10 +54,19 @@ export default defineConfig(({ command, mode }) => {
       reportCompressedSize: false,
       chunkSizeWarningLimit: 2_000,
       rollupOptions: {
+        // Absolute paths: `vite build app` runs from the repo root.
+        input: {
+          main: join(appRoot, 'index.html'),
+          room: join(appRoot, 'room', 'index.html'),
+        },
         output: {
           // WizardConnect is LGPL: it ships as its own file holding only its own code, so anyone
           // can swap in their own build of it. libauth and the other libraries get files of their own.
+          // hls.js (Apache-2.0, the room's player) and Preact come before the vendor rule, so the site never
+          // loads hls.js and the room never loads the site's other libraries.
           manualChunks: (id) => {
+            if (id.includes('/node_modules/hls.js/')) return 'hls';
+            if (id.includes('/node_modules/preact/')) return 'preact';
             if (id.includes('/node_modules/@wizardconnect/')) return 'wizardconnect';
             if (id.includes('/node_modules/@bitauth/libauth/')) return 'libauth';
             if (id.includes('/node_modules/')) return 'vendor';

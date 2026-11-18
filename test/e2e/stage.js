@@ -32,7 +32,7 @@ export const REAL_SHOW = Object.freeze({
   kind: 'real',
   title: 'Doorstub screening 1',
   subtitle: 'Online, 25 minutes',
-  card: 'Online screening: a 12-minute film on how Doorstub works, then Q&A in the chat. Walk in to get the room link.',
+  card: 'Online screening: a short film on how Doorstub works, then Q&A in the chat. Walk in to get the room link.',
   startHeight: '+300',
   eventAt: STAGE_CALL_AT,
   durationMin: 25,

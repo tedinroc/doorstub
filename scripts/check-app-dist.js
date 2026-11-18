@@ -5,6 +5,12 @@
 // - the pinned production settings are present (our /shows.json, mainnet servers);
 // - no local paths, other handles or e-mail addresses leaked into the bundle;
 // - WizardConnect (LGPL) ships as its own file, and the CSP file is there;
+// - the screening room (room/index.html) is built: its script graph never
+//   loads libauth, WizardConnect, the shared vendor chunk or any chain code,
+//   never touches localStorage, and loads hls.js; the site's graph never loads
+//   hls.js; licenses.txt carries hls.js and the Apache License 2.0;
+// - with --expect-room-media (npm run deploy:prep): exactly one media folder
+//   under room/media/, and it passes scripts/room-media-gate.mjs;
 // - the BLAZE banner's three values (app/src/config.js) are filled in and in
 //   the bundle: an empty one fails the build unless DOORSTUB_ALLOW_PLACEHOLDERS=1.
 // Exits non-zero with every problem listed.
@@ -12,7 +18,10 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { forbiddenWords } from './hygiene-words.js';
+import { gateRoomMedia } from './room-media-gate.mjs';
 import { BLAZE } from '../app/src/config.js';
+
+const expectRoomMedia = process.argv.includes('--expect-room-media');
 
 const dist = fileURLToPath(new URL('../app/dist', import.meta.url));
 if (!existsSync(dist)) {
@@ -90,8 +99,53 @@ for (const [key, [rule, what]] of Object.entries(blazeRules)) {
 
 const assets = readdirSync(join(dist, 'assets'));
 if (!assets.some((f) => /^wizardconnect-.*\.js$/.test(f))) problems.push('WizardConnect (LGPL) is not in its own assets/wizardconnect-*.js file');
-for (const f of ['_headers', 'shows.json', 'icon.png', 'bcmr/icon.png', 'favicon.svg', 'licenses.txt', 'fonts/barlow-condensed-800.woff2', 'fonts/OFL.txt', 'deck.pdf']) {
+for (const f of ['_headers', 'shows.json', 'icon.png', 'bcmr/icon.png', 'favicon.svg', 'licenses.txt', 'fonts/barlow-condensed-800.woff2', 'fonts/OFL.txt', 'deck.pdf', 'room/index.html']) {
   if (!existsSync(join(dist, f))) problems.push(`app/dist/${f} is missing`);
+}
+
+// The two pages' script graphs: every assets/*.js (or .css) a page or a chunk names, statically,
+// dynamically or in Vite's preload list.
+const graphOf = (htmlFile) => {
+  const seen = new Set();
+  const refs = (body) => [...body.matchAll(/(?:\/assets\/|\.\/)([\w.-]+\.(?:js|css))/g)].map((m) => m[1]).filter((name) => assets.includes(name));
+  const queue = existsSync(htmlFile) ? refs(text(htmlFile)) : [];
+  while (queue.length > 0) {
+    const name = queue.shift();
+    if (seen.has(name)) continue;
+    seen.add(name);
+    if (name.endsWith('.js')) queue.push(...refs(text(join(dist, 'assets', name))));
+  }
+  return [...seen];
+};
+const siteGraph = graphOf(join(dist, 'index.html'));
+const roomGraph = graphOf(join(dist, 'room', 'index.html'));
+if (!assets.some((f) => /^hls-.*\.js$/.test(f))) problems.push('hls.js is not in its own assets/hls-*.js file');
+for (const name of siteGraph) if (/^hls-/.test(name)) problems.push(`the site (index.html) loads ${name}: hls.js belongs to the room only`);
+if (!roomGraph.some((n) => /^room-.*\.js$/.test(n))) problems.push('room/index.html does not load its assets/room-*.js entry');
+if (!roomGraph.some((n) => /^hls-.*\.js$/.test(n))) problems.push('the room does not load hls.js');
+for (const name of roomGraph) {
+  if (/^(?:libauth|wizardconnect|vendor|index)-/.test(name)) problems.push(`the room loads ${name}: it must not load the wallet, chain or site code`);
+  if (!name.endsWith('.js')) continue;
+  const body = text(join(dist, 'assets', name));
+  if (/localStorage/.test(body)) problems.push(`${name} (room) touches localStorage`);
+  if (/wss:\/\/|blockchain\.(?:scripthash|transaction|headers)/.test(body)) problems.push(`${name} (room) carries chain-server code`);
+}
+const roomHtml = existsSync(join(dist, 'room', 'index.html')) ? text(join(dist, 'room', 'index.html')) : '';
+if (!/<meta name="robots" content="noindex"/.test(roomHtml)) problems.push('room/index.html has no robots noindex meta');
+const licences = existsSync(join(dist, 'licenses.txt')) ? text(join(dist, 'licenses.txt')) : '';
+if (!licences.includes('hls.js') || !licences.includes('TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION')) problems.push('licenses.txt must name hls.js and carry the Apache License 2.0 text');
+
+// npm run deploy:prep: the film is in, under the one folder derived from ROOM_KEY (scripts/add-room-media.mjs).
+let mediaLine = '';
+if (expectRoomMedia) {
+  const mediaRoot = join(dist, 'room', 'media');
+  const folders = existsSync(mediaRoot) ? readdirSync(mediaRoot) : [];
+  if (folders.length !== 1 || !/^[0-9a-f]{32}$/.test(folders[0])) problems.push('room/media/ must hold exactly one 32-hex folder (run scripts/add-room-media.mjs)');
+  else {
+    const gate = gateRoomMedia(join(mediaRoot, folders[0]));
+    for (const p of gate.problems) problems.push(`room media: ${p}`);
+    mediaLine = `; room media: ${gate.files} files, film ${gate.room?.film?.seconds ?? '-'} s${gate.room?.preview ? `, preview ${gate.room.preview.seconds} s` : ''}`;
+  }
 }
 
 const size = files.reduce((s, f) => s + statSync(f).size, 0);
@@ -99,5 +153,5 @@ if (problems.length > 0) {
   console.error(`app/dist check FAILED (${problems.length}):\n  ${problems.join('\n  ')}`);
   process.exit(1);
 }
-console.log(`app/dist check passed: ${files.length} files, ${(size / 1024).toFixed(0)} KiB; no test overrides, local addresses, paths, handles or e-mail addresses.`);
+console.log(`app/dist check passed: ${files.length} files, ${(size / 1024).toFixed(0)} KiB; no test overrides, local addresses, paths, handles or e-mail addresses; the room loads no wallet or chain code${mediaLine}.`);
 if (placeholders.length > 0) console.log(`  PLACEHOLDERS allowed (DOORSTUB_ALLOW_PLACEHOLDERS=1): BLAZE.${placeholders.join(', BLAZE.')} still empty; not for deployment.`);

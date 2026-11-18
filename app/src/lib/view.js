@@ -16,11 +16,12 @@ import {
 } from '../../../src/shows/index.js';
 import { TOKEN_OUTPUT_SATS, encodeTicketCommitment } from '../../../src/tx/index.js';
 import { LABELS, say } from './copy.js';
+import { clockText, etaMinutes, shortId } from './format.js';
+
+// Shared with the screening room (app/src/room/), which must not import libauth.
+export { clockText, etaMinutes, shortId };
 
 export const BLOCK_MINUTES = 10;
-
-/** A txid as the page writes it everywhere: "993c586a…c10a" (8 and 4 characters, an ellipsis). */
-export const shortId = (txid) => (txid.length <= 15 ? txid : `${txid.slice(0, 8)}\u2026${txid.slice(-4)}`);
 
 /** "1,234". */
 export const num = (n) => Number(n).toLocaleString('en-US');
@@ -34,52 +35,11 @@ export const shortBch = (sats) => {
 /** Basis points as a percentage: 0 -> "0%", 150 -> "1.5%". */
 export const bpsText = (bps) => `${Number((Number(bps) / 100).toFixed(2))}%`;
 
-/** How long until `minutes` from now: "in 40 min", "in 5 h 50 min", "in 3 days", "now". */
-export const etaMinutes = (minutes) => {
-  const total = Math.max(0, Math.round(Number(minutes)));
-  if (total === 0) return 'now';
-  if (total < 60) return `in ${total} min`;
-  if (total < 48 * 60) {
-    const h = Math.floor(total / 60);
-    const m = total % 60;
-    return m === 0 ? `in ${h} h` : `in ${h} h ${m} min`;
-  }
-  return `in ${Math.round(total / (24 * 60))} days`;
-};
-
 /** How long until a block `blocks` from now, at ten minutes a block: "in 40 min", "in 5 h 50 min", "in 3 days", "now". Callers say "about". */
 export const etaText = (blocks) => etaMinutes(Math.max(0, Math.round(Number(blocks))) * BLOCK_MINUTES);
 
 /** A short countdown for the ticket: "5 h 40 min", "40 min", "3 days", "now". */
 export const countdownText = (blocks) => etaText(blocks).replace(/^in /, '');
-
-/**
- * "Tue 24 Nov, 21:00 GMT+8": always English (the page is English), in the
- * reader's own time zone, with the zone named. Built from parts so no
- * browser locale can mix in its own words ("上午06:06").
- */
-export const clockText = (date, { timeZone } = {}) => {
-  const parts = {};
-  try {
-    const format = new Intl.DateTimeFormat('en-GB', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-      timeZoneName: 'shortOffset',
-      ...(timeZone && { timeZone }),
-    });
-    for (const p of format.formatToParts(date)) parts[p.type] = p.value;
-  } catch {
-    // An engine without shortOffset: UTC, named as such.
-    return `${date.toUTCString().slice(0, 11).replace(',', '')}, ${date.toISOString().slice(11, 16)} UTC`;
-  }
-  // A non-breaking hyphen in "GMT‑5", so a line never breaks inside the zone.
-  const zone = (parts.timeZoneName ?? 'UTC').replace(/^GMT$|^GMT\+0$|^UTC$/, 'UTC').replace('-', '\u2011');
-  return `${parts.weekday} ${parts.day} ${parts.month}, ${parts.hour}:${parts.minute} ${zone}`;
-};
 
 /** Block, local time and ETA for a future height. */
 export const whenText = (height, tip, options = {}) => ({
@@ -92,9 +52,9 @@ export const whenText = (height, tip, options = {}) => ({
 export const isSample = (show) => show.kind === 'sample-settle' || show.kind === 'sample-refund-seat';
 
 /**
- * A real show's call (its `eventAt` and `durationMin` from shows.json, the
+ * A real show's event (its `eventAt` and `durationMin` from shows.json, the
  * organiser's plan) at `now`: { phase: 'before' | 'on' | 'over', time, eta,
- * countdown, minutes }, or null when the show has no call time.
+ * countdown, minutes }, or null when the show has no event time.
  */
 export const callOf = (show, { now = Date.now(), timeZone } = {}) => {
   if (show.kind !== 'real' || typeof show.eventAtMs !== 'number' || !Number.isFinite(show.eventAtMs)) return null;
@@ -122,8 +82,8 @@ export const showCardModel = (show, { tip, usd = null, ledger, now = Date.now(),
   const start = known ? whenText(show.startHeight, tip, { now, locale, timeZone }) : { block: num(show.startHeight), time: null, eta: null };
   const settle = known ? whenText(settleOpensAt(show), tip, { now, locale, timeZone }) : null;
   const call = callOf(show, { now, timeZone });
-  // A real show sells and lets you walk in until its call ends (the reader's clock); its startHeight, hours later,
-  // is only the on-chain backstop. So the Door row names the end of the call and never contradicts the Call row.
+  // A real show sells and lets you walk in until its event ends (the reader's clock); its startHeight, hours later,
+  // is only the on-chain backstop. So the Door row names the end of the event and never contradicts the Event row.
   const end = show.kind === 'real' ? callEndsAt(show) : null;
   const real = end !== null;
   const until = real ? { time: clockText(new Date(end), { timeZone }), eta: etaMinutes(Math.ceil((end - now) / 60_000)) } : null;
@@ -170,7 +130,7 @@ export const showCardModel = (show, { tip, usd = null, ledger, now = Date.now(),
  * checking each show's genesis (their Get a ticket waits for that check):
  * what showsOnSale would offer. Before the first tip, the sample A instance
  * is the one whose start estimate (from shows.json) is the soonest still at
- * least ten minutes away; sample B and the real shows whose call is not over
+ * least ten minutes away; sample B and the real shows whose event is not over
  * are drawn as they are.
  */
 export const previewShows = (catalogue, { tip = null, now = Date.now() } = {}) => {
@@ -252,7 +212,7 @@ export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, r
   const escrowTxid = escrow ? (typeof escrow.txid === 'string' ? escrow.txid : binToHex(escrow.txid)) : null;
   const lines = [];
   const value = ticket.value ?? escrow?.output?.valueSatoshis ?? null;
-  // A real show's Walk in closes when its call ends (the reader's clock) or when its organiser cancelled it; the
+  // A real show's Walk in closes when its event ends (the reader's clock) or when its organiser cancelled it; the
   // ticket then refunds by the settle (or the cancel's refund).
   const callOver = show.kind === 'real' && callOf(show, { now, timeZone })?.phase === 'over';
   const walkInClosed = callOver || show.cancelled === true;
@@ -320,7 +280,7 @@ export const ticketModel = (ticket, { tip, now = Date.now(), locale, timeZone, r
     settleBlocksLeft: tip === undefined ? null : Math.max(0, settleAt - 1 - tip),
     countdown: tip === undefined ? null : countdownText(Math.max(0, settleAt - tip)),
     progress,
-    // A held real ticket counts down to the call instead (the settle stays as small print).
+    // A held real ticket counts down to the event instead (the settle stays as small print).
     call: call === null || call.phase === 'over' ? null : { phase: call.phase, countdown: call.countdown, line: call.phase === 'before' ? say('callTime', { time: call.time, minutes: call.minutes }) : say('callOn') },
     barcode: commitmentBits(encodeTicketCommitment(seatBytes, buyerPkh)),
     serial: (buyTxid ?? ticket.seatHex).slice(0, 8).toUpperCase(),

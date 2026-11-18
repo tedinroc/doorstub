@@ -10,7 +10,7 @@
 //   --shows app/public/shows.json    shows.json on disk (default), or --shows-url <url>
 //   --port 8788                      0 picks a free port
 //   --studio <path>/studio.json      take STUDIO_DATA_KEY from a studio secrets file (simnet runs)
-//   --dev-vars .dev.vars             KEY=VALUE file with STUDIO_DATA_KEY, DOOR_LINKS (default .dev.vars if present)
+//   --dev-vars .dev.vars             KEY=VALUE file with STUDIO_DATA_KEY, DOOR_LINKS, ROOM_KEY (default .dev.vars if present)
 //   --door-links '{"id":"https://..."}'
 //   --static app/dist                also serve the built site on the same origin (as Pages does)
 //   --cors                           let a dev server on another port call /api/*
@@ -37,7 +37,7 @@ const { values } = parseArgs({
 });
 
 const env = { ...readDevVars(values['dev-vars']) };
-for (const key of ['STUDIO_DATA_KEY', 'DOOR_LINKS']) if (process.env[key] !== undefined) env[key] = process.env[key];
+for (const key of ['STUDIO_DATA_KEY', 'DOOR_LINKS', 'ROOM_KEY', 'ROOM_REHEARSAL_LEAD_S']) if (process.env[key] !== undefined) env[key] = process.env[key];
 env.DOORSTUB_NETWORK = values.network;
 if (values.fulcrum !== undefined) env.DOORSTUB_FULCRUM = values.fulcrum;
 if (values.studio !== undefined) env.STUDIO_DATA_KEY = dataKeyFromStudio(values.studio);

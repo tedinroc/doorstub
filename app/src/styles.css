@@ -1,86 +1,8 @@
 /* Doorstub: a box office printed on warm paper. */
 
-/* The display face ships with the site (OFL, app/public/fonts/OFL.txt), so the
-   headline looks the same on every system. */
-@font-face {
-  font-family: 'Barlow Condensed';
-  font-style: normal;
-  font-weight: 800;
-  font-display: swap;
-  src: url('/fonts/barlow-condensed-800.woff2') format('woff2');
-}
-
-:root {
-  color-scheme: light dark;
-  --paper: #f3ece0;
-  --paper-deep: #e8dcc8;
-  --face: #fffaf1;
-  --face-2: #f8eedd;
-  --ink: #1d1813;
-  --ink-soft: #594d42;
-  --ink-faint: #6e6155;
-  --rule: #d6c7ae;
-  --accent: #cf3b20;
-  --accent-press: #b3301a;
-  --accent-soft: #f6d9cc;
-  --on-accent: #fff8ef;
-  --green: #0a8461;
-  --blue: #2a52c0;
-  --red: #c8371f;
-  --gold: #e3a92f;
-  --gold-deep: #b9811a;
-  --band-a: #cf3b20;
-  --band-b: #3b3f9e;
-  --band-real: #0a8461;
-  --band-proof: #6d5f50;
-  --qr-bg: #fffaf1;
-  --night: #1d1813;
-  --on-night: #f3ece0;
-  --shadow-ticket: 0 1px 0 rgba(70, 45, 20, 0.08), 0 18px 40px -22px rgba(70, 45, 20, 0.55);
-  --shadow-pop: 0 30px 80px -30px rgba(40, 25, 10, 0.6);
-  --radius: 14px;
-  --radius-s: 9px;
-  --gutter: 16px;
-  --max: 1200px;
-  --font-display: 'Barlow Condensed', 'Avenir Next Condensed', 'AvenirNextCondensed-Bold', 'Bahnschrift', 'Roboto Condensed', 'Arial Narrow', sans-serif-condensed, system-ui, sans-serif;
-  --letter-ink: #fff8ef;
-  --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Roboto Mono', monospace;
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-thud: cubic-bezier(0.34, 1.56, 0.64, 1);
-}
+@import './tokens.css';
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #14110e;
-    --paper-deep: #1c1814;
-    --face: #241e19;
-    --face-2: #2b241e;
-    --ink: #f4ebdc;
-    --ink-soft: #c5b6a2;
-    --ink-faint: #a29482;
-    --rule: #42382e;
-    --accent: #ff6a4d;
-    --accent-press: #ff836b;
-    --accent-soft: #4a2219;
-    --on-accent: #1d0c07;
-    --green: #3fd6a6;
-    --blue: #8eaaff;
-    --red: #ff7259;
-    --gold: #f2c14e;
-    --gold-deep: #c9952a;
-    --band-a: #e5502f;
-    --band-b: #6f73e0;
-    --band-real: #1fae82;
-    --band-proof: #8d7d6a;
-    --qr-bg: #fffaf1;
-    --night: #0b0907;
-    --on-night: #f4ebdc;
-    --shadow-ticket: 0 1px 0 rgba(0, 0, 0, 0.5), 0 22px 44px -24px rgba(0, 0, 0, 0.9);
-    --shadow-pop: 0 30px 90px -30px rgba(0, 0, 0, 0.95);
-    /* the bright dark-mode bands carry dark letters (6:1 or better on the tiles) */
-    --letter-ink: #120d09;
-  }
   .kind-a { --pill-tone: #ff7a5e; }
   .kind-b { --pill-tone: #8f93ff; }
   .kind-real { --pill-tone: #3fd6a6; }

@@ -85,7 +85,7 @@ const parseNotice = (show, raw) => {
  *   startHeight, graceBlocks, handBackFeeBps, noShowFeeBps, minerFeeCap (bigint), shards, genesisTxid,
  *   escrow: { redeemScript, lockingBytecode, scripthash }, boxOffice: {...}, notices, invalidNotices,
  *   cancelled, door, seatPrefix, eventAt, eventAtMs, durationMin }
- * The call fields and the seat letter follow src/shows/event.js, as the app's loader.
+ * The event fields and the seat letter follow src/shows/event.js, as the app's loader.
  */
 export const parseWorkerShow = (raw) => {
   if (raw === null || typeof raw !== 'object') throw new WorkerError('bad-show', 'show must be an object', { status: 500 });

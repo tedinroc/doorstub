@@ -20,7 +20,7 @@
 //   for this run) -> REFUNDED -> My tickets -> proof strip counts -> a phone's
 //   connect dialog -> dark mode.
 // The browser runs in New York time (not this machine's zone), so the real
-// show's call is checked in the reader's own zone. The walk-in is raced by a
+// show's event time is checked in the reader's own zone. The walk-in is raced by a
 // front-runner that polls the real show's Escrow mempool over Fulcrum and asks
 // the door the moment the check-in appears; it must get 409 while the page,
 // which reserved its claim before sending the check-in, gets the link.
@@ -395,13 +395,13 @@ try {
   ok([showA.id, showB.id, real.id].every((id) => sawWaiting.includes(id)), `the cards were drawn from shows.json first, Get a ticket waiting for the genesis check (${sawWaiting.join(', ')})`);
   ok((await domText(page, `[data-show="${real.id}"]`)).includes(real.card), 'the real show card shows its card text from shows.json');
   // The real show's call, as shows.json posts it (CONTRACT: eventAt, durationMin, seatPrefix), in the reader's own zone.
-  ok(real.eventAt === REAL_SHOW.eventAt && real.durationMin === 25 && real.seatPrefix === 'S', `shows.json: the real show names its call (${real.eventAt}), 25 minutes and seat letter S`);
+  ok(real.eventAt === REAL_SHOW.eventAt && real.durationMin === 25 && real.seatPrefix === 'S', `shows.json: the real show names its event (${real.eventAt}), 25 minutes and seat letter S`);
   const callMs = Date.parse(real.eventAt);
   const callClock = clockText(new Date(callMs), { timeZone: VIEWER_ZONE });
   const newYork = new Intl.DateTimeFormat('en-GB', { timeZone: VIEWER_ZONE, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(callMs);
   const callRow = await domText(page, `[data-show="${real.id}"] [data-fact="call"] dd`);
-  ok(callRow.includes(`, ${newYork} GMT\u20115`), `the real card's Call row is in the browser's zone, named (New York: ${newYork} GMT-5): "${callRow}"`);
-  ok(callRow.startsWith(`${callClock} (in `) && callRow.endsWith('), for 25 minutes.'), 'the Call row reads "<time> (in ...), for 25 minutes."');
+  ok(callRow.includes(`, ${newYork} GMT\u20115`), `the real card's Event row is in the browser's zone, named (New York: ${newYork} GMT-5): "${callRow}"`);
+  ok(callRow.startsWith(`${callClock} (in `) && callRow.endsWith('), for 25 minutes.'), 'the Event row reads "<time> (in ...), for 25 minutes."');
   ok((await domText(page, `[data-show="${real.id}"] .subtitle`)) === 'Online, 25 minutes', 'the real card\'s subtitle is "Online, 25 minutes" (no times)');
   ok((await page.$(`[data-show="${showA.id}"] .subtitle`)) === null && (await page.$(`[data-show="${showB.id}"] .subtitle`)) === null, 'the sample cards have no subtitle');
   // The worker's data key signs sample B's notices only; the real show's notices need the studio's second data key.
@@ -426,7 +426,7 @@ try {
     ok(m.buy <= fold, `"Get a ticket" inside the first phone screen at ${width}x${height} (ends by ${fold} px)`);
   }
   // A real show's card: its start block reads as the end of sales and walk-in; a sample keeps "Starts".
-  ok((await domText(page, `[data-show="${real.id}"] [data-fact="start"]`)).startsWith('DoorBuy and walk in until the call ends,'), 'the real show\'s Door row reads "Buy and walk in until the call ends, ..."');
+  ok((await domText(page, `[data-show="${real.id}"] [data-fact="start"]`)).startsWith('DoorBuy and walk in until the event ends,'), 'the real show\'s Door row reads "Buy and walk in until the event ends, ..."');
   ok((await domText(page, `[data-show="${showA.id}"] [data-fact="start"]`)).startsWith('StartsBlock'), 'a sample show\'s start row reads "Starts"');
   // The required BLAZE banner links the source repository; Check it yourself links the contracts and the one-page architecture.
   ok((await page.$eval('.blaze a[href="https://github.com/tedinroc/doorstub"]', (el) => el.textContent)) === 'Source code', 'the banner links the source repository');
@@ -566,8 +566,8 @@ try {
   const labelR = await domText(page, `[data-ticket="${keyR}"] .seat`);
   ok(/^S-\d-1$/.test(labelR), `the real ticket's seat label uses the show's letter S (${labelR})`);
   const callBox = `[data-ticket="${keyR}"] .countdown.call`;
-  ok((await domText(page, `${callBox} .cd-l`)) === 'Call starts in', 'a held real ticket counts down to the call ("Call starts in")');
-  ok((await domText(page, `${callBox} > p`)) === `The call starts ${callClock}, for 25 minutes.`, 'under the call countdown: "The call starts <time in the reader\'s zone>, for 25 minutes."');
+  ok((await domText(page, `${callBox} .cd-l`)) === 'Event starts in', 'a held real ticket counts down to the event ("Event starts in")');
+  ok((await domText(page, `${callBox} > p`)) === `The event starts ${callClock}, for 25 minutes.`, 'under the event countdown: "The event starts <time in the reader\'s zone>, for 25 minutes."');
   // A wallet reading the show's BCMR (the registry the studio's genesis wrote) gets the same label.
   const registry = JSON.parse(readFileSync(join(dirname(stage.boot.showsPath), 'bcmr', `${real.params.category}.json`), 'utf8'));
   const parsedR = parseNft(registry, real.params.category, (await chainTx(buyR)).outputs[1].token.nft.commitment, r.buyer.pkh);
@@ -626,7 +626,7 @@ try {
   await sleep(1500);
   ok((await domText(page, `[data-ticket="${keyR}"] .stamp`)) === 'WALKED IN', 'real ticket card stamped WALKED IN');
   const walkedLines = await page.$$eval(`[data-ticket="${keyR}"] .lines p`, (els) => els.map((el) => el.textContent.trim()));
-  ok(walkedLines.some((l) => l.startsWith(`The call starts ${callClock} (in `) && l.endsWith(').')), `the walked-in ticket says when the call starts, in the reader's zone (${walkedLines.join(' | ')})`);
+  ok(walkedLines.some((l) => l.startsWith(`The event starts ${callClock} (in `) && l.endsWith(').')), `the walked-in ticket says when the event starts, in the reader's zone (${walkedLines.join(' | ')})`);
   await shot(page, '08-walked-in', { selector: `[data-ticket="${keyR}"]` });
 
   // ---------------------------------------------------------------- a second A ticket, then the cron keeper settles it

@@ -10,7 +10,9 @@
 //      /api/door gives a real show's link for a check-in on the simnet (once
 //      per claimant) and refuses a hand-back; a check-in the page reserved
 //      before sending it (the record in a local DOOR_CLAIMS KV namespace) is
-//      refused to an observer and answered to the reserving claim.
+//      refused to an observer and answered to the reserving claim;
+//      /api/room/enter opens the screening room for that check-in's pass
+//      (HMAC with a local test ROOM_KEY) and refuses a wrong one.
 //   2. The cron Worker (`wrangler dev --test-scheduled` with worker/wrangler.toml
 //      overridden by --var): one scheduled run refunds a new sample B seat and
 //      settles a sample A ticket past its start plus grace.
@@ -32,6 +34,7 @@ import { buildRefund, verifyRefundNotice } from '../../src/tx/index.js';
 import { checkSignatureFree, createFulcrumPool } from '../../src/chain/index.js';
 import { buyTicket, send, signedCheckIn, signedHandBack, unspentAt } from '../../test/worker/support.js';
 import { txidOf } from '../lib/crypto.js';
+import { roomPass } from '../lib/room.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const wrangler = join(root, 'node_modules', '.bin', 'wrangler');
@@ -114,6 +117,8 @@ try {
   const real = shows.find((s) => s.kind === 'real');
   const doorLinks = JSON.stringify({ 'live-call': 'https://example.invalid/call?seat={seat}' });
   const dataKeyHex = JSON.parse(readFileSync(boot.secretsPath, 'utf8')).data.privateKey;
+  // A local test key, used only by this run.
+  const roomKeyHex = '42'.repeat(32);
   pool = createFulcrumPool({ network: 'simnet', servers: [simnet.url], allowBroadcast: true, pingIntervalMs: 0 });
 
   // ---------------------------------------------------------------- 1. Pages Functions in workerd
@@ -123,7 +128,7 @@ try {
       'pages', 'dev', dirname(boot.showsPath),
       '--ip', '127.0.0.1', '--port', String(pagesPort), '--inspector-port', String(await freePort()),
       '--compatibility-date', '2024-11-11', '--show-interactive-dev-session=false',
-      '--binding', 'DOORSTUB_NETWORK=simnet', `DOORSTUB_FULCRUM=${simnet.url}`, `STUDIO_DATA_KEY=${dataKeyHex}`, `DOOR_LINKS=${doorLinks}`,
+      '--binding', 'DOORSTUB_NETWORK=simnet', `DOORSTUB_FULCRUM=${simnet.url}`, `STUDIO_DATA_KEY=${dataKeyHex}`, `DOOR_LINKS=${doorLinks}`, `ROOM_KEY=${roomKeyHex}`,
       '--kv', 'DOOR_CLAIMS', '--persist-to', join(work, 'state'),
     ],
     'pages',
@@ -135,7 +140,7 @@ try {
   }, 'wrangler pages dev', 90_000).catch((e) => {
     throw new Error(`${e.message}\n${pages.log()}`);
   });
-  if (health.runtime !== 'workerd' || health.chain?.tip === undefined || health.signer?.shows?.[0]?.keyMatches !== true || health.signer?.alsoKeyOf?.length !== 0 || health.door?.record !== 'kv+memory') {
+  if (health.runtime !== 'workerd' || health.chain?.tip === undefined || health.signer?.shows?.[0]?.keyMatches !== true || health.signer?.alsoKeyOf?.length !== 0 || health.door?.record !== 'kv+memory' || health.room?.configured !== true) {
     throw new Error(`unexpected health ${JSON.stringify(health)}`);
   }
   step('pages: /api/health in workerd', { tip: health.chain.tip, signer: health.signer, door: health.door, vm: health.vm });
@@ -187,6 +192,24 @@ try {
   const holderAnswer = await askDoor(reservedTxid, { claim });
   if (holderAnswer.status !== 200 || holderAnswer.body.link !== 'https://example.invalid/call?seat=L-1-1') throw new Error(`reserved door ${holderAnswer.status} ${JSON.stringify(holderAnswer.body)}\n${pages.log()}`);
   step('pages: a reserved check-in (record in local KV) is refused to an observer and answered to the page', { reserveMs, observer: observer.status, seatLabel: holderAnswer.body.seatLabel });
+
+  // The screening room: the pass for that seat and check-in opens it; another seat's does not.
+  const enterRoom = async (extra) => {
+    const r = await fetch(`${base}/api/room/enter`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(extra) });
+    return { status: r.status, body: await r.json() };
+  };
+  const seat = holderAnswer.body.seatLabel;
+  const t3 = Date.now();
+  const room = await enterRoom({ show: real.id, seat, txid: reservedTxid, pass: roomPass(roomKeyHex, real.id, seat, reservedTxid) });
+  const enterMs = Date.now() - t3;
+  if (room.status !== 200 || room.body.eventAt !== '2026-11-24T13:00:00Z' || room.body.opensUntil !== '2026-11-24T13:35:00Z' || typeof room.body.now !== 'number') {
+    throw new Error(`room enter ${room.status} ${JSON.stringify(room.body)}\n${pages.log()}`);
+  }
+  const wrong = await enterRoom({ show: real.id, seat: 'L-9-9', txid: reservedTxid, pass: roomPass(roomKeyHex, real.id, seat, reservedTxid) });
+  if (wrong.status !== 403 || wrong.body.error?.code !== 'bad-pass') throw new Error(`room enter with another seat should be 403, got ${wrong.status} ${JSON.stringify(wrong.body)}`);
+  const rehearsal = await enterRoom({ show: 'rehearsal', seat: 'R-0-1', txid: reservedTxid, pass: roomPass(roomKeyHex, 'rehearsal', 'R-0-1', reservedTxid) });
+  if (rehearsal.status !== 200 || rehearsal.body.title !== 'Doorstub rehearsal') throw new Error(`rehearsal enter ${rehearsal.status} ${JSON.stringify(rehearsal.body)}`);
+  step('pages: /api/room/enter opens the room for a seat\'s pass in workerd (HMAC) and refuses another seat', { ms: enterMs, wrong: wrong.status, rehearsalAt: rehearsal.body.eventAt });
   killAll();
 
   // ---------------------------------------------------------------- 2. the cron Worker in workerd
