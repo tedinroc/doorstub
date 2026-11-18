@@ -138,10 +138,14 @@ export const createRoomController = ({ win = globalThis, fetchImpl = (...a) => g
     }
   };
 
-  /** /shows.json: the show's start and length (real shows), and the server's Date for the clock. */
+  /**
+   * /shows.json: the show's start and length (real shows), and the server's Date for the clock.
+   * lastMeasureAt is set before the request, so the ticks that run while it is out (up to FETCH_TIMEOUT_MS)
+   * do not start more reads of their own.
+   */
   const readShows = async () => {
-    const r = await getJson('/shows.json');
     lastMeasureAt = now();
+    const r = await getJson('/shows.json');
     if (r.date !== null && r.status > 0) clock.fromDate(r.date, r.sentAt, r.receivedAt);
     if (r.status !== 200 || r.json === null) return false;
     const show = showFromList(r.json, fragment.show);

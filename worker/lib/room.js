@@ -69,6 +69,29 @@ export const checkPass = (key, showId, seatLabel, txid, pass) => {
 /** A DOOR_LINKS template that only ROOM_KEY can fill. */
 export const needsRoomKey = (template) => typeof template === 'string' && /\{(?:pass|media)\}/.test(template);
 
+/** The fragment a room link's template must carry, key by key: what the page reads (app/src/room/state.js parseFragment). */
+export const ROOM_FRAGMENT = Object.freeze({ show: '{show}', seat: '{seat}', txid: '{txid}', pass: '{pass}', m: '{media}' });
+
+/**
+ * Whether a template's fragment (after its first '#') is exactly show={show}, seat={seat}, txid={txid},
+ * pass={pass} and m={media}, in any order: each key once, no other key. A '%' or '+' in it fails, since
+ * fillLink fills only the literal placeholders and these five never need encoding.
+ */
+export const roomFragmentOk = (template) => {
+  if (typeof template !== 'string') return false;
+  const at = template.indexOf('#');
+  if (at < 0) return false;
+  const fragment = template.slice(at + 1);
+  if (/[%+]/.test(fragment)) return false;
+  const params = new URLSearchParams(fragment);
+  const keys = [...params.keys()];
+  const want = Object.keys(ROOM_FRAGMENT);
+  return keys.length === want.length && want.every((k) => params.getAll(k).length === 1 && params.get(k) === ROOM_FRAGMENT[k]);
+};
+
+/** A room link's template: on the site's /room/, with the fragment the room reads (roomFragmentOk). */
+export const isRoomTemplate = (template, site) => typeof template === 'string' && typeof site === 'string' && site !== '' && template.startsWith(`${site}/room/`) && roomFragmentOk(template);
+
 /** A seat label as worker/lib/shows.js seatLabelOf prints it: letter, shard (0-255), seat (0-65535). */
 export const isSeatLabel = (value) => {
   const m = typeof value === 'string' ? SEAT_LABEL.exec(value) : null;
@@ -176,7 +199,8 @@ export const enterRoom = async ({ body, roomKey, roomShows, now, rehearsalLeadS 
  * /api/health's room status: { configured, media, links }.
  * - configured: ROOM_KEY is set and valid.
  * - media: `mediaReady()` says the film's master playlist is deployed (never named here).
- * - links: 'room' when every real show has a template on `origin`/room/ with {pass};
+ * - links: 'room' when every real show has a template on `origin`/room/ whose fragment is exactly
+ *   show={show}&seat={seat}&txid={txid}&pass={pass}&m={media}, in any order (isRoomTemplate);
  *   'none' when no real show has one; 'other' otherwise.
  */
 export const roomHealth = async ({ roomKey, doorLinks, roomShows, mediaReady, origin }) => {
@@ -195,7 +219,7 @@ export const roomHealth = async ({ roomKey, doorLinks, roomShows, mediaReady, or
     const site = read.origin ?? origin;
     const templates = read.shows.map((s) => doorLinks?.[s.id]);
     if (templates.some((t) => typeof t === 'string')) {
-      links = templates.every((t) => typeof t === 'string' && t.startsWith(`${site}/room/`) && t.includes('{pass}')) ? 'room' : 'other';
+      links = templates.every((t) => isRoomTemplate(t, site)) ? 'room' : 'other';
     }
   } catch {
     links = 'none';

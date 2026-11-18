@@ -127,7 +127,7 @@ export const ROOM_FAQ = {
       keywords: ['who sends', 'automatic', 'keeper', 'goes down', 'offline', 'server down', 'shut down', 'disappear', 'goes offline', 'site goes offline', 'website goes offline', 'site down', 'website down', 'just happen', 'click something', 'keeper dies', 'bot dies', 'single point of failure', 'money stuck', 'sits there forever', 'is my bch gone', 'is my money gone'],
       answer: 'Someone has to send the refund transaction. Anyone can, without a key: Doorstub\'s keeper checks every 5 minutes, and the site sends it too when someone has it open. If Doorstub went down, the money would stay in the contract, and anyone with the public code and the show\'s parameters could still send the settle, which pays only the address that bought the ticket.',
       sources: ['CLAIMS §1 small print 2', 'CLAIMS §9.1 keeperLine', 'worker/RUNTIME.md §3', 'CLAIMS C3', 'CLAIMS C7'],
-      botOk: false,
+      botOk: true,
     },
     {
       id: 'money-back',
@@ -184,7 +184,7 @@ export const ROOM_FAQ = {
       keywords: ['mainnet', 'testnet', 'chipnet', 'try', 'demo', 'real', 'test net', 'real money', 'on mainnet', 'deployed', 'nothing deployed', 'is it deployed'],
       answer: 'Yes. https://doorstub.pages.dev runs on Bitcoin Cash mainnet: buy a 0.001 BCH ticket on sample show B and watch it refund within seconds, or on sample show A, which settles after its start. The "On mainnet" strip counts every buy, hand-back, check-in, settle and refund at the shows\' contract addresses, read from the chain.',
       sources: ['README.md Try it', 'CLAIMS §6 sample B', 'CLAIMS §6 sample A', 'CLAIMS §9.5 proofIntro'],
-      botOk: false,
+      botOk: true,
     },
     {
       id: 'wallets',
@@ -235,11 +235,12 @@ export const ROOM_FAQ = {
       n: 19,
       kind: 'faq',
       q: 'How fast does sample show B refund?',
-      questions: ['How fast does sample show B refund?', 'How long does the sample B refund take?', 'How soon is my sample B money back?'],
-      keywords: ['sample b', 'sample show b', 'refund speed', 'how fast', 'seconds', 'refund within seconds'],
+      // No bare "fast": alone it carried this answer to "english too fast" (a question about the film's subtitles).
+      questions: ['How quickly does sample show B refund?', 'How long does the sample B refund take?', 'How soon is my sample B money back?'],
+      keywords: ['sample b', 'sample show b', 'refund speed', 'how quickly', 'seconds', 'refund within seconds', 'sample b refund'],
       answer: "Right after your buy, the page gets the organiser's refund notice for your seat and sends the refund itself, so the refund usually reaches your wallet within seconds, with no approval from you. If that service does not answer, Doorstub's keeper sends the refund within about 5 minutes.",
       sources: ['CLAIMS §6 sample B', 'CLAIMS §9.4 noticeDown', 'worker/RUNTIME.md §3', 'app/src/lib/controller.js STEP_MS'],
-      botOk: false,
+      botOk: true,
     },
     {
       id: 'sample-a-refund',

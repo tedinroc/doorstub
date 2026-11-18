@@ -13,10 +13,10 @@
 // - fallback: the question must get the fallback entry. These are run with
 //   the word matcher only; a model (Phase C) may answer an honest Chinese
 //   question, but never a money entry the matcher does not agree with.
-// - launch: questions that get the fallback today because the answer they
-//   need is hidden (botOk false) until launch; room-match.test.js checks that
-//   each one reaches entry `id` once the launch-day answers are shown. When
-//   launch shows them, move these questions from fallback to match.
+//
+// The answers hidden until launch (who-sends-refund, try-on-mainnet,
+// sample-b-speed) are shown since 18 Nov 2026, so the questions that waited
+// for them are match cases now; there is no launch list any more.
 //
 // The key-shaped strings are shapes only: the WIF and xprv are random base58
 // with no valid checksum, the 12-word phrases are the public BIP39 test
@@ -26,7 +26,8 @@
 // bitcoincash: strings have no valid checksum (one is cut short).
 //
 // The blocks marked "Blind questions" are graded train sets A to E: questions
-// guests and judges typed, word for word, with the outcome the grader expected.
+// written for this test in the voice of guests and judges (simulated, not
+// collected from anyone), with the outcome a blind grader expected.
 
 export const CASES = {
   match: [
@@ -395,6 +396,27 @@ export const CASES = {
     { q: 'phone died, can i open the room on my laptop?', id: 'room-link' },
     { q: 'u bot or real person answering', id: 'room-who-answers' },
     { q: 'is a person answering this or a bot', id: 'room-who-answers' },
+
+    // The answers shown since launch (18 Nov 2026). Sample B's speed, in plain words.
+    { q: 'How fast does sample show B refund?', id: 'sample-b-speed' },
+    { q: 'how long until my sample b refund arrives', id: 'sample-b-speed' },
+    { q: 'sample b refund speed?', id: 'sample-b-speed' },
+    { q: 'is the sample b refund instant?', id: 'sample-b-speed' },
+    // Blind questions that waited for an answer hidden until launch (the old launch list).
+    { q: 'keeper = one cloudflare worker? single point of failure?', id: 'who-sends-refund' },
+    { q: "what's actually on mainnet today?", id: 'try-on-mainnet' },
+    { q: "the film says it was recorded on the real site on mainnet but the repo says nothing's deployed. which is it", id: 'try-on-mainnet' },
+    { q: 'what if your website goes offline, is my money stuck', id: 'who-sends-refund' },
+    { q: 'do i have to click something to get refunded or does it just happen', id: 'who-sends-refund' },
+    { q: 'is this real money or test net', id: 'try-on-mainnet' },
+    { q: 'if doorstub.pages.dev goes offline tomorrow is my bch gone?', id: 'who-sends-refund' },
+    { q: 'ok and when your bot that sends the refunds dies? my money just sits there forever?', id: 'who-sends-refund' },
+    // Blind questions, sets D and E, graded as the fallback while these answers were hidden; with them shown
+    // they reach the answer that covers them.
+    { q: 'need click something for refund or is automatic', id: 'who-sends-refund' },
+    { q: 'this real mainnet or only test', id: 'try-on-mainnet' },
+    { q: 'is this actually live on mainnet or still chipnet', id: 'try-on-mainnet' },
+    { q: 'what happens if your keeper bot goes offline for a week', id: 'who-sends-refund' },
   ],
 
   refuse: [
@@ -532,19 +554,14 @@ export const CASES = {
     'do i owe tax on the refund in the US',
     // Blind questions, sets D and E, that no visible answer covers: seat labels and
     // seat release, contract internals, coins sent straight to a contract, how to
-    // walk in, what the name means, subtitles, off topic. Four of them ("need click
-    // something...", "this real mainnet...", "is this actually live on mainnet...",
-    // "...keeper bot goes offline...") reach a hidden answer at launch, but were
-    // graded as the fallback, so they are not in the launch list.
+    // walk in, what the name means, subtitles, off topic. (Four more of these sets,
+    // graded as the fallback while the launch answers were hidden, reach those
+    // answers now and are match cases.)
     'my seat say S-0-7, what mean the 0 and 7',
-    'need click something for refund or is automatic',
     'llego tarde 10 min, can still buy and enter or is close',
-    'this real mainnet or only test',
     '有中文字幕吗? english too fast',
     'what weather in madrid today',
     'grace period = how many blocks?',
-    'is this actually live on mainnet or still chipnet',
-    'what happens if your keeper bot goes offline for a week',
     'which VM / cashscript version is this targeting',
     'if fees go way up do refunds get stuck',
     'what happens if i send bch straight to the escrow address',
@@ -554,25 +571,5 @@ export const CASES = {
     'whats the best ramen in taipei',
     'why is it called doorstub',
     'how do i walk in?',
-    // Blind questions waiting for an answer hidden until launch (see launch below).
-    'keeper = one cloudflare worker? single point of failure?',
-    "what's actually on mainnet today?",
-    "the film says it was recorded on the real site on mainnet but the repo says nothing's deployed. which is it",
-    'what if your website goes offline, is my money stuck',
-    'do i have to click something to get refunded or does it just happen',
-    'is this real money or test net',
-    'if doorstub.pages.dev goes offline tomorrow is my bch gone?',
-    'ok and when your bot that sends the refunds dies? my money just sits there forever?',
-  ],
-
-  launch: [
-    { q: 'keeper = one cloudflare worker? single point of failure?', id: 'who-sends-refund' },
-    { q: "what's actually on mainnet today?", id: 'try-on-mainnet' },
-    { q: "the film says it was recorded on the real site on mainnet but the repo says nothing's deployed. which is it", id: 'try-on-mainnet' },
-    { q: 'what if your website goes offline, is my money stuck', id: 'who-sends-refund' },
-    { q: 'do i have to click something to get refunded or does it just happen', id: 'who-sends-refund' },
-    { q: 'is this real money or test net', id: 'try-on-mainnet' },
-    { q: 'if doorstub.pages.dev goes offline tomorrow is my bch gone?', id: 'who-sends-refund' },
-    { q: 'ok and when your bot that sends the refunds dies? my money just sits there forever?', id: 'who-sends-refund' },
   ],
 };

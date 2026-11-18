@@ -263,6 +263,40 @@ test('health: a top-level room status of booleans and a word; door.shows configu
   assert.deepEqual(plain.room, { configured: false, media: false, links: 'other' });
 });
 
+test('room links: health says room, and the config takes it, only for show={show}&seat={seat}&txid={txid}&pass={pass}&m={media}, in any order', async () => {
+  const ROOM_LINK_ERROR = 'DOOR_LINKS: a room link must carry show={show}&seat={seat}&txid={txid}&pass={pass}&m={media}';
+  const realShows = SHOWS.shows.slice(0, 2).map((s) => ({ ...s, door: { endpoint: '/api/door' } }));
+  const loadShows = async () => ({ shows: realShows, rejected: [] });
+  const linksFor = async (template) => (await api({ loadShows, doorLinks: { 'screening-1': template, 'screening-2': template } }).call('/api/health')).body.room.links;
+  const config = (template) => workerConfig({ ROOM_KEY: KEY_HEX, DOOR_LINKS: JSON.stringify({ 'screening-1': template, 'screening-2': template }) }).errors;
+
+  const reordered = `${ORIGIN}/room/#m={media}&pass={pass}&txid={txid}&seat={seat}&show={show}`;
+  for (const good of [TEMPLATE, reordered]) {
+    assert.equal(await linksFor(good), 'room', good);
+    assert.deepEqual(config(good), [], good);
+  }
+  const bad = {
+    'no m': TEMPLATE.replace('&m={media}', ''),
+    'media= for m=': TEMPLATE.replace('m={media}', 'media={media}'),
+    'no txid': TEMPLATE.replace('&txid={txid}', ''),
+  };
+  for (const [why, template] of Object.entries(bad)) {
+    assert.equal(await linksFor(template), 'other', why);
+    assert.deepEqual(config(template), [ROOM_LINK_ERROR], why);
+  }
+  // Also not a room link: a key twice, an extra key, an encoded placeholder, the wrong site.
+  for (const template of [`${TEMPLATE}&m={media}`, `${TEMPLATE}&x=1`, TEMPLATE.replace('{seat}', '%7Bseat%7D'), TEMPLATE.replace(ORIGIN, 'https://example.org')]) {
+    assert.equal(await linksFor(template), 'other', template);
+  }
+  // The error is the same fixed sentence whatever the link holds: no part of the value comes back.
+  const marker = 'qzx';
+  const errors = config(`https://${marker}.example.org/room/#show={show}&seat={seat}&pass={pass}&m={media}&${marker}=${marker}`);
+  assert.deepEqual(errors, [ROOM_LINK_ERROR]);
+  assert.equal(errors.join(' ').includes(marker), false);
+  // A link that is not a room link is not held to it.
+  assert.deepEqual(workerConfig({ DOOR_LINKS: JSON.stringify({ x: 'https://meet.example.org/abc?s={seat}' }) }).errors, []);
+});
+
 test('limits: room/enter is 30 a minute per IP', async () => {
   assert.deepEqual(DEFAULT_LIMITS['room/enter'], { max: 30, windowMs: 60_000 });
   const limiter = createRateLimiter({ limits: { 'room/enter': { max: 2, windowMs: 60_000 } } });
@@ -292,7 +326,11 @@ test('config: ROOM_KEY is checked; a {pass} or {media} link without it is an err
   assert.equal(workerConfig({ DOOR_LINKS: JSON.stringify({ x: 'https://example.org/r#m={media}' }) }).errors.length, 1, '{media} alone needs the key too');
   assert.deepEqual(workerConfig({ DOOR_LINKS: JSON.stringify({ x: 'https://meet.example.org/abc?s={seat}' }) }).errors, [], 'other links need no key');
   const fixedShow = workerConfig({ ROOM_KEY: KEY_HEX, DOOR_LINKS: JSON.stringify({ 'screening-1': TEMPLATE.replace('{show}', 'screening-2') }) });
-  assert.deepEqual(fixedShow.errors, ['DOOR_LINKS: a link with {pass} must name its show as {show}'], 'the pass is made for the door\'s own show id');
+  assert.deepEqual(
+    fixedShow.errors,
+    ['DOOR_LINKS: a link with {pass} must name its show as {show}', 'DOOR_LINKS: a room link must carry show={show}&seat={seat}&txid={txid}&pass={pass}&m={media}'],
+    'the pass is made for the door\'s own show id',
+  );
 
   // A marker inside every bad value: no error may carry it (health publishes config errors).
   const marker = 'qzx';

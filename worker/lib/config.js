@@ -16,7 +16,7 @@
 //   SHOWS_URL         cron Worker only: where to read shows.json (https on mainnet).
 import { hexToBytes, isHex } from './bytes.js';
 import { isPrivateKey } from './crypto.js';
-import { needsRoomKey } from './room.js';
+import { needsRoomKey, roomFragmentOk } from './room.js';
 
 const DOOR_LINKS_SHAPE = 'DOOR_LINKS must be JSON { "<show id>": "https://..." }';
 
@@ -73,6 +73,11 @@ export const workerConfig = (env = {}) => {
   // The door signs the pass for its own show id; a fixed show name in the link could differ, and every pass would fail.
   if (doorLinks !== null && Object.values(doorLinks).some((link) => link.includes('{pass}') && !link.includes('{show}'))) {
     errors.push('DOOR_LINKS: a link with {pass} must name its show as {show}');
+  }
+  // A room link the page could not read (a missing or misspelt key) would show every guest the room's bad-link line
+  // (app/src/room/copy.js badLink). The message is fixed: it never repeats any part of the value.
+  if (doorLinks !== null && Object.values(doorLinks).some((link) => link.includes('/room/#') && !roomFragmentOk(link))) {
+    errors.push('DOOR_LINKS: a room link must carry show={show}&seat={seat}&txid={txid}&pass={pass}&m={media}');
   }
 
   let rehearsalLeadS = null;

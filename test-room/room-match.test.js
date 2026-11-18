@@ -1,6 +1,6 @@
 // The screening room's answer picker (worker/lib/room-match.js) over the
 // written FAQ (worker/lib/room-faq.js): every regression case in
-// faq-cases.js through decide() (and again with the launch-day answers
+// faq-cases.js through decide() (and again with the answers still hidden
 // shown), the hard filter, the narrow topics, chips,
 // the money rule, the gate that keeps answers hidden while a CLAIMS item
 // they cite is marked not deployed or not built, and CLAIMS.md section 11,
@@ -49,22 +49,17 @@ test('room FAQ: every match, refuse and fallback case in faq-cases.js gets its a
   assert.ok(CASES.match.length >= 175 && CASES.refuse.length >= 27 && CASES.fallback.length >= 12, 'the case list was not cut');
 });
 
-test('room FAQ at launch: with the answers hidden until launch shown, the questions waiting for them reach them, and every match case still holds', () => {
-  // Hidden until the keeper and the sample B signer are deployed; narration-voice waits for the locked film instead.
-  const atLaunch = new Set(ROOM_FAQ.entries.filter((e) => e.botOk === false && e.id !== 'narration-voice').map((e) => e.id));
-  const shown = { ...ROOM_FAQ, entries: ROOM_FAQ.entries.map((e) => (atLaunch.has(e.id) ? { ...e, botOk: true } : e)) };
-  assert.ok(CASES.launch.length >= 8, 'the launch list was not cut');
+test('room FAQ with the hidden answers shown: the launch answers are shown, and showing the rest takes no match case', () => {
+  // Shown since launch (18 Nov 2026), with the questions that waited for them now in CASES.match.
+  for (const id of ['who-sends-refund', 'try-on-mainnet', 'sample-b-speed']) assert.equal(byId.get(id)?.botOk, true, `${id} is shown`);
+  assert.equal(CASES.launch, undefined, 'no launch list is left');
+  // What is still hidden (narration-voice waits for the locked film, LAUNCH-RUNBOOK E6) must not take a match case once shown.
+  const hidden = new Set(ROOM_FAQ.entries.filter((e) => e.botOk === false).map((e) => e.id));
+  const shown = { ...ROOM_FAQ, entries: ROOM_FAQ.entries.map((e) => (hidden.has(e.id) ? { ...e, botOk: true } : e)) };
   const misses = [];
-  for (const c of CASES.launch) {
-    assert.ok(atLaunch.has(c.id), `${c.q}: ${c.id} is no longer hidden, so move this question to the match cases`);
-    const today = decide(c.q, ROOM_FAQ);
-    if (today.via !== 'fallback') misses.push(`today "${c.q}" -> ${today.via} ${ids(today)} (want the fallback while ${c.id} is hidden)`);
-    const r = decide(c.q, shown);
-    if (r.via !== 'match' || r.answers[0].id !== c.id) misses.push(`at launch "${c.q}" -> ${r.via} ${ids(r)} (want ${c.id})`);
-  }
   for (const c of CASES.match) {
     const r = decide(c.q, shown);
-    if (r.via !== 'match' || r.answers[0].id !== c.id) misses.push(`at launch, match "${c.q}" -> ${r.via} ${ids(r)} (want ${c.id})`);
+    if (r.via !== 'match' || r.answers[0].id !== c.id) misses.push(`with ${[...hidden].join(', ')} shown, match "${c.q}" -> ${r.via} ${ids(r)} (want ${c.id})`);
   }
   assert.deepEqual(misses, []);
 });
@@ -124,7 +119,10 @@ test('room FAQ: hard filter (secrets and demands) runs first, after NFKC and wit
 test('room FAQ: market price and seed topics refuse before matching; "price", "refund" and "private key" alone do not', () => {
   for (const q of ['price', 'refund', 'private key', "What's the ticket price?", 'Which private key does the worker hold?', 'Is there a Doorstub token?']) {
     assert.equal(topicRefusal(normalise(q)), null, q);
-    assert.equal(decide(q, ROOM_FAQ).via, 'match', q);
+    // "refund" alone is never refused, but since launch three written answers are about refunds (refund-screening,
+    // sample-b-speed, who-sends-refund), and one that moves money is shown only on a clear win: it may get the fallback.
+    if (q === 'refund') assert.ok(['match', 'fallback'].includes(decide(q, ROOM_FAQ).via), q);
+    else assert.equal(decide(q, ROOM_FAQ).via, 'match', q);
   }
   // The refusal entries' keywords are their trigger phrases: each one, asked alone, still gets its refusal.
   for (const id of ['refusal-price', 'refusal-seed', 'refusal-demand', 'refusal-complaint']) {
@@ -226,8 +224,8 @@ test('room FAQ gate: an entry citing a CLAIMS item marked "(not deployed yet)", 
   assert.deepEqual(open, [], 'answers that cite a marked item stay hidden');
 
   // The other way round: an answer hidden while none of its CLAIMS sources is marked any more must name what
-  // it still waits for here. So when launch removes a marker (LAUNCH-RUNBOOK step 13), this fails until the
-  // answers it hid are shown again (botOk true, section 11 regenerated, redeployed).
+  // it still waits for here. So when a marker goes (as the launch markers did on 18 Nov 2026), this fails until
+  // the answers it hid are shown again (botOk true, section 11 regenerated, redeployed). Only the film's wait is left.
   const WAITS = { 'narration-voice': 'the end credits of the locked film (LAUNCH-RUNBOOK E6)' };
   const stale = ROOM_FAQ.entries
     .filter((e) => e.botOk === false && WAITS[e.id] === undefined)

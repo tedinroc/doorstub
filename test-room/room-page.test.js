@@ -17,6 +17,7 @@ import {
   MAX_SEEK_LEAD_S,
   QUESTIONS_AFTER_MIN,
   REHEARSAL_SHOW,
+  REMEASURE_EVERY_MS,
   REPLAY_DAYS,
   REPLAY_MS,
   RESYNC_DRIFT_S,
@@ -519,6 +520,56 @@ test('room controller: a preview watched to its end before the start, or a synce
   video.end();
   await flush();
   assert.equal(room.store.get().mode, 'done');
+  room.stop();
+});
+
+test('room controller: a slow /shows.json is read once, however many ticks run while it is out', async () => {
+  let local = T0 - 60 * MIN;
+  let interval = null;
+  const { win } = fakeWindow(FRAGMENT);
+  win.setInterval = (fn) => {
+    interval = fn;
+    return 1;
+  };
+  const held = [];
+  let reads = 0;
+  const showsBody = { version: 1, shows: [{ id: 'screening-1', kind: 'real', title: 'Doorstub screening 1', eventAt: '2026-11-24T13:00:00Z', durationMin: 25 }] };
+  const fetchImpl = async (url) => {
+    if (url === '/shows.json') {
+      reads += 1;
+      return new Promise((resolve) => held.push(() => resolve(json(200, showsBody, { date: new Date(local).toUTCString() }))));
+    }
+    if (url.endsWith('/room.json')) return json(200, { film: { seconds: 675.8, version: 'a1' }, preview: null });
+    return json(200, { show: 'screening-1', title: 'Doorstub screening 1', seatLabel: 'S-0-12', eventAt: '2026-11-24T13:00:00Z', durationMin: 25, now: local, opensUntil: '2026-11-24T13:35:00Z' });
+  };
+  const room = createRoomController({ win, fetchImpl, now: () => local });
+  const ticks = async (n) => {
+    for (let i = 0; i < n; i += 1) {
+      local += 500;
+      interval();
+      await flush();
+    }
+  };
+  room.start();
+  await flush();
+  // Enter answered (so the countdown runs), but the first /shows.json is still out: the ticks wait for it.
+  assert.equal(room.store.get().phase, 'before');
+  await ticks(20);
+  assert.equal(reads, 1, 'one read in flight across 20 ticks');
+  held.shift()();
+  await flush();
+  await ticks(4);
+  assert.equal(reads, 1, 'no new read right after one answered');
+
+  // Ten minutes on, the clock is re-measured: one read, held again across the ticks.
+  local += REMEASURE_EVERY_MS;
+  await ticks(20);
+  assert.equal(reads, 2, 'the re-measure is one read, not one per tick');
+  assert.equal(held.length, 1);
+  held.shift()();
+  await flush();
+  await ticks(4);
+  assert.equal(reads, 2);
   room.stop();
 });
 
