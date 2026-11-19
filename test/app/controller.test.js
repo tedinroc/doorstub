@@ -591,6 +591,36 @@ test('reopening the connect dialog shows the same link while it waits for a wall
   await controller.close();
 });
 
+test('a wallet that joined and is asking its user (Selene before Connect) keeps its link: Get a ticket again does not start a new pairing', async () => {
+  let pairs = 0;
+  let onStatus = null;
+  const fakeSession = (options) => {
+    onStatus = options.onStatus;
+    return {
+      wallet: null,
+      pair: async ({ relay }) => {
+        pairs += 1;
+        return { uri: `wiz://pairing-${pairs}-relay-${relay}`, qrUri: 'WIZ://X', selene: 'wiz://x', cashonize: 'https://cashonize.com/?uri=x', copy: 'wiz://x' };
+      },
+      restore: async () => false,
+      disconnect: async () => {},
+    };
+  };
+  const controller = createController({
+    runtime: { network: 'simnet', servers: ['ws://127.0.0.1:1'], apiOrigin: '', showsUrl: '/shows.json', testHooks: true },
+    deps: { createSession: fakeSession, fetchShows: async () => '{}', sleep: async () => {} },
+  });
+  const first = await controller.connect();
+  onStatus({ state: 'approving' });
+  assert.equal(controller.store.get().wallet.state, 'approving');
+  assert.equal(controller.store.get().wallet.error, null);
+  controller.closeConnect();
+  const again = await controller.connect();
+  assert.equal(again.uri, first.uri, 'the wallet still asking its user answers on this link');
+  assert.equal(pairs, 1);
+  await controller.close();
+});
+
 test('the tickets this page acted on are kept for the tab, so a reload keeps finished tickets under their cards', async () => {
   const saved = new Map([['doorstub.touched', JSON.stringify(['sample-b:020001', 'screening-1:010001', 'bad key', 7])]]);
   const tabStorage = { getItem: (k) => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, String(v)) };

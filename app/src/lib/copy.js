@@ -40,6 +40,7 @@ export const SENTENCES = Object.freeze({
   connectPaste: "Paytaca: press Copy link, then paste it in Paytaca's WizardConnect screen. The link stays valid while this page stays open.",
   connectCashonize: 'Cashonize: create a wallet first, then press Open in Cashonize again.',
   connectWaiting: 'Waiting for your wallet to join.',
+  connectApprove: 'Your wallet joined. Approve the connection in your wallet.',
   connectNext: 'Next: your wallet asks you to approve {price} for {show}.',
   connectPhone: 'On a phone: connect in your wallet, come back to this page, then open the wallet again to approve.',
   connectRelayDown: 'The wallet relay is not answering. Try the other relay.',

@@ -393,6 +393,11 @@ button { font: inherit; color: inherit; }
 .stamp.blue { --tone: var(--blue); }
 .stamp.red { --tone: var(--red); }
 .stamp.thud { animation: thud 0.55s var(--ease-thud) both; }
+/* A landing stamp starts at 2.3x and reaches past the ticket's right edge. The ticket's mask already
+   hides that part; the clip also keeps it out of the page's width, or iOS Safari zooms the whole page
+   out while it lands. Sideways only: clipping both ways would round the clip to the ticket's corners
+   and change their edge pixels. */
+.ticket.mine { overflow-x: clip; }
 @keyframes thud {
   0% { opacity: 0; transform: rotate(-24deg) scale(2.3); }
   60% { opacity: 1; transform: rotate(-7deg) scale(0.94); }

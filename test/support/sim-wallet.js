@@ -40,8 +40,10 @@ import {
   utf8ToBin,
 } from '@bitauth/libauth';
 import {
+  PROTOCOL_NAME,
   RelayMsgAction,
   RelayStatus,
+  chunkExtensionAdvertisement,
   encodeKeyExchangeURI,
   generateKeyExchangeCredentials,
   toBigInt,
@@ -79,6 +81,60 @@ const emitter = () => {
     },
   };
 };
+
+/**
+ * A @wizardconnect/wallet manager that asks before it shares xpubs, the way
+ * Selene does: written from Selene's observed behaviour (its 11/19 connect
+ * screen and messages), not from its code.
+ */
+const askingManager = (Base, askToConnect) =>
+  class AskingWalletManager extends Base {
+    async pushWalletReady(conn) {
+      if (conn.allowed === true) return super.pushWalletReady(conn);
+      if (conn.walletReadySentThisCycle) return undefined;
+      conn.walletReadySentThisCycle = true;
+      // Before the user says yes: the relay key and pairing secret, and no xpubs.
+      conn.notificationQueue.push({
+        action: RelayMsgAction.WalletReady,
+        supported_protocols: [PROTOCOL_NAME],
+        wallet_name: this.adapter.walletName,
+        wallet_icon: this.adapter.walletIcon,
+        time: Math.floor(Date.now() / 1000),
+        dapp_discovered: conn.dappDiscovered,
+        session: { [PROTOCOL_NAME]: { paths: [] } },
+        public_key: conn.walletPublicKeyHex,
+        secret: conn.keyExchangeSecret,
+        extensions: { chunk: chunkExtensionAdvertisement() },
+      });
+      this.flushNotificationQueue(conn);
+      return undefined;
+    }
+
+    async handleDappReady(conn, msg) {
+      if (conn.allowed === true) return super.handleDappReady(conn, msg);
+      if (msg.dapp_name && !conn.dappName) {
+        conn.dappName = msg.dapp_name;
+        conn.label = msg.dapp_name;
+      }
+      if (msg.wallet_discovered) conn.dappDiscovered = true;
+      conn.asking ??= Promise.resolve(askToConnect({ dappName: conn.dappName, uri: conn.uri })).then((yes) => {
+        if (this.connections.get(conn.id) !== conn) return undefined;
+        if (yes !== true) {
+          this.disconnect(conn.id);
+          return undefined;
+        }
+        conn.allowed = true;
+        conn.walletReadySentThisCycle = false;
+        return this.pushWalletReady(conn);
+      });
+      await conn.asking;
+      return undefined;
+    }
+
+    handleSignRequest(conn, msg) {
+      if (conn.allowed === true) super.handleSignRequest(conn, msg);
+    }
+  };
 
 /** Parse relay-format source outputs into libauth types. */
 export const parseSourceOutputs = (relayOutputs) =>
@@ -387,12 +443,18 @@ export const makeSimWallet = ({
   /**
    * Pair over the relay named in a wiz:// URI with the real
    * @wizardconnect/wallet manager (Node: needs network access to that relay).
+   * With `askToConnect` it pairs the way Selene does (seen 11/19): its first
+   * wallet_ready carries only its relay key (no xpubs); it asks the user once
+   * the dapp's dapp_ready has named the dapp (`askToConnect({ dappName, uri })`
+   * resolves true to connect, anything else refuses and disconnects); then it
+   * sends wallet_ready again with the xpubs. It ignores sign requests until then.
    * Returns { manager, close() }.
    */
-  const pairOverRelay = async (uri) => {
+  const pairOverRelay = async (uri, { askToConnect } = {}) => {
     const { installWsCloseGuard } = await import('./node-ws-guard.js');
     installWsCloseGuard();
-    const { WalletConnectionManager } = await import('@wizardconnect/wallet');
+    const { WalletConnectionManager: Base } = await import('@wizardconnect/wallet');
+    const WalletConnectionManager = askToConnect === undefined ? Base : askingManager(Base, askToConnect);
     const manager = new WalletConnectionManager(adapter);
     manager.on('pendingSignRequest', async ({ connectionId, request }) => {
       const r = await answer(request);

@@ -11,6 +11,12 @@
 // (stored matches, then EOSE, then live events) and CLOSE. Filters: ids,
 // authors, kinds, #<tag>, since, until, limit. Signatures are not checked
 // here; the clients check them.
+//
+// freeze(pubkey) models a phone that has frozen a hidden page: every socket
+// that subscribed to events for `pubkey` (#p) stays open, but nothing goes
+// through it either way (live events to it are lost, its EVENTs are dropped
+// unanswered) until thaw(pubkey). Events from others are still stored, so a
+// later REQ replays them.
 import { WebSocketServer } from 'ws';
 
 const matches = (filter, event) => {
@@ -31,11 +37,15 @@ export const startLocalRelay = ({ port = 0, host = '127.0.0.1', maxEvents = 10_0
   new Promise((resolve, reject) => {
     const events = [];
     const server = new WebSocketServer({ port, host });
-    const stats = { connections: 0, published: 0 };
+    const stats = { connections: 0, published: 0, dropped: 0 };
+    const frozen = new Set();
+    const tagsOf = new Map(); // socket -> every #p value it subscribed to
+    const isFrozen = (socket) => [...(tagsOf.get(socket) ?? [])].some((p) => frozen.has(p));
     server.on('error', reject);
     server.on('connection', (socket) => {
       stats.connections += 1;
       const subs = new Map();
+      tagsOf.set(socket, new Set());
       const send = (msg) => {
         if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(msg));
       };
@@ -49,6 +59,10 @@ export const startLocalRelay = ({ port = 0, host = '127.0.0.1', maxEvents = 10_0
         }
         if (!Array.isArray(msg)) return;
         const [type, ...rest] = msg;
+        if (isFrozen(socket)) {
+          stats.dropped += 1;
+          return;
+        }
         if (type === 'EVENT') {
           const event = rest[0];
           if (event === null || typeof event !== 'object' || typeof event.id !== 'string') {
@@ -65,6 +79,7 @@ export const startLocalRelay = ({ port = 0, host = '127.0.0.1', maxEvents = 10_0
         } else if (type === 'REQ') {
           const [subId, ...filters] = rest;
           subs.set(subId, filters);
+          for (const filter of filters) for (const p of filter['#p'] ?? []) tagsOf.get(socket).add(p);
           for (const filter of filters) {
             const found = events.filter((e) => matches(filter, e));
             const limited = filter.limit !== undefined ? found.slice(-filter.limit) : found;
@@ -77,11 +92,16 @@ export const startLocalRelay = ({ port = 0, host = '127.0.0.1', maxEvents = 10_0
         }
       });
       socket.on('doorstub-event', (event) => {
+        if (isFrozen(socket)) {
+          stats.dropped += 1;
+          return;
+        }
         for (const [subId, filters] of subs) {
           if (filters.some((f) => matches(f, event))) send(['EVENT', subId, event]);
         }
       });
       socket.on('error', () => {});
+      socket.on('close', () => tagsOf.delete(socket));
     });
     server.on('listening', () => {
       const address = server.address();
@@ -90,6 +110,9 @@ export const startLocalRelay = ({ port = 0, host = '127.0.0.1', maxEvents = 10_0
         port: address.port,
         stats,
         events,
+        /** Freeze every socket subscribed to `pubkey` (hex): open, but nothing passes (see above). */
+        freeze: (pubkey) => frozen.add(pubkey),
+        thaw: (pubkey) => frozen.delete(pubkey),
         close: () =>
           new Promise((done) => {
             for (const client of server.clients) client.terminate();

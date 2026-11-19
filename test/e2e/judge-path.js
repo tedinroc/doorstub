@@ -201,6 +201,38 @@ const shot = async (page, name, { selector, full = false } = {}) => {
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
 };
 
+/**
+ * Play a stamp's landing (the thud keyframes) again, paused every 25 ms, and read the page's width at each
+ * frame; `unclipped` is the widest frame with the ticket's clip taken off (to show the check can see it).
+ */
+const stampLanding = (page, selector) =>
+  page.evaluate((sel) => {
+    const stamp = document.querySelector(sel);
+    const ticket = stamp.closest('.ticket');
+    const had = stamp.classList.contains('thud');
+    const overflow = ticket.style.overflow; // CSSOM only: the page's CSP refuses a written style attribute
+    const frames = () => {
+      stamp.classList.remove('thud');
+      void stamp.offsetWidth;
+      stamp.classList.add('thud');
+      const anim = stamp.getAnimations().find((a) => a.animationName === 'thud');
+      anim.pause();
+      const widths = [];
+      for (let t = 0; t <= 550; t += 25) {
+        anim.currentTime = t;
+        widths.push(document.documentElement.scrollWidth);
+      }
+      anim.finish();
+      return widths;
+    };
+    const widths = frames();
+    ticket.style.overflow = 'visible';
+    const unclipped = Math.max(...frames());
+    ticket.style.overflow = overflow;
+    if (!had) stamp.classList.remove('thud');
+    return { widths, unclipped, inner: window.innerWidth };
+  }, selector);
+
 /** A DOM click (immune to the print animation moving the element under the mouse). */
 const click = async (page, selector) => {
   await page.waitForSelector(selector, { timeout: 30_000 });
@@ -506,6 +538,9 @@ try {
   ok(!(await isUnspent(a1.buyer.lockingBytecode, buyA, 1)), 'hand back: the ticket NFT left the wallet on simnet');
   await sleep(1500);
   ok((await domText(page, `[data-ticket="${keyA}"] .stamp`)) === 'HANDED BACK', 'ticket card stamped HANDED BACK');
+  const landing = await stampLanding(page, `[data-ticket="${keyA}"] .stamp`);
+  log(`HANDED BACK landing at ${landing.inner} px: page ${Math.max(...landing.widths)} px wide at most (${landing.unclipped} px without the ticket's clip)`);
+  ok(landing.inner === 390 && landing.widths.every((w) => w <= landing.inner), `the stamp landing never widens the page at 390 px (iOS Safari would zoom the whole page out): ${landing.widths.join(' ')}`);
   await shot(page, '04-handed-back', { selector: `[data-show="${showA.id}"]` });
 
   // ---------------------------------------------------------------- sample B: the refund arrives with no second approval
@@ -535,6 +570,15 @@ try {
   await waitState(page, (s) => s.flows[keyB]?.step === 'sent' && s.flows[keyB], 'B sent step', 30_000);
   ok((await domText(page, `[data-ticket="${keyB}"] .track .step.active`)) === 'Refund sent', 'B: "Refund sent" is shown as the active step');
   await page.screenshot({ path: join(SHOTS, '05b-b-sent-390.png') });
+  // The page's width on every frame while REFUNDED lands (the stamp, the coin flying to the wallet chip, the chip's pulse).
+  await page.evaluate(() => {
+    window.__widest = 0;
+    const frame = () => {
+      window.__widest = Math.max(window.__widest, document.documentElement.scrollWidth);
+      if (window.__widestStop !== true) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
   await waitState(page, (s) => s.flows[keyB]?.step === 'back', 'B refund sequence', 60_000);
   const steps = await page.evaluate(() => window.__refundSteps);
   const at = Object.fromEntries(steps.map((x) => [x.step, x]));
@@ -553,6 +597,11 @@ try {
   ok(await isUnspent(b.buyer.lockingBytecode, buyB, 1), 'B refund: the ticket NFT stays in the wallet (refunded, not burned)');
   await sleep(1500);
   ok((await domText(page, `[data-ticket="${keyB}"] .stamp`)) === 'REFUNDED', 'B ticket card stamped REFUNDED');
+  const widest = await page.evaluate(() => {
+    window.__widestStop = true;
+    return { max: window.__widest, inner: window.innerWidth };
+  });
+  ok(widest.inner === 390 && widest.max <= widest.inner, `B: while REFUNDED lands (stamp, coin flight, chip pulse) the page is never wider than the screen (${widest.max} px at ${widest.inner} px)`);
   log('B refunded by itself');
   await shot(page, '06-b-refunded', { selector: `[data-ticket="${keyB}"]` });
 

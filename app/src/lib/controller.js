@@ -468,7 +468,8 @@ export const createController = ({ runtime, deps = {} }) => {
    */
   const connect = async ({ relay = 0 } = {}) => {
     const w = get().wallet;
-    if (w.state === 'pairing' && w.pairing !== null && w.relay === relay && session !== null) {
+    // 'approving': the wallet joined and is asking its user; a new link would strand that question.
+    if ((w.state === 'pairing' || w.state === 'approving') && w.pairing !== null && w.relay === relay && session !== null) {
       set({ connectOpen: true });
       return w.pairing;
     }

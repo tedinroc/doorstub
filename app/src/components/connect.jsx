@@ -45,7 +45,9 @@ export const ConnectDialog = ({ open, wallet, pending = null, onClose, onOtherRe
       ? say(wallet.error.key, wallet.error.vars)
       : wallet.relaySlow
         ? say('connectRelayDown')
-        : say('connectWaiting');
+        : wallet.state === 'approving'
+          ? say('connectApprove')
+          : say('connectWaiting');
 
   return (
     <dialog

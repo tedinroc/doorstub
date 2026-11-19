@@ -6,10 +6,11 @@
 // Tests inject `initiateRelay` (an in-process relay from
 // test/support/sim-wallet.js) so the real DappConnectionManager runs without
 // a network.
-import { initiateDappRelay } from '@wizardconnect/core';
+import { RelayMsgAction, initiateDappRelay } from '@wizardconnect/core';
 import { DappConnectionManager } from '@wizardconnect/dapp';
 import { ADDRESS_PREFIX } from '../chain/address.js';
 import { WalletError, walletKeysFromPaths } from './hd.js';
+import { HIDDEN_HOLD_MS, captureVisibilityListeners, holdWhileHidden } from './hold-hidden.js';
 import { assertSignOnly } from './request.js';
 
 export const DAPP_NAME = 'Doorstub';
@@ -84,6 +85,7 @@ export const walletInfoOf = (manager) => {
  * @param {Function} [options.initiateRelay] defaults to @wizardconnect/core initiateDappRelay
  * @param {'mainnet'} [options.expectNetwork] wallets on any other network are refused (wallet-wrong-network)
  * @param {number} [options.lateJoinCheckMs] how often to look for a wallet that joined after the library's wait (0 turns the nudge off)
+ * @param {number} [options.hiddenHoldMs] how long a hidden page waiting for the wallet keeps the relay open (0: the library closes it at once; see hold-hidden.js)
  * @param {(event: { state, error? }) => void} [options.onStatus]
  * @param {(info) => void} [options.onWalletReady]
  * @param {(reason: string, message?: string) => void} [options.onDisconnect]
@@ -98,6 +100,7 @@ export const createWalletSession = ({
   expectNetwork = 'mainnet',
   signTimeoutMs = SIGN_TIMEOUT_MS,
   lateJoinCheckMs = 1_000,
+  hiddenHoldMs = HIDDEN_HOLD_MS,
   onStatus = () => {},
   onWalletReady = () => {},
   onDisconnect = () => {},
@@ -109,6 +112,7 @@ export const createWalletSession = ({
   let inFlight = null;
   let lastPairing = null;
   let lateJoinTimer = null;
+  let releaseHold = null;
 
   const setState = (next, error) => {
     state = next;
@@ -124,6 +128,8 @@ export const createWalletSession = ({
   const teardown = async (message) => {
     if (lateJoinTimer !== null) clearInterval(lateJoinTimer);
     lateJoinTimer = null;
+    releaseHold?.();
+    releaseHold = null;
     const m = manager;
     const r = relay;
     manager = null;
@@ -144,6 +150,14 @@ export const createWalletSession = ({
 
   const wire = (m, readyHandler) => {
     m.on('walletready', () => {
+      // Selene says hello first with only its relay key (no xpubs), asks its
+      // user "Connect to Doorstub?" once our dapp_ready names us, and sends its
+      // xpubs after the user says yes. A wallet_ready without paths is that
+      // hello: the wallet has joined and is asking; it is not a broken wallet.
+      if (m.getSessionPaths().length === 0) {
+        if (state === 'pairing') setState('approving');
+        return;
+      }
       let next;
       try {
         next = walletInfoOf(m);
@@ -175,6 +189,10 @@ export const createWalletSession = ({
     m.on('reconnecting', () => {
       if (manager === m && state === 'connected') setState('reconnecting');
     });
+    // The relay confirmed the sign request (hold-hidden.js waits for this before it reconnects).
+    m.on('messagesent', (msg) => {
+      if (manager === m && inFlight !== null && msg?.action === RelayMsgAction.SignTransactionRequest) inFlight.sent = true;
+    });
   };
 
   /** Relay state per manager, for the late-join nudge. */
@@ -185,6 +203,24 @@ export const createWalletSession = ({
     const s = payload.status?.status;
     if (s === 'connected' && state === 'reconnecting' && m.isWalletDiscovered()) setState('connected');
     else if (s === 'reconnecting' && state === 'connected') setState('reconnecting', payload.status.error ?? undefined);
+  };
+
+  /** The page waits for this manager's wallet: pairing, asking its user, or a sign request out. */
+  const waitingFor = (m) => () => manager === m && (state === 'pairing' || state === 'approving' || inFlight !== null);
+
+  /** Start the relay; a hidden page waiting for the wallet keeps it open for a while (see hold-hidden.js). */
+  const startRelay = (m, late, options) => {
+    const doc = hiddenHoldMs > 0 ? globalThis.document : undefined;
+    const { value: r, listeners } = captureVisibilityListeners(doc, () => initiateRelay(relayStatus(m, late), options));
+    releaseHold = holdWhileHidden({
+      doc,
+      listeners,
+      client: r.client,
+      waiting: waitingFor(m),
+      sending: () => manager === m && inFlight !== null && inFlight.sent !== true,
+      holdMs: hiddenHoldMs,
+    });
+    return r;
   };
 
   /** Watch for a key exchange that completes after the library stopped waiting (see LIBRARY_KEY_EXCHANGE_WAIT_MS). */
@@ -217,7 +253,7 @@ export const createWalletSession = ({
     manager = m;
     wire(m);
     const late = {};
-    const r = initiateRelay(relayStatus(m, late), { explicitRelayUrls: ordered(primary) });
+    const r = startRelay(m, late, { explicitRelayUrls: ordered(primary) });
     relay = r;
     watchLateJoin(m, late);
     m.attachRelay(r);
@@ -245,7 +281,7 @@ export const createWalletSession = ({
     let r;
     const late = {};
     try {
-      r = initiateRelay(relayStatus(m, late), {
+      r = startRelay(m, late, {
         explicitRelayUrls: ordered(0),
         existingCredentials: { privateKey: stored.privateKey, secret: stored.secret, walletPublicKey: stored.walletPublicKey },
       });
@@ -288,7 +324,7 @@ export const createWalletSession = ({
       why = 'timeout';
       controller.abort('Doorstub stopped waiting for the wallet');
     }, timeoutMs);
-    inFlight = { controller };
+    inFlight = { controller, sent: false };
     try {
       const response = await manager.signTransaction(request, { signal: controller.signal });
       if (typeof response?.signedTransaction !== 'string' || response.signedTransaction.length === 0) {
